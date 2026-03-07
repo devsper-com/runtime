@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# System Files
+.DS_Store
+
+# Virtual environments
+.venv
+
+# Hivemind Output Files
+.events
