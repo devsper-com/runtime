@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from hivemind.types.task import Task, TaskStatus
 from hivemind.types.event import Event, events
@@ -36,5 +36,5 @@ class Agent:
 
     def _emit(self, event_type: events, payload: dict) -> None:
         self.event_log.append_event(
-            Event(timestamp=datetime.now(), type=event_type, payload=payload)
+            Event(timestamp=datetime.now(timezone.utc), type=event_type, payload=payload)
         )
