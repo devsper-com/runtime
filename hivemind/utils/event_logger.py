@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 from hivemind.types.event import Event
 
@@ -6,7 +6,7 @@ from hivemind.types.event import Event
 class EventLog:
     def __init__(self, events_folder_path: str = ".events"):
         os.makedirs(events_folder_path, exist_ok=True)
-        self.log_path = os.path.join(events_folder_path, f"events_{datetime.now()}.jsonl")
+        self.log_path = os.path.join(events_folder_path, f"events_{datetime.now(timezone.utc)}.jsonl")
 
     def append_event(self, event: Event) -> None:
         with open(self.log_path, "a") as f:

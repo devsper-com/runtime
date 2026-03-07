@@ -17,4 +17,4 @@ class events(Enum):
 class Event(BaseModel):
     timestamp: datetime
     type: events
-    payload: list[str]
+    payload: dict
