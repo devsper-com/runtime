@@ -60,7 +60,7 @@ Requires **Python 3.12+**. [uv](https://docs.astral.sh/uv/) is recommended:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/hivemind.git
+git clone https://github.com/rithulkamesh/hivemind.git
 cd hivemind
 
 # Create environment and install (with uv)
