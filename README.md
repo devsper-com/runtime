@@ -139,7 +139,12 @@ The first release establishes the core architecture. Possible future directions:
 
 ## License
 
-See the repository for license information.
+Hivemind is licensed under **GPL-3.0-or-later**. You may use, modify, and distribute it under the terms of the [GNU General Public License v3](https://www.gnu.org/licenses/gpl-3.0.html). If you use or distribute this software (including in modified form), you must:
+
+- **Give attribution** — keep copyright and license notices and credit Hivemind.
+- **Keep derivatives open** — any work based on Hivemind must be licensed under the GPL and source must be made available.
+
+See [LICENSE](LICENSE) for the full text.
 
 ---
 
