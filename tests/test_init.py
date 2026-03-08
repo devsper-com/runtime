@@ -8,8 +8,8 @@ import pytest
 from hivemind.cli.init import run_init, run_doctor
 
 
-def test_init_creates_toml_and_dataset(tmp_path):
-    """run_init creates hivemind.toml and dataset folder when they don't exist."""
+def test_init_creates_toml(tmp_path):
+    """run_init creates hivemind.toml (no dataset or example workflow)."""
     with patch("pathlib.Path.cwd", return_value=tmp_path):
         code = run_init(interactive=False)
         assert code == 0
@@ -19,9 +19,8 @@ def test_init_creates_toml_and_dataset(tmp_path):
         assert "[swarm]" in content
         assert "planner = \"auto\"" in content
         assert "worker = \"auto\"" in content
-        assert "[workflow.example]" in content or "workflow" in content
-        dataset = tmp_path / "dataset"
-        assert dataset.is_dir()
+        assert "speculative_execution" in content
+        assert (tmp_path / "dataset").is_dir() is False
 
 
 def test_init_refuses_to_overwrite_toml(tmp_path):

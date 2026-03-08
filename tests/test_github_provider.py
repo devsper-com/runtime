@@ -18,10 +18,11 @@ def test_parse_model_spec_github():
 
 def test_github_provider_requires_token():
     """GitHubProvider raises when GITHUB_TOKEN is not set."""
-    with pytest.raises(ValueError, match="GITHUB_TOKEN"):
-        GitHubProvider()
-    with pytest.raises(ValueError, match="GITHUB_TOKEN"):
-        GitHubProvider(token="")
+    with patch.dict(os.environ, {"GITHUB_TOKEN": ""}, clear=False):
+        with pytest.raises(ValueError, match="GITHUB_TOKEN"):
+            GitHubProvider()
+        with pytest.raises(ValueError, match="GITHUB_TOKEN"):
+            GitHubProvider(token="")
 
 
 def test_github_provider_strips_prefix_in_generate():

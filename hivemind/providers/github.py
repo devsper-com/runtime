@@ -1,4 +1,4 @@
-"""GitHub Models provider (GitHub Copilot API)."""
+"""GitHub Models provider (GitHub Models API at models.github.ai)."""
 
 import json
 import os
@@ -8,13 +8,28 @@ import httpx
 
 from hivemind.providers.base import BaseProvider
 
-GITHUB_MODELS_BASE = "https://models.inference.ai.azure.com"
+# GitHub Models API (replaces deprecated models.inference.ai.azure.com)
+# Docs: https://docs.github.com/en/rest/models/inference
+GITHUB_MODELS_BASE = "https://models.github.ai"
+GITHUB_MODELS_CHAT_URL = f"{GITHUB_MODELS_BASE}/inference/chat/completions"
+GITHUB_API_VERSION = "2022-11-28"
+
+# Default model when user selects "copilot" or "github:copilot" (publisher/model format)
+DEFAULT_GITHUB_MODEL = "openai/gpt-4.1"
+
+
+def _normalize_model_id(model: str) -> str:
+    """Return API model ID: publisher/name. 'copilot' or 'github:copilot' -> default; else strip github: prefix."""
+    s = model.split(":", 1)[-1].strip() if ":" in model else model.strip()
+    if not s or s.lower() == "copilot":
+        return DEFAULT_GITHUB_MODEL
+    return s
 
 
 class GitHubProvider(BaseProvider):
     """
-    GitHub Models API adapter (used by GitHub Copilot).
-    Uses GITHUB_TOKEN for authentication.
+    GitHub Models API adapter (models.github.ai).
+    Uses GITHUB_TOKEN with models:read scope (fine-grained PAT or classic).
     """
 
     def __init__(self, token: str | None = None) -> None:
@@ -22,11 +37,19 @@ class GitHubProvider(BaseProvider):
         if not self.token:
             raise ValueError("GitHub provider requires GITHUB_TOKEN")
 
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.token}",
+            "X-GitHub-Api-Version": GITHUB_API_VERSION,
+        }
+
     def generate(
         self, model: str, prompt: str, stream: bool = False
     ) -> str | Iterator[str]:
-        """Call GitHub Models /chat/completions and return the assistant message content."""
-        api_model = model.split(":", 1)[-1].strip() if ":" in model else model
+        """Call GitHub Models inference/chat/completions and return the assistant message content."""
+        api_model = _normalize_model_id(model)
         if stream:
             return self._generate_stream(api_model, prompt)
         return self._generate_sync(api_model, prompt)
@@ -39,8 +62,8 @@ class GitHubProvider(BaseProvider):
         }
         with httpx.Client(timeout=60.0) as client:
             resp = client.post(
-                f"{GITHUB_MODELS_BASE}/chat/completions",
-                headers={"Authorization": f"Bearer {self.token}"},
+                GITHUB_MODELS_CHAT_URL,
+                headers=self._headers(),
                 json=payload,
             )
             resp.raise_for_status()
@@ -62,8 +85,8 @@ class GitHubProvider(BaseProvider):
         with httpx.Client(timeout=60.0) as client:
             with client.stream(
                 "POST",
-                f"{GITHUB_MODELS_BASE}/chat/completions",
-                headers={"Authorization": f"Bearer {self.token}"},
+                GITHUB_MODELS_CHAT_URL,
+                headers=self._headers(),
                 json=payload,
             ) as resp:
                 resp.raise_for_status()

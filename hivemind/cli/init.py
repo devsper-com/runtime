@@ -122,10 +122,20 @@ def _build_init_toml(
     worker: str = "auto",
     memory_enabled: bool = True,
     tools_top_k: int = 12,
+    speculative_execution: bool = False,
+    cache_enabled: bool = False,
+    adaptive_planning: bool = False,
+    adaptive_execution: bool = False,
+    max_iterations: int = 10,
 ) -> str:
     """Build [swarm] [models] [memory] [tools] TOML snippet."""
     return f"""[swarm]
 workers = {workers}
+speculative_execution = {str(speculative_execution).lower()}
+cache_enabled = {str(cache_enabled).lower()}
+adaptive_planning = {str(adaptive_planning).lower()}
+adaptive_execution = {str(adaptive_execution).lower()}
+max_iterations = {max_iterations}
 
 [models]
 planner = "{planner}"
@@ -139,33 +149,22 @@ top_k = {tools_top_k}
 """
 
 
-EXAMPLE_WORKFLOW = """
-# Example workflow - run with: hivemind workflow example
-[workflow.example]
-name = "example"
-steps = [
-  "Summarize the project in one paragraph",
-  "List key files and their purpose",
-]
-"""
-
-
-def _run_init_interactive() -> tuple[str, bool, bool]:
+def _run_init_interactive(cwd: Path) -> tuple[str, dict[str, str]]:
     """
-    Interactive flow: provider → planner/worker models → workers, memory, dataset, workflow.
-    Returns (toml_content, create_dataset, create_workflow).
+    CLI interactive flow: provider → GitHub device login or continue → planner/worker → options.
+    Returns (toml_content, api_keys to write to .env).
     """
     from rich.console import Console
     from rich.panel import Panel
-    from rich.prompt import Confirm, IntPrompt, Prompt
+    from rich.prompt import Confirm, IntPrompt
 
     console = Console()
+    api_keys: dict[str, str] = {}
 
     console.print()
     console.print(
         Panel(
-            "[bold]Hivemind project setup[/]\n\n"
-            "We'll create [cyan]hivemind.toml[/], optional example workflow, and a [cyan]dataset/[/] folder.",
+            "[bold]Hivemind project setup[/]\n\nWe'll create [cyan]hivemind.toml[/].",
             title="Welcome",
             border_style="green",
         )
@@ -175,6 +174,34 @@ def _run_init_interactive() -> tuple[str, bool, bool]:
     choices = _provider_choices_for_display()
     provider_id = _select_option("Select model provider", choices, default_index=0)
     console.print(f"  [dim]Using provider: {provider_id}[/]\n")
+
+    # GitHub: device flow (show code, open browser, poll) if no token and client_id set
+    if provider_id == "github" and not os.environ.get("GITHUB_TOKEN"):
+        try:
+            from hivemind.cli.github_oauth import (
+                GITHUB_DEVICE_CLIENT_ID,
+                GitHubDeviceFlowError,
+                run_device_flow_cli,
+            )
+            if GITHUB_DEVICE_CLIENT_ID:
+                token = run_device_flow_cli(client_id=GITHUB_DEVICE_CLIENT_ID, open_browser=True)
+                api_keys["GITHUB_TOKEN"] = token
+                os.environ["GITHUB_TOKEN"] = token
+                console.print("[green]✔[/] GitHub login successful.")
+            else:
+                console.print("[yellow]Paste a GitHub token (e.g. from https://github.com/settings/tokens)[/]")
+                from rich.prompt import Prompt
+                raw = Prompt.ask("GITHUB_TOKEN", password=True, default="")
+                if raw.strip():
+                    api_keys["GITHUB_TOKEN"] = raw.strip()
+                    os.environ["GITHUB_TOKEN"] = raw.strip()
+        except GitHubDeviceFlowError as e:
+            console.print(f"[red]GitHub login failed: {e}[/]")
+            from rich.prompt import Prompt
+            raw = Prompt.ask("Paste GITHUB_TOKEN (or leave blank)", password=True, default="")
+            if raw.strip():
+                api_keys["GITHUB_TOKEN"] = raw.strip()
+                os.environ["GITHUB_TOKEN"] = raw.strip()
 
     planner_model = "auto"
     worker_model = "auto"
@@ -210,44 +237,51 @@ def _run_init_interactive() -> tuple[str, bool, bool]:
         tools_top_k = IntPrompt.ask("top_k (0 = no limit)", default=12)
         tools_top_k = max(0, min(50, tools_top_k))
 
+    speculative = Confirm.ask("Enable speculative execution?", default=False)
+    cache = Confirm.ask("Enable task cache?", default=False)
+    adaptive_planning = Confirm.ask("Enable adaptive planning?", default=False)
+    adaptive_execution = Confirm.ask("Enable adaptive execution?", default=False)
+
     toml_content = _build_init_toml(
         workers=workers,
         planner=planner_model,
         worker=worker_model,
         memory_enabled=memory_enabled,
         tools_top_k=tools_top_k,
+        speculative_execution=speculative,
+        cache_enabled=cache,
+        adaptive_planning=adaptive_planning,
+        adaptive_execution=adaptive_execution,
     )
 
-    create_workflow = Confirm.ask("Add example workflow to hivemind.toml?", default=True)
-    create_dataset = Confirm.ask("Create dataset/ folder?", default=True)
-
-    return toml_content, create_dataset, create_workflow
+    return toml_content, api_keys
 
 
 def run_init(interactive: bool = True) -> int:
     """
-    Set up a new project: create hivemind.toml, optional example workflow, dataset folder.
-    When interactive=True, prompt for provider, models, workers, memory, and options.
+    Set up a new project: create hivemind.toml only (no dataset, no example workflow).
+    When interactive=True, CLI prompts for provider, models, workers, and options.
+    GitHub: device login (code + open browser) when no GITHUB_TOKEN.
     """
     cwd = Path.cwd()
     errors: list[str] = []
 
     created_toml = False
-    created_workflow = False
-    created_dataset = False
-    toml_content: str
-    add_workflow = True
-    add_dataset = True
-
     toml_path = cwd / "hivemind.toml"
+
     if toml_path.exists():
         errors.append("hivemind.toml already exists")
     else:
         if interactive:
             try:
-                toml_content, add_dataset, add_workflow = _run_init_interactive()
-                if add_workflow:
-                    toml_content = toml_content.strip() + EXAMPLE_WORKFLOW
+                toml_content, api_keys = _run_init_interactive(cwd)
+                try:
+                    toml_path.write_text(toml_content, encoding="utf-8")
+                    created_toml = True
+                except Exception as e:
+                    errors.append(f"Failed to create hivemind.toml: {e}")
+                if api_keys:
+                    _write_env_file(cwd, api_keys)
             except (KeyboardInterrupt, EOFError):
                 print("\nInit cancelled.", file=sys.stderr)
                 return 130
@@ -258,26 +292,12 @@ def run_init(interactive: bool = True) -> int:
                 worker="auto",
                 memory_enabled=True,
                 tools_top_k=12,
-            ).strip() + EXAMPLE_WORKFLOW
-            add_workflow = True
-            add_dataset = True
-
-        try:
-            toml_path.write_text(toml_content, encoding="utf-8")
-            created_toml = True
-            created_workflow = add_workflow and "[workflow.example]" in toml_content
-        except Exception as e:
-            errors.append(f"Failed to create hivemind.toml: {e}")
-
-    if add_dataset:
-        dataset_dir = cwd / "dataset"
-        if not dataset_dir.exists():
+            )
             try:
-                dataset_dir.mkdir(parents=True, exist_ok=True)
-                (dataset_dir / ".gitkeep").write_text("", encoding="utf-8")
-                created_dataset = True
+                toml_path.write_text(toml_content, encoding="utf-8")
+                created_toml = True
             except Exception as e:
-                errors.append(f"Failed to create dataset folder: {e}")
+                errors.append(f"Failed to create hivemind.toml: {e}")
 
     env_ok = _check_env_quiet()
 
@@ -286,10 +306,6 @@ def run_init(interactive: bool = True) -> int:
     console = Console()
     if created_toml:
         console.print("[green]✔[/] hivemind.toml created")
-    if created_workflow:
-        console.print("[green]✔[/] example workflow added")
-    if created_dataset:
-        console.print("[green]✔[/] dataset/ folder created")
     if env_ok:
         console.print("[green]✔[/] environment check passed")
     elif not errors and created_toml:
@@ -305,10 +321,26 @@ def run_init(interactive: bool = True) -> int:
 
     console.print()
     console.print("Next steps:")
-    console.print("  1) Set API keys (e.g. OPENAI_API_KEY) if not already set")
+    console.print("  1) Set API keys if not already set (or use GitHub device login when choosing GitHub)")
     console.print("  2) Edit hivemind.toml if needed")
     console.print('  3) Run: [cyan]hivemind run "your task"[/]')
     return 0
+
+
+def _write_env_file(cwd: Path, api_keys: dict[str, str]) -> None:
+    """Append new API keys to .env in cwd (skip keys already present)."""
+    if not api_keys:
+        return
+    env_path = cwd / ".env"
+    lines: list[str] = []
+    existing_keys: set[str] = set()
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").rstrip().splitlines()
+        existing_keys = {ln.split("=", 1)[0].strip() for ln in lines if "=" in ln}
+    for k, v in api_keys.items():
+        if k not in existing_keys:
+            lines.append(f'{k}="{v}"')
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _check_env_quiet() -> bool:

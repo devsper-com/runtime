@@ -1,0 +1,17 @@
+[swarm]
+workers = 4
+speculative_execution = true
+cache_enabled = true
+adaptive_planning = true
+adaptive_execution = true
+max_iterations = 10
+
+[models]
+planner = "github:copilot"
+worker = "github:copilot"
+
+[memory]
+enabled = true
+
+[tools]
+top_k = 12

@@ -27,11 +27,17 @@ class MemoryIndex:
     def __init__(self, store: MemoryStore | None = None) -> None:
         self.store = store or MemoryStore()
 
-    def query_memory(self, text: str, top_k: int = 5) -> list[MemoryRecord]:
+    def query_memory(
+        self,
+        text: str,
+        top_k: int = 5,
+        min_similarity: float = 0.0,
+    ) -> list[MemoryRecord]:
         """
         Semantic search: embed query, score against stored records with embeddings,
-        return top_k by similarity. Records without embeddings are skipped for ranking
-        but can be included if none have embeddings (return latest by timestamp).
+        return top_k by similarity above min_similarity. Records without embeddings
+        are skipped for ranking; if none have embeddings, return latest by timestamp.
+        Use min_similarity > 0 (e.g. 0.45) to avoid injecting barely-related memory.
         """
         records = self.store.list_memory(limit=500)
         if not records:
@@ -45,6 +51,8 @@ class MemoryIndex:
             for r in with_emb
         ]
         scored.sort(key=lambda x: -x[0])
+        if min_similarity > 0:
+            scored = [(s, r) for s, r in scored if s >= min_similarity]
         return [r for _, r in scored[:top_k]]
 
     def ensure_embedding(self, record: MemoryRecord) -> MemoryRecord:

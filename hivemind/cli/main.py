@@ -12,7 +12,22 @@ import argparse
 import os
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
+
+
+def _load_project_dotenv() -> None:
+    """Load .env from the project directory (where hivemind.toml lives) so API keys are available."""
+    try:
+        from dotenv import load_dotenv
+        from hivemind.config.config_loader import project_config_paths
+        for p in project_config_paths():
+            if p.is_file():
+                load_dotenv(p.parent / ".env")
+                break
+    except Exception:
+        pass
 
 
 def _project_root() -> Path:
@@ -29,31 +44,57 @@ def _run_example(script_path: Path, *args: str) -> int:
     return subprocess.run(cmd, cwd=str(root), env=env).returncode
 
 
-def _run_swarm(task: str) -> int:
-    """Run swarm with the given task string."""
+def _run_swarm(task: str, quiet: bool = False) -> int:
+    """Run swarm with the given task string. If not quiet, show live progress on stderr."""
     from hivemind.config import get_config
     from hivemind.utils.event_logger import EventLog
     from hivemind.swarm.swarm import Swarm
     from hivemind.memory.memory_router import MemoryRouter
     from hivemind.memory.memory_store import get_default_store
     from hivemind.memory.memory_index import MemoryIndex
+    from hivemind.cli.run_progress import read_run_status
 
     cfg = get_config()
     event_log = EventLog(events_folder_path=cfg.events_dir)
+    log_path = event_log.log_path
     memory_router = MemoryRouter(
         store=get_default_store(),
         index=MemoryIndex(get_default_store()),
         top_k=5,
     )
+    workers = getattr(cfg.swarm, "workers", 2)
     swarm = Swarm(
-        worker_count=2,
+        worker_count=workers,
         worker_model=cfg.worker_model,
         planner_model=cfg.planner_model,
         event_log=event_log,
         memory_router=memory_router,
         use_tools=True,
     )
-    results = swarm.run(task)
+    results_holder: list[dict] = []
+
+    def _run() -> None:
+        results_holder.append(swarm.run(task))
+
+    thread = threading.Thread(target=_run, daemon=False)
+    thread.start()
+
+    if not quiet:
+        last_status = ""
+        while thread.is_alive():
+            status, running = read_run_status(log_path, worker_count=workers)
+            line = status
+            if len(running) > 1:
+                line += f"  (parallel: {len(running)} tasks)"
+            if line != last_status:
+                print("\r  " + line.ljust(70), end="", file=sys.stderr, flush=True)
+                last_status = line
+            time.sleep(0.3)
+        print(file=sys.stderr, flush=True)
+
+    thread.join()
+    results = results_holder[0] if results_holder else {}
+
     for task_id, result in results.items():
         print(f"--- {task_id} ---")
         print((result or "")[:2000])
@@ -302,7 +343,13 @@ def main() -> int:
         default="Summarize swarm intelligence in one paragraph.",
         help="Task prompt",
     )
-    run_parser.set_defaults(func=lambda a: _run_swarm(a.task))
+    run_parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="No progress output; only print results (for piping)",
+    )
+    run_parser.set_defaults(func=lambda a: _run_swarm(a.task, a.quiet))
 
     tui_parser = subparsers.add_parser("tui", help="Launch terminal UI")
     tui_parser.set_defaults(func=lambda a: _run_tui())
@@ -408,6 +455,7 @@ def main() -> int:
     )
     replay_parser.set_defaults(func=lambda a: _run_replay(a.run_id, a.events_dir))
 
+    _load_project_dotenv()
     args = parser.parse_args()
     if not args.command:
         return _run_tui()

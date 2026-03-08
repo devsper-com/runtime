@@ -13,13 +13,15 @@ Task:
 {task_description}
 {memory_section}
 
-Produce the best possible output."""
+Produce the best possible output. Output only the requested content; do not describe your role or other projects."""
 
 PROMPT_TEMPLATE_WITH_TOOLS = """{role_prefix} You may use tools.
 
 Task:
 {task_description}
 {memory_section}
+
+Output only the requested content; do not describe your role or other projects.
 
 AVAILABLE TOOLS:
 {tools_section}
@@ -89,6 +91,7 @@ class Agent:
         memory_router=None,
         store_result_to_memory: bool = False,
         reasoning_store=None,
+        user_task: str | None = None,
     ):
         self.model_name = model_name
         self.event_log = event_log or EventLog()
@@ -97,6 +100,7 @@ class Agent:
         self.memory_router = memory_router
         self.store_result_to_memory = store_result_to_memory
         self.reasoning_store = reasoning_store
+        self.user_task = user_task
 
     def run(self, task: Task) -> str:
         self._emit(events.AGENT_STARTED, {"task_id": task.id})
@@ -107,7 +111,11 @@ class Agent:
         memory_section = ""
         if self.memory_router and task.description:
             try:
-                ctx = self.memory_router.get_memory_context(task.description)
+                # Bias memory retrieval by user goal so subtasks don't pull off-topic context
+                query = task.description
+                if self.user_task and self.user_task.strip():
+                    query = f"{self.user_task.strip()} {task.description}".strip()
+                ctx = self.memory_router.get_memory_context(query)
                 memory_section = "\n\nRELEVANT MEMORY\n(previous research notes etc.)\n\n" + ctx if ctx else ""
             except Exception:
                 pass

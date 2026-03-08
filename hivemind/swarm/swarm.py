@@ -143,6 +143,7 @@ class Swarm:
             store_result_to_memory=False,
             use_tools=self.use_tools,
             reasoning_store=reasoning_store,
+            user_task=user_task,
         )
         task_cache = None
         if getattr(self, "cache_enabled", False):
