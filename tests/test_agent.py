@@ -1,4 +1,6 @@
 """Test agent run flow and event lifecycle."""
+from unittest.mock import patch
+
 from hivemind.types.task import Task
 from hivemind.agents.agent import Agent
 from hivemind.types.event import events
@@ -10,8 +12,9 @@ def test_agent_run_emits_lifecycle_events():
     log = EventLog()
     log.clear()
 
-    agent = Agent(model_name="default", event_log=log)
-    result = agent.run(task)
+    with patch("hivemind.agents.agent.generate", return_value="Summary output."):
+        agent = Agent(model_name="gpt-4o", event_log=log)
+        result = agent.run(task)
 
     print("Result:", result)
     assert task.result == result

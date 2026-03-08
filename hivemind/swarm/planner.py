@@ -2,10 +2,11 @@
 Planner: convert one task into multiple ordered subtasks.
 
 Lifecycle: PLANNER_STARTED → TASK_CREATED (×N) → PLANNER_FINISHED.
-Subtasks have sequential dependencies: task_n depends on task_(n-1).
+Subtasks have sequential dependencies; each subtask gets a short unique ID.
 """
 
 import re
+import secrets
 from datetime import datetime, timezone
 
 from hivemind.types.task import Task
@@ -28,15 +29,31 @@ Example format:
 4. Fourth step
 5. Fifth step"""
 
+EXPAND_TASKS_PROMPT = """A task just completed in a workflow.
 
-# Matches lines like "1. step text" or "2) step text"
+Completed task: {task_description}
+Result (preview): {result_preview}
+
+Suggest 0 to 3 additional follow-up tasks that would extend or build on this work.
+Return a numbered list only. One task per line.
+Example:
+1. Compare methods
+2. Identify trends
+"""
+
+
 NUMBERED_LINE = re.compile(r"^\s*\d+[.)]\s*(.+)$", re.MULTILINE)
+
+
+def _short_id() -> str:
+    """Return a short, URL-safe task id (8 hex chars)."""
+    return secrets.token_hex(4)
 
 
 class Planner:
     """Converts one Task into a list of subtasks with sequential dependencies."""
 
-    def __init__(self, model_name: str = "default", event_log: EventLog | None = None):
+    def __init__(self, model_name: str = "gpt-4o", event_log: EventLog | None = None):
         self.model_name = model_name
         self.event_log = event_log or EventLog()
 
@@ -49,9 +66,11 @@ class Planner:
         steps = self._parse_numbered_list(raw)
 
         subtasks: list[Task] = []
+        task_ids: list[str] = []
         for i, description in enumerate(steps, start=1):
-            task_id = f"task_{i}"
-            deps = [f"task_{i - 1}"] if i > 1 else []
+            task_id = _short_id()
+            task_ids.append(task_id)
+            deps = [task_ids[i - 2]] if i > 1 else []
             subtask = Task(id=task_id, description=description.strip(), dependencies=deps)
             subtasks.append(subtask)
             self._emit(
@@ -61,6 +80,34 @@ class Planner:
 
         self._emit(events.PLANNER_FINISHED, {"task_id": task.id, "subtask_count": len(subtasks)})
         return subtasks
+
+    def expand_tasks(self, completed_task: Task, context: list[Task] | None = None) -> list[Task]:
+        """
+        After a task completes, optionally generate additional tasks (dynamic DAG growth).
+        New tasks depend on the completed task. Emits TASK_CREATED for each.
+        """
+        result_preview = (completed_task.result or "")[:500]
+        prompt = EXPAND_TASKS_PROMPT.format(
+            task_description=completed_task.description,
+            result_preview=result_preview,
+        )
+        raw = generate(self.model_name, prompt)
+        steps = self._parse_numbered_list(raw)
+        if not steps:
+            return []
+
+        new_tasks: list[Task] = []
+        for i, description in enumerate(steps, start=1):
+            task_id = _short_id()
+            subtask = Task(
+                id=task_id,
+                description=description.strip(),
+                dependencies=[completed_task.id],
+            )
+            new_tasks.append(subtask)
+            self._emit(events.TASK_CREATED, {"task_id": task_id, "description": subtask.description})
+
+        return new_tasks
 
     def _parse_numbered_list(self, text: str) -> list[str]:
         """Parse '1. step\\n2. step' into ['step', 'step', ...]."""

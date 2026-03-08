@@ -1,12 +1,14 @@
 """
-Simple model invocation layer.
+Model invocation layer: generate(model_name, prompt) -> text.
 
-generate(model_name, prompt) -> text
-
-Keeps agent code clean. Plug in OpenAI, Claude, Gemini later without touching agent logic.
+Uses ProviderRouter to select provider by model name. Agent and planner
+call this; they do not know which provider is used.
 """
+
+from hivemind.providers.router import get_router
 
 
 def generate(model_name: str, prompt: str) -> str:
     """Call the model with the given prompt and return text output."""
-    return f"Completed: {prompt[:200]}{'...' if len(prompt) > 200 else ''}"
+    provider = get_router().get_provider(model_name)
+    return provider.generate(model_name, prompt)

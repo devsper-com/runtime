@@ -22,7 +22,6 @@ def test_scheduler_ready_progression():
 
     assert not scheduler.is_finished()
 
-    # Only task_1 has no dependencies → ready
     ready = scheduler.get_ready_tasks()
     assert len(ready) == 1
     assert ready[0].id == "task_1"
@@ -54,6 +53,37 @@ def test_scheduler_ready_progression():
     assert scheduler.is_finished()
 
 
+def test_scheduler_raises_on_unknown_dependency():
+    """add_tasks raises ValueError when a task references a missing dependency."""
+    scheduler = Scheduler()
+    tasks = [
+        Task(id="task_1", description="First", dependencies=[]),
+        Task(id="task_2", description="Second", dependencies=["task_999"]),
+    ]
+    try:
+        scheduler.add_tasks(tasks)
+        assert False, "Expected ValueError"
+    except ValueError as e:
+        assert "Unknown dependency" in str(e) or "task_999" in str(e)
+
+
+def test_scheduler_raises_on_cycle():
+    """add_tasks raises ValueError when the task graph contains a cycle."""
+    scheduler = Scheduler()
+    tasks = [
+        Task(id="task_1", description="First", dependencies=["task_3"]),
+        Task(id="task_2", description="Second", dependencies=["task_1"]),
+        Task(id="task_3", description="Third", dependencies=["task_2"]),
+    ]
+    try:
+        scheduler.add_tasks(tasks)
+        assert False, "Expected ValueError"
+    except ValueError as e:
+        assert "cycle" in str(e).lower()
+
+
 if __name__ == "__main__":
     test_scheduler_ready_progression()
-    print("Scheduler test passed.")
+    test_scheduler_raises_on_unknown_dependency()
+    test_scheduler_raises_on_cycle()
+    print("Scheduler tests passed.")

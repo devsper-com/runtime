@@ -21,8 +21,13 @@ class Scheduler:
         for task in tasks:
             self._tasks[task.id] = task
             self._graph.add_node(task.id)
+        for task in tasks:
             for dep in task.dependencies:
+                if dep not in self._tasks:
+                    raise ValueError(f"Unknown dependency: {dep!r}")
                 self._graph.add_edge(dep, task.id)
+        if not nx.is_directed_acyclic_graph(self._graph):
+            raise ValueError("Task graph contains a cycle")
 
     def get_ready_tasks(self) -> list[Task]:
         """Return tasks that are runnable: PENDING and all dependencies completed."""
@@ -43,3 +48,19 @@ class Scheduler:
     def is_finished(self) -> bool:
         """Return True if every task is completed."""
         return all(t.status == TaskStatus.COMPLETED for t in self._tasks.values())
+
+    def get_results(self) -> dict[str, str]:
+        """Return task_id -> result for all completed tasks."""
+        return {
+            task_id: (t.result or "")
+            for task_id, t in self._tasks.items()
+            if t.status == TaskStatus.COMPLETED and t.result is not None
+        }
+
+    def get_completed_tasks(self) -> list[Task]:
+        """Return all completed tasks (for learning/memory storage)."""
+        return [
+            t
+            for t in self._tasks.values()
+            if t.status == TaskStatus.COMPLETED and t.result is not None
+        ]

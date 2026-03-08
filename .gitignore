@@ -1,16 +1,38 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
+*.egg-info
 build/
 dist/
 wheels/
-*.egg-info
-
-# System Files
-.DS_Store
+.ruff_cache
+.pytest_cache
+.mypy_cache/
 
 # Virtual environments
 .venv
+.venv/
+venv/
+env/
 
-# Hivemind Output Files
-.events
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Hivemind runtime and output
+.hivemind/
+.events/
+
+# Example outputs (generated)
+examples/output/
+
+# System
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

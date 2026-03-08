@@ -13,6 +13,9 @@ class events(Enum):
     AGENT_FINISHED = "agent_finished"
     PLANNER_STARTED = "planner_started"
     PLANNER_FINISHED = "planner_finished"
+    EXECUTOR_STARTED = "executor_started"
+    EXECUTOR_FINISHED = "executor_finished"
+    TOOL_CALLED = "tool_called"
 
 class Event(BaseModel):
     timestamp: datetime

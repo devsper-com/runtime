@@ -21,27 +21,20 @@ def test_planner_emits_lifecycle_and_returns_subtasks():
     log.clear()
 
     with patch("hivemind.swarm.planner.generate", return_value=MOCK_NUMBERED_RESPONSE):
-        planner = Planner(model_name="default", event_log=log)
+        planner = Planner(model_name="gpt-4o", event_log=log)
         subtasks = planner.plan(task)
 
     print(subtasks)
 
     assert len(subtasks) == 5
-    assert subtasks[0].id == "task_1"
+    assert len(subtasks[0].id) == 8 and subtasks[0].id.isalnum()
     assert subtasks[0].description == "Identify key diffusion model papers"
     assert subtasks[0].dependencies == []
 
-    assert subtasks[1].id == "task_2"
-    assert subtasks[1].dependencies == ["task_1"]
-
-    assert subtasks[2].id == "task_3"
-    assert subtasks[2].dependencies == ["task_2"]
-
-    assert subtasks[3].id == "task_4"
-    assert subtasks[3].dependencies == ["task_3"]
-
-    assert subtasks[4].id == "task_5"
-    assert subtasks[4].dependencies == ["task_4"]
+    assert subtasks[1].dependencies == [subtasks[0].id]
+    assert subtasks[2].dependencies == [subtasks[1].id]
+    assert subtasks[3].dependencies == [subtasks[2].id]
+    assert subtasks[4].dependencies == [subtasks[3].id]
 
     recorded = log.read_events()
     event_types = [e.type for e in recorded]
@@ -54,6 +47,29 @@ def test_planner_emits_lifecycle_and_returns_subtasks():
     print("Event sequence:", event_types)
 
 
+def test_planner_expand_tasks_returns_new_tasks_with_deps():
+    """expand_tasks generates follow-up tasks depending on the completed task."""
+    from unittest.mock import patch
+
+    completed = Task(
+        id="task_2",
+        description="Summarize each paper",
+        dependencies=["task_1"],
+        result="Summary of 5 papers.",
+    )
+    log = EventLog()
+    mock_response = "1. Compare methods\n2. Identify trends\n"
+    with patch("hivemind.swarm.planner.generate", return_value=mock_response):
+        planner = Planner(model_name="gpt-4o", event_log=log)
+        new_tasks = planner.expand_tasks(completed)
+
+    assert len(new_tasks) == 2
+    assert len(new_tasks[0].id) == 8 and new_tasks[0].id.isalnum()
+    assert new_tasks[0].dependencies == ["task_2"]
+    assert new_tasks[1].dependencies == ["task_2"]
+
+
 if __name__ == "__main__":
     test_planner_emits_lifecycle_and_returns_subtasks()
+    test_planner_expand_tasks_returns_new_tasks_with_deps()
     print("Planner test passed.")
