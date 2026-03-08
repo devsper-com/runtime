@@ -22,8 +22,8 @@ Use this checklist before tagging a release or publishing to PyPI.
 
 1. Commit all changes and push to the default branch.
 2. Create a new **GitHub release** with tag `vX.Y.Z` (e.g. `v0.1.1`) and release notes (e.g. from `CHANGELOG.md`).
-3. If using GitHub Actions for PyPI: ensure **Trusted Publishing** (or token) is configured so the workflow can publish the package.
-4. Trigger or wait for the publish workflow (e.g. on `release: published` or tag push).
+3. **Trusted Publishing (PyPI):** Add this repo as a Trusted Publisher on PyPI (project **hivemind-ai**, workflow **pypi-publish.yml**). The publisher will show as "Pending" until the first successful run; publishing a release triggers the workflow and completes verification.
+4. The **Publish to PyPI** workflow runs on `release: published` and uploads the package (no API token needed when Trusted Publishing is used).
 
 ## Post-release
 
