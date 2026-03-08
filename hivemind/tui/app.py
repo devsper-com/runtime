@@ -83,6 +83,7 @@ class HivemindTUI(App[None]):
         self._events_folder = events_folder
         self._event_log_path: str | None = None
         self._last_scheduler = None
+        self._last_reasoning_store = None
         self._run_thread: threading.Thread | None = None
         self._last_prompt = ""
         self._loading_timer = None
@@ -128,6 +129,7 @@ class HivemindTUI(App[None]):
             )
             swarm.run(prompt)
             self._last_scheduler = swarm._last_scheduler
+            self._last_reasoning_store = getattr(swarm, "_last_reasoning_store", None)
             self.call_from_thread(self._on_swarm_finished)
         except Exception as err:
             msg = str(err)

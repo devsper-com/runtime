@@ -6,7 +6,14 @@ from hivemind.types.event import Event
 class EventLog:
     def __init__(self, events_folder_path: str = ".hivemind/events"):
         os.makedirs(events_folder_path, exist_ok=True)
-        self.log_path = os.path.join(events_folder_path, f"events_{datetime.now(timezone.utc)}.jsonl")
+        self.log_path = os.path.join(
+            events_folder_path, f"events_{datetime.now(timezone.utc)}.jsonl"
+        )
+
+    @property
+    def run_id(self) -> str:
+        """Identifier for this run (basename of log file without extension)."""
+        return os.path.basename(self.log_path).replace(".jsonl", "")
 
     def append_event(self, event: Event) -> None:
         with open(self.log_path, "a") as f:

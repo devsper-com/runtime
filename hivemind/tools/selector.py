@@ -63,24 +63,30 @@ def select_tools_for_task(
 def get_tools_for_task(
     task_description: str,
     config: object | None = None,
+    role: str | None = None,
 ) -> list[Tool]:
     """
     Return tools for the agent: use selector when config has tools.top_k > 0,
-    otherwise return all tools. Compatible with no config (backward compat).
+    otherwise return all tools. If role is set, filter by role's tool_categories.
+    Compatible with no config (backward compat).
     """
     if config is None:
         try:
             from hivemind.config import get_config
             config = get_config()
         except Exception:
-            return list_tools()
+            config = None
 
-    tools_config = getattr(config, "tools", None)
-    if tools_config is None:
-        return list_tools()
+    tools_config = getattr(config, "tools", None) if config else None
+    top_k = getattr(tools_config, "top_k", 0) if tools_config else 0
+    enabled = getattr(tools_config, "enabled", None) if tools_config else None
 
-    top_k = getattr(tools_config, "top_k", 0)
-    enabled = getattr(tools_config, "enabled", None)
+    if role:
+        from hivemind.agents.roles import get_role_config
+        role_config = get_role_config(role)
+        if role_config.tool_categories:
+            enabled = role_config.tool_categories
+
     if top_k <= 0 and not enabled:
         return list_tools()
 

@@ -9,17 +9,39 @@ User code:
     result = swarm.run("analyze diffusion models")
 """
 
+import json
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 
 from hivemind.types.task import Task
 from hivemind.types.event import Event, events
 from hivemind.utils.event_logger import EventLog
+from hivemind.utils.models import resolve_model
 
 from hivemind.swarm.planner import Planner
 from hivemind.swarm.scheduler import Scheduler
 from hivemind.swarm.executor import Executor
 from hivemind.agents.agent import Agent
+
+
+def _persist_dag(scheduler: Scheduler, event_log: EventLog) -> None:
+    """Write task DAG to events dir as {run_id}_dag.json for graph export."""
+    run_id = getattr(event_log, "run_id", None)
+    if not run_id:
+        return
+    log_path = getattr(event_log, "log_path", None)
+    if not log_path:
+        return
+    events_dir = os.path.dirname(log_path)
+    nodes = [
+        {"id": t.id, "description": (t.description or "")[:200]}
+        for t in scheduler._tasks.values()
+    ]
+    edges = list(scheduler._graph.edges())
+    path = os.path.join(events_dir, f"{run_id}_dag.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"nodes": nodes, "edges": edges}, f, indent=0)
 
 
 class Swarm:
@@ -42,25 +64,48 @@ class Swarm:
         if config is not None:
             if isinstance(config, (str, Path)):
                 from hivemind.config import get_config
+
                 cfg = get_config(config_path=str(config))
             else:
                 cfg = config
         if cfg is not None:
-            self.worker_count = worker_count if worker_count is not None else getattr(cfg.swarm, "workers", 4)
-            self.worker_model = worker_model if worker_model is not None else cfg.models.worker
-            self.planner_model = planner_model if planner_model is not None else cfg.models.planner
-            self.adaptive = adaptive if adaptive is not None else getattr(cfg.swarm, "adaptive_planning", False)
+            self.worker_count = (
+                worker_count
+                if worker_count is not None
+                else getattr(cfg.swarm, "workers", 4)
+            )
+            worker_raw = worker_model if worker_model is not None else cfg.models.worker
+            planner_raw = (
+                planner_model if planner_model is not None else cfg.models.planner
+            )
+            self.worker_model = resolve_model(worker_raw, "analysis")
+            self.planner_model = resolve_model(planner_raw, "planning")
+            self.adaptive = (
+                adaptive
+                if adaptive is not None
+                else getattr(cfg.swarm, "adaptive_planning", False)
+                or getattr(cfg.swarm, "adaptive_execution", False)
+            )
             self.use_tools = use_tools if use_tools is not None else True
+            self.speculative_execution = getattr(
+                cfg.swarm, "speculative_execution", False
+            )
+            self.cache_enabled = getattr(cfg.swarm, "cache_enabled", False)
         else:
             self.worker_count = worker_count if worker_count is not None else 4
-            self.worker_model = worker_model if worker_model is not None else "mock"
-            self.planner_model = planner_model if planner_model is not None else "mock"
+            worker_raw = worker_model if worker_model is not None else "mock"
+            planner_raw = planner_model if planner_model is not None else "mock"
+            self.worker_model = resolve_model(worker_raw, "analysis")
+            self.planner_model = resolve_model(planner_raw, "planning")
             self.adaptive = adaptive if adaptive is not None else False
             self.use_tools = use_tools if use_tools is not None else False
+            self.speculative_execution = False
+            self.cache_enabled = False
         self.event_log = event_log or EventLog()
         self.memory_router = memory_router
         self.store_swarm_memory = store_swarm_memory
         self._last_scheduler: Scheduler | None = None
+        self._last_reasoning_store = None
 
     def run(self, user_task: str) -> dict[str, str]:
         """
@@ -86,14 +131,24 @@ class Swarm:
 
         scheduler = Scheduler()
         scheduler.add_tasks(subtasks)
+        _persist_dag(scheduler, self.event_log)
 
+        from hivemind.reasoning.store import ReasoningStore
+
+        reasoning_store = ReasoningStore()
         agent = Agent(
             model_name=self.worker_model,
             event_log=self.event_log,
             memory_router=self.memory_router,
             store_result_to_memory=False,
             use_tools=self.use_tools,
+            reasoning_store=reasoning_store,
         )
+        task_cache = None
+        if getattr(self, "cache_enabled", False):
+            from hivemind.cache import TaskCache
+
+            task_cache = TaskCache()
         executor = Executor(
             scheduler=scheduler,
             agent=agent,
@@ -101,10 +156,13 @@ class Swarm:
             event_log=self.event_log,
             planner=planner if self.adaptive else None,
             adaptive=self.adaptive,
+            speculative_execution=getattr(self, "speculative_execution", False),
+            task_cache=task_cache,
         )
         executor.run_sync()
 
         self._last_scheduler = scheduler
+        self._last_reasoning_store = reasoning_store
         results = scheduler.get_results()
         if self.store_swarm_memory and self.memory_router and results:
             self._store_swarm_memory(user_task, scheduler)
@@ -118,18 +176,25 @@ class Swarm:
             return []
         return self._last_scheduler.get_completed_tasks()
 
-    def map_reduce(self, dataset: list, map_fn, reduce_fn, worker_count: int | None = None):
+    def map_reduce(
+        self, dataset: list, map_fn, reduce_fn, worker_count: int | None = None
+    ):
         """
         First-class map-reduce: run map_fn on each item in parallel, then reduce_fn on results.
         Uses the same worker pool pattern as the executor.
         """
         from hivemind.swarm.map_reduce import map_reduce as _map_reduce
+
         workers = worker_count if worker_count is not None else self.worker_count
         return _map_reduce(dataset, map_fn, reduce_fn, worker_count=workers)
 
     def _store_swarm_memory(self, user_task: str, scheduler: Scheduler) -> None:
         """Store important outputs (research findings, summaries, results) into memory after run."""
-        from hivemind.memory.memory_store import MemoryStore, get_default_store, generate_memory_id
+        from hivemind.memory.memory_store import (
+            MemoryStore,
+            get_default_store,
+            generate_memory_id,
+        )
         from hivemind.memory.memory_types import MemoryRecord, MemoryType
         from hivemind.memory.memory_index import MemoryIndex
 
@@ -162,5 +227,7 @@ class Swarm:
 
     def _emit(self, event_type: events, payload: dict) -> None:
         self.event_log.append_event(
-            Event(timestamp=datetime.now(timezone.utc), type=event_type, payload=payload)
+            Event(
+                timestamp=datetime.now(timezone.utc), type=event_type, payload=payload
+            )
         )

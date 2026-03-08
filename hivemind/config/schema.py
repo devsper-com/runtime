@@ -6,7 +6,15 @@ from pydantic import BaseModel, Field
 class SwarmConfig(BaseModel):
     workers: int = 4
     adaptive_planning: bool = False
+    adaptive_execution: bool = False  # v1.2: real-time adaptation (slow/failed task handling)
     max_iterations: int = 10
+    speculative_execution: bool = False
+    cache_enabled: bool = False
+
+
+class AgentsConfig(BaseModel):
+    """Agent roles enabled for the swarm (research, analysis, critic, code)."""
+    roles: list[str] = ["research_agent", "code_agent", "analysis_agent", "critic_agent"]
 
 
 class ModelsConfig(BaseModel):
@@ -45,6 +53,7 @@ class HivemindConfigModel(BaseModel):
     """Full resolved configuration with Pydantic validation."""
 
     swarm: SwarmConfig = Field(default_factory=SwarmConfig)
+    agents: AgentsConfig = Field(default_factory=AgentsConfig)
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)

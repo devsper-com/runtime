@@ -16,12 +16,31 @@ from hivemind.providers.base import BaseProvider, MockProvider
 from hivemind.providers.openai import OpenAIProvider
 from hivemind.providers.anthropic import AnthropicProvider
 from hivemind.providers.gemini import GeminiProvider
+from hivemind.providers.github import GitHubProvider
 
 load_dotenv()
 
+# Provider prefix in model spec (provider:model)
+PROVIDERS = {
+    "openai": OpenAIProvider,
+    "anthropic": AnthropicProvider,
+    "azure": OpenAIProvider,  # Azure OpenAI uses OpenAIProvider with azure=True
+    "gemini": GeminiProvider,
+    "github": GitHubProvider,
+}
+
+
+def _parse_model_spec(model: str) -> tuple[str, str]:
+    """Return (vendor, model_name). If 'provider:model' format, vendor is provider; else infer from name."""
+    m = (model or "").strip()
+    if ":" in m:
+        vendor, name = m.split(":", 1)
+        return vendor.strip().lower(), name.strip()
+    return _model_to_vendor(m), m
+
 
 def _model_to_vendor(model: str) -> str:
-    """Return 'openai' | 'anthropic' | 'gemini' | 'mock' from model name."""
+    """Return 'openai' | 'anthropic' | 'gemini' | 'github' | 'mock' from model name (no prefix)."""
     m = (model or "").strip().lower()
     if m in ("mock", "default", ""):
         return "mock"
@@ -40,18 +59,19 @@ def _use_azure_openai() -> bool:
 
 
 class ProviderRouter:
-    """Maps model name to provider. Caches one instance per vendor."""
+    """Maps model name (or provider:model) to provider. Caches one instance per vendor."""
 
     def __init__(self) -> None:
         self._openai: OpenAIProvider | None = None
         self._anthropic: AnthropicProvider | None = None
         self._gemini: GeminiProvider | None = None
+        self._github: GitHubProvider | None = None
         self._mock = MockProvider()
 
     def get_provider(self, model_name: str) -> BaseProvider:
-        """Return the provider that should handle this model name."""
-        vendor = _model_to_vendor(model_name)
-        if vendor == "openai":
+        """Return the provider that should handle this model name (supports provider:model)."""
+        vendor, _ = _parse_model_spec(model_name)
+        if vendor == "openai" or vendor == "azure":
             if self._openai is None:
                 self._openai = OpenAIProvider(azure=_use_azure_openai())
             return self._openai
@@ -63,6 +83,10 @@ class ProviderRouter:
             if self._gemini is None:
                 self._gemini = GeminiProvider()
             return self._gemini
+        if vendor == "github":
+            if self._github is None:
+                self._github = GitHubProvider()
+            return self._github
         return self._mock
 
 

@@ -1,6 +1,13 @@
 """Test provider router: model name → provider, generate(model, prompt) via utils.models."""
-from hivemind.providers.router import ProviderRouter, _model_to_vendor
+from hivemind.providers.router import ProviderRouter, _model_to_vendor, _parse_model_spec
 from hivemind.utils.models import generate
+
+
+def test_parse_model_spec_provider_colon_model():
+    """provider:model format returns (vendor, model_name)."""
+    assert _parse_model_spec("github:gpt-4o") == ("github", "gpt-4o")
+    assert _parse_model_spec("openai:gpt-4o") == ("openai", "gpt-4o")
+    assert _parse_model_spec("gpt-4o") == ("openai", "gpt-4o")
 
 
 def test_model_to_vendor_routing():

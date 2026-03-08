@@ -15,6 +15,10 @@ from hivemind.tui.memory_view import MemoryView
 from hivemind.tui.logs_view import LogsView
 from hivemind.tui.activity_feed_view import ActivityFeedView
 from hivemind.tui.knowledge_graph_view import KnowledgeGraphView
+from hivemind.tui.performance_view import PerformanceView
+from hivemind.tui.reasoning_graph_view import ReasoningGraphView
+from hivemind.tui.agent_role_view import AgentRoleActivityView
+from hivemind.tui.adaptive_tasks_view import AdaptiveTasksView
 
 
 class DashboardScreen(Screen[None]):
@@ -66,7 +70,10 @@ class DashboardScreen(Screen[None]):
         padding: 1 2;
         margin: 0 1 1 1;
     }
-    TaskView, SwarmView, MemoryView, LogsView, ActivityFeedView, KnowledgeGraphView {
+    # v1.2 panels
+    #dashboard-reasoning-row { height: auto; min-height: 6; }
+    TaskView, SwarmView, MemoryView, LogsView, ActivityFeedView, KnowledgeGraphView, PerformanceView,
+    ReasoningGraphView, AgentRoleActivityView, AdaptiveTasksView {
         scrollbar-size: 1 1;
         overflow-y: auto;
         height: 1fr;
@@ -87,7 +94,7 @@ class DashboardScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         with Container(id="dashboard-container"):
             yield Static(
-                "  Dashboard — Tasks | Swarm Graph | Memory | Activity | Knowledge Graph | Logs  —  Esc to back",
+                "  Dashboard — Tasks | Swarm | Memory | Activity | KG | Perf | Reasoning | Roles | Adaptive | Logs  —  Esc to back",
                 id="dashboard-header",
             )
             with Horizontal(id="dashboard-top"):
@@ -107,6 +114,22 @@ class DashboardScreen(Screen[None]):
                 with Vertical(classes="d-panel"):
                     yield Static("Knowledge Graph", classes="d-panel-title")
                     yield KnowledgeGraphView(id="knowledge-graph-view")
+                with Vertical(classes="d-panel"):
+                    yield Static(
+                        "Performance (speculative | cache | tools)",
+                        classes="d-panel-title",
+                    )
+                    yield PerformanceView(id="performance-view")
+            with Horizontal(id="dashboard-reasoning-row"):
+                with Vertical(classes="d-panel"):
+                    yield Static("Reasoning Graph", classes="d-panel-title")
+                    yield ReasoningGraphView(id="reasoning-graph-view")
+                with Vertical(classes="d-panel"):
+                    yield Static("Agent Role Activity", classes="d-panel-title")
+                    yield AgentRoleActivityView(id="agent-role-view")
+                with Vertical(classes="d-panel"):
+                    yield Static("Adaptive Task Creation", classes="d-panel-title")
+                    yield AdaptiveTasksView(id="adaptive-tasks-view")
             with Vertical(id="dashboard-logs"):
                 yield Static("Logs", classes="d-panel-title")
                 yield LogsView(id="logs-view")
@@ -157,12 +180,14 @@ class DashboardScreen(Screen[None]):
                     task = scheduler._tasks.get(nid)
                     if task:
                         status = getattr(task.status, "name", str(task.status))
-                        tasks.append({
-                            "task_id": task.id,
-                            "status": status.lower(),
-                            "runtime": "-",
-                            "worker": "agent",
-                        })
+                        tasks.append(
+                            {
+                                "task_id": task.id,
+                                "status": status.lower(),
+                                "runtime": "-",
+                                "worker": "agent",
+                            }
+                        )
             except Exception:
                 pass
             if tasks:
@@ -171,6 +196,70 @@ class DashboardScreen(Screen[None]):
                     tv.set_tasks(tasks)
                 except Exception:
                     pass
+        try:
+            pv = self.query_one("#performance-view", PerformanceView)
+            speculative_count = 0
+            if scheduler is not None:
+                speculative_count = sum(
+                    1
+                    for t in scheduler._tasks.values()
+                    if getattr(t, "speculative", False)
+                )
+            try:
+                from hivemind.config import get_config
+
+                cfg = get_config()
+                speculative_enabled = getattr(cfg.swarm, "speculative_execution", False)
+            except Exception:
+                speculative_enabled = False
+            try:
+                from hivemind.cache import TaskCache
+
+                cache_entries = TaskCache().stats()["entries"]
+            except Exception:
+                cache_entries = 0
+            try:
+                from hivemind.analytics import get_default_analytics
+
+                tool_stats = get_default_analytics().get_stats()
+            except Exception:
+                tool_stats = None
+            pv.set_stats(
+                speculative_enabled=speculative_enabled,
+                speculative_count=speculative_count,
+                cache_entries=cache_entries,
+                tool_stats=tool_stats,
+            )
+        except Exception:
+            pass
+        # v1.2: reasoning graph, agent roles, adaptive tasks
+        try:
+            rgv = self.query_one("#reasoning-graph-view", ReasoningGraphView)
+            reasoning_store = getattr(app, "_last_reasoning_store", None)
+            rgv.set_reasoning_store(reasoning_store)
+            rgv.load_from_store()
+        except Exception:
+            pass
+        try:
+            arv = self.query_one("#agent-role-view", AgentRoleActivityView)
+            tasks_with_roles = []
+            if scheduler is not None:
+                for t in scheduler._tasks.values():
+                    tasks_with_roles.append({
+                        "task_id": t.id,
+                        "role": getattr(t, "role", None),
+                        "status": getattr(t.status, "name", str(t.status)),
+                    })
+            arv.set_tasks_with_roles(tasks_with_roles)
+        except Exception:
+            pass
+        try:
+            atv = self.query_one("#adaptive-tasks-view", AdaptiveTasksView)
+            atv.set_events_folder(events_folder)
+            atv.set_log_path(getattr(self, "_event_log_path", None))
+            atv.refresh_adaptive_events()
+        except Exception:
+            pass
 
     def action_back(self) -> None:
         self.dismiss(None)

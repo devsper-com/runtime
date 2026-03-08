@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from hivemind.types.task import Task
 from hivemind.types.event import Event, events
+from hivemind.agents.roles import infer_role_from_description
 from hivemind.utils.event_logger import EventLog
 from hivemind.utils.models import generate
 
@@ -73,6 +74,8 @@ class Planner:
             subtasks = self.strategy.plan(task)
             if subtasks:
                 for st in subtasks:
+                    if getattr(st, "role", None) is None:
+                        st.role = infer_role_from_description(st.description or "")
                     self._emit(events.TASK_CREATED, {"task_id": st.id, "description": st.description})
                 self._emit(events.PLANNER_FINISHED, {"task_id": task.id, "subtask_count": len(subtasks)})
                 return subtasks
@@ -88,7 +91,8 @@ class Planner:
             task_id = _short_id()
             task_ids.append(task_id)
             deps = [task_ids[i - 2]] if i > 1 else []
-            subtask = Task(id=task_id, description=description.strip(), dependencies=deps)
+            role = infer_role_from_description(description.strip())
+            subtask = Task(id=task_id, description=description.strip(), dependencies=deps, role=role)
             subtasks.append(subtask)
             self._emit(
                 events.TASK_CREATED,
@@ -116,10 +120,12 @@ class Planner:
         new_tasks: list[Task] = []
         for i, description in enumerate(steps, start=1):
             task_id = _short_id()
+            role = infer_role_from_description(description.strip())
             subtask = Task(
                 id=task_id,
                 description=description.strip(),
                 dependencies=[completed_task.id],
+                role=role,
             )
             new_tasks.append(subtask)
             self._emit(events.TASK_CREATED, {"task_id": task_id, "description": subtask.description})

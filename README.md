@@ -26,9 +26,10 @@ Hivemind is a **distributed AI swarm runtime** for coordinating large numbers of
 - **Map-reduce runtime** — `swarm.map_reduce(dataset, map_fn, reduce_fn)` using the worker pool
 - **Workflows** — Define steps in `workflow.hivemind.toml`; run with `hivemind workflow <name>`
 - **Plugin ecosystem** — Discover tools via entry_points (`hivemind.plugins`)
-- **Provider routing** — OpenAI, Anthropic, Azure, Gemini (model name → provider)
+- **Provider routing** — OpenAI, Anthropic, Azure, Gemini, **GitHub Models (Copilot)** (model name or `provider:model` spec)
+- **Automatic model routing** — Set `planner = "auto"` and `worker = "auto"` in config for cost/latency/quality-aware selection
 - **EventLog, replay, telemetry** — Structured events for debugging and metrics
-- **CLI & TUI** — `hivemind run`, `hivemind research`, `hivemind analyze`, `hivemind memory`, `hivemind query`, `hivemind workflow`, `hivemind tui` with dashboard (tasks, swarm graph, memory, activity feed, knowledge graph, logs)
+- **CLI & TUI** — `hivemind init`, `hivemind doctor`, `hivemind run`, `hivemind research`, `hivemind analyze`, `hivemind memory`, `hivemind query`, `hivemind workflow`, `hivemind tui` with dashboard (tasks, swarm graph, memory, activity feed, knowledge graph, logs)
 
 ---
 
@@ -53,6 +54,14 @@ Hivemind is a **distributed AI swarm runtime** for coordinating large numbers of
 ```bash
 pip install hivemind-ai
 # or: uv add hivemind-ai
+```
+
+**Quick setup (new project):**
+
+```bash
+export GITHUB_TOKEN=...   # or OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
+hivemind init
+hivemind run "analyze this repository"
 ```
 
 **Run a task:**
@@ -87,6 +96,8 @@ Set API keys via environment or config (see [Configuration](#configuration) belo
 
 | Command | Description |
 |--------|-------------|
+| `hivemind init` | Set up a new project (creates `hivemind.toml`, example workflow, dataset folder) |
+| `hivemind doctor` | Verify environment (GITHUB_TOKEN, OpenAI keys, config file, tool registry) |
 | `hivemind run "task"` | Run swarm with the given task |
 | `hivemind tui` | Launch terminal UI (prompt + output + dashboard) |
 | `hivemind research papers/` | Literature review on a directory of papers |
@@ -154,6 +165,10 @@ Config order: **env** > **project** config > **user** `~/.config/hivemind/config
 
 **Config locations:** `./hivemind.toml`, `./workflow.hivemind.toml`, `~/.config/hivemind/config.toml`, or legacy `.hivemind/config.toml`.
 
+**GitHub Models (Copilot):** Use `provider:model` and set `GITHUB_TOKEN`. Example: `github:gpt-4o`, `github:claude-3.5-sonnet`, `github:phi-3`.
+
+**Automatic model routing:** Set `planner = "auto"` and `worker = "auto"` in `[models]`; the router picks a model by task type (planning → high quality, fast → low cost).
+
 **Example `hivemind.toml` (v1 format):**
 
 ```toml
@@ -163,8 +178,9 @@ adaptive_planning = true
 max_iterations = 10
 
 [models]
-planner = "azure:gpt-4o"
-worker = "azure:gpt-4o"
+planner = "auto"
+worker = "auto"
+# Or explicit: planner = "azure:gpt-4o", worker = "github:gpt-4o"
 
 [memory]
 enabled = true

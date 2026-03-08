@@ -1,12 +1,18 @@
 """
 Scheduler: manage the task DAG and determine which tasks are runnable.
 
-Supports: add_tasks, get_ready_tasks, mark_completed, is_finished.
+Supports: add_tasks, get_ready_tasks, get_speculative_tasks, mark_completed,
+confirm_speculative_for, discard_speculative_for, is_finished.
 """
 
 import networkx as nx
 
 from hivemind.types.task import Task, TaskStatus
+from hivemind.swarm.speculation import (
+    get_speculative_candidates,
+    confirm_speculative,
+    discard_speculative,
+)
 
 
 class Scheduler:
@@ -45,9 +51,17 @@ class Scheduler:
         if task_id in self._tasks:
             self._tasks[task_id].status = TaskStatus.COMPLETED
 
+    def mark_failed(self, task_id: str) -> None:
+        """Mark a task failed (e.g. for adaptation to spawn alternative subtasks)."""
+        if task_id in self._tasks:
+            self._tasks[task_id].status = TaskStatus.FAILED
+
     def is_finished(self) -> bool:
-        """Return True if every task is completed."""
-        return all(t.status == TaskStatus.COMPLETED for t in self._tasks.values())
+        """Return True when every task is completed or failed (no pending/running left)."""
+        return all(
+            t.status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
+            for t in self._tasks.values()
+        )
 
     def get_results(self) -> dict[str, str]:
         """Return task_id -> result for all completed tasks."""
@@ -64,3 +78,26 @@ class Scheduler:
             for t in self._tasks.values()
             if t.status == TaskStatus.COMPLETED and t.result is not None
         ]
+
+    def get_speculative_tasks(self) -> list[Task]:
+        """Return tasks that can be run speculatively (one dep running, rest completed)."""
+        candidates = get_speculative_candidates(self._tasks, self._graph)
+        for t in candidates:
+            t.speculative = True
+        return candidates
+
+    def get_successors(self, task_id: str) -> list[str]:
+        """Return task ids that depend on the given task."""
+        return list(self._graph.successors(task_id))
+
+    def confirm_speculative_for(self, completed_task_id: str) -> None:
+        """When completed_task_id finishes, confirm its speculative successors (keep results)."""
+        for sid in self.get_successors(completed_task_id):
+            if sid in self._tasks:
+                confirm_speculative(self._tasks[sid])
+
+    def discard_speculative_for(self, failed_task_id: str) -> None:
+        """When failed_task_id fails, discard results of speculative successors."""
+        for sid in self.get_successors(failed_task_id):
+            if sid in self._tasks:
+                discard_speculative(self._tasks[sid])

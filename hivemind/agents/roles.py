@@ -1,0 +1,126 @@
+"""
+Specialized agent roles: research, code, analysis, critic.
+
+Role determines tool access, prompt template, and model selection.
+Planner assigns roles based on task type.
+"""
+
+from dataclasses import dataclass
+
+RESEARCH_AGENT = "research_agent"
+CODE_AGENT = "code_agent"
+ANALYSIS_AGENT = "analysis_agent"
+CRITIC_AGENT = "critic_agent"
+
+DEFAULT_ROLE = "general"
+
+
+@dataclass
+class RoleConfig:
+    """Configuration for an agent role."""
+
+    name: str
+    tool_categories: list[str]  # e.g. ["research", "documents"]
+    prompt_prefix: str
+    model_hint: str  # e.g. "analysis", "planning" for model router
+
+
+ROLE_CONFIGS: dict[str, RoleConfig] = {
+    RESEARCH_AGENT: RoleConfig(
+        name=RESEARCH_AGENT,
+        tool_categories=[
+            "research",
+            "research_advanced",
+            "documents",
+            "knowledge",
+            "memory",
+        ],
+        prompt_prefix="You are a research specialist. Focus on literature, citations, methodology, and evidence.",
+        model_hint="analysis",
+    ),
+    CODE_AGENT: RoleConfig(
+        name=CODE_AGENT,
+        tool_categories=["coding", "code_intelligence", "filesystem", "system"],
+        prompt_prefix="You are a code specialist. Focus on implementation, structure, tests, and refactoring.",
+        model_hint="analysis",
+    ),
+    ANALYSIS_AGENT: RoleConfig(
+        name=ANALYSIS_AGENT,
+        tool_categories=["data", "data_science", "math", "experiments", "knowledge"],
+        prompt_prefix="You are an analysis specialist. Focus on data, metrics, statistics, and interpretation.",
+        model_hint="analysis",
+    ),
+    CRITIC_AGENT: RoleConfig(
+        name=CRITIC_AGENT,
+        tool_categories=["documents", "memory", "knowledge"],
+        prompt_prefix="You are a critic/reviewer. Evaluate quality, consistency, and gaps. Be concise and constructive.",
+        model_hint="analysis",
+    ),
+    DEFAULT_ROLE: RoleConfig(
+        name=DEFAULT_ROLE,
+        tool_categories=[],  # empty = no filter, use selector default
+        prompt_prefix="You are an AI worker in a distributed system.",
+        model_hint="analysis",
+    ),
+}
+
+
+def get_role_config(role: str | None) -> RoleConfig:
+    """Return config for the given role, or default if unknown/None."""
+    if role and role in ROLE_CONFIGS:
+        return ROLE_CONFIGS[role]
+    return ROLE_CONFIGS[DEFAULT_ROLE]
+
+
+# Keywords to infer role from task description
+RESEARCH_KEYWORDS = [
+    "research",
+    "paper",
+    "literature",
+    "cite",
+    "survey",
+    "methodology",
+    "findings",
+]
+CODE_KEYWORDS = [
+    "code",
+    "implement",
+    "refactor",
+    "test",
+    "repository",
+    "function",
+    "api",
+    "lint",
+]
+ANALYSIS_KEYWORDS = [
+    "analyze",
+    "data",
+    "metric",
+    "statistic",
+    "plot",
+    "dataset",
+    "experiment",
+    "evaluate",
+]
+CRITIC_KEYWORDS = [
+    "review",
+    "critique",
+    "evaluate",
+    "quality",
+    "check",
+    "verify",
+    "feedback",
+]
+
+
+def infer_role_from_description(description: str) -> str:
+    """Infer agent role from task description. Returns role name or DEFAULT_ROLE."""
+    text = (description or "").lower()
+    scores = {
+        RESEARCH_AGENT: sum(1 for k in RESEARCH_KEYWORDS if k in text),
+        CODE_AGENT: sum(1 for k in CODE_KEYWORDS if k in text),
+        ANALYSIS_AGENT: sum(1 for k in ANALYSIS_KEYWORDS if k in text),
+        CRITIC_AGENT: sum(1 for k in CRITIC_KEYWORDS if k in text),
+    }
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else DEFAULT_ROLE

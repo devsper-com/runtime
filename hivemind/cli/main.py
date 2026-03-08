@@ -1,12 +1,11 @@
 """
-Hivemind CLI: run, tui, research, analyze, memory.
+Hivemind CLI: run, tui, research, analyze, memory, init, doctor.
 
 Usage:
     hivemind run "analyze diffusion models"
-    hivemind research papers/
+    hivemind init
+    hivemind doctor
     hivemind tui
-    hivemind analyze path/to/repo
-    hivemind memory [--limit N]
 """
 
 import argparse
@@ -18,7 +17,7 @@ from pathlib import Path
 
 def _project_root() -> Path:
     """Project root (examples/ parent) for running example scripts."""
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def _run_example(script_path: Path, *args: str) -> int:
@@ -157,6 +156,114 @@ def _run_query(query_str: str) -> int:
     return 0
 
 
+def _run_init(no_interactive: bool = False) -> int:
+    """Run init subcommand: create hivemind.toml, example workflow, dataset folder."""
+    from hivemind.cli.init import run_init
+
+    return run_init(interactive=not no_interactive)
+
+
+def _run_doctor() -> int:
+    """Run doctor subcommand: verify GITHUB_TOKEN, OpenAI, config, tools."""
+    from hivemind.cli.init import run_doctor
+
+    return run_doctor()
+
+
+def _run_replay(run_id: str, events_dir: str | None) -> int:
+    """Replay a swarm run by run_id; if run_id empty, list recent run IDs."""
+    from hivemind.runtime.replay_engine import replay_run, list_run_ids
+
+    if not run_id or not run_id.strip():
+        try:
+            from hivemind.config import get_config
+
+            cfg = get_config()
+            events_dir = events_dir or cfg.events_dir
+        except Exception:
+            events_dir = events_dir or ".hivemind/events"
+        ids_ = list_run_ids(events_dir)
+        if not ids_:
+            print("No run logs found.", file=sys.stderr)
+            return 0
+        print("Recent run IDs (use: hivemind replay <run_id>):")
+        for i in ids_[:20]:
+            print(f"  {i}")
+        return 0
+    try:
+        from hivemind.config import get_config
+
+        cfg = get_config()
+        events_dir = events_dir or cfg.events_dir
+    except Exception:
+        events_dir = events_dir or ".hivemind/events"
+    transcript = replay_run(run_id.strip(), events_dir=events_dir)
+    print(transcript)
+    if "No event log found" in transcript or "Empty event log" in transcript:
+        return 1
+    return 0
+
+
+def _run_graph(run_id: str | None) -> int:
+    """Export task DAG for a run as Mermaid diagram. run_id optional (latest if omitted)."""
+    from hivemind.config import get_config
+    from hivemind.visualization.dag_export import (
+        load_dag,
+        export_mermaid,
+        list_run_ids,
+    )
+
+    cfg = get_config()
+    events_dir = cfg.events_dir
+    if run_id is None or run_id.strip() == "":
+        run_ids = list_run_ids(events_dir)
+        if not run_ids:
+            print(
+                'No runs found. Run a swarm first (e.g. hivemind run "task").',
+                file=sys.stderr,
+            )
+            return 1
+        run_id = run_ids[0]
+    nodes, edges = load_dag(events_dir, run_id.strip())
+    if not nodes and not edges:
+        print(f"No DAG found for run {run_id!r}.", file=sys.stderr)
+        return 1
+    print(export_mermaid(nodes, edges))
+    return 0
+
+
+def _run_analytics() -> int:
+    """Show tool usage analytics: count, success rate, latency."""
+    from hivemind.analytics import get_default_analytics
+
+    stats = get_default_analytics().get_stats()
+    if not stats:
+        print("No tool usage recorded yet.")
+        return 0
+    for s in stats:
+        print(
+            f"{s['tool_name']}: count={s['count']} success_rate={s['success_rate']:.1f}% avg_latency_ms={s['avg_latency_ms']}"
+        )
+    return 0
+
+
+def _run_cache(subcommand: str) -> int:
+    """Cache subcommand: stats | clear."""
+    from hivemind.cache import TaskCache
+
+    cache = TaskCache()
+    if subcommand == "stats":
+        st = cache.stats()
+        print(f"Cached task results: {st['entries']}")
+        return 0
+    if subcommand == "clear":
+        cache.clear()
+        print("Cache cleared.")
+        return 0
+    print("Usage: hivemind cache stats | hivemind cache clear", file=sys.stderr)
+    return 1
+
+
 def _run_memory(limit: int) -> int:
     """List memory entries from the default store."""
     from hivemind.memory.memory_store import get_default_store
@@ -222,7 +329,9 @@ def main() -> int:
     )
     memory_parser.set_defaults(func=lambda a: _run_memory(a.limit))
 
-    query_parser = subparsers.add_parser("query", help="Query knowledge graph (entity search)")
+    query_parser = subparsers.add_parser(
+        "query", help="Query knowledge graph (entity search)"
+    )
     query_parser.add_argument(
         "query_text",
         nargs="?",
@@ -237,6 +346,67 @@ def main() -> int:
         help="Workflow name (e.g. research_pipeline)",
     )
     workflow_parser.set_defaults(func=lambda a: _run_workflow_cmd(a.name))
+
+    init_parser = subparsers.add_parser(
+        "init", help="Set up a new project (hivemind.toml, example workflow, dataset)"
+    )
+    init_parser.add_argument(
+        "--no-interactive",
+        "-y",
+        action="store_true",
+        help="Use defaults without prompting (e.g. for CI)",
+    )
+    init_parser.set_defaults(func=lambda a: _run_init(a.no_interactive))
+
+    doctor_parser = subparsers.add_parser(
+        "doctor", help="Verify environment (tokens, config, tool registry)"
+    )
+    doctor_parser.set_defaults(func=lambda a: _run_doctor())
+
+    graph_parser = subparsers.add_parser(
+        "graph", help="Export task DAG as Mermaid diagram"
+    )
+    graph_parser.add_argument(
+        "run_id",
+        nargs="?",
+        default=None,
+        help="Run ID (default: latest)",
+    )
+    graph_parser.set_defaults(func=lambda a: _run_graph(a.run_id))
+
+    analytics_parser = subparsers.add_parser(
+        "analytics", help="Show tool usage analytics"
+    )
+    analytics_parser.set_defaults(func=lambda a: _run_analytics())
+
+    cache_parser = subparsers.add_parser(
+        "cache", help="Task result cache: stats or clear"
+    )
+    cache_parser.add_argument(
+        "subcommand",
+        nargs="?",
+        default="stats",
+        choices=["stats", "clear"],
+        help="stats | clear",
+    )
+    cache_parser.set_defaults(func=lambda a: _run_cache(a.subcommand))
+
+    replay_parser = subparsers.add_parser(
+        "replay",
+        help="Reconstruct swarm execution from event log (deterministic replay)",
+    )
+    replay_parser.add_argument(
+        "run_id",
+        nargs="?",
+        default="",
+        help="Run ID (from events log filename); list recent if omitted",
+    )
+    replay_parser.add_argument(
+        "--events-dir",
+        default=None,
+        help="Events directory (default: config)",
+    )
+    replay_parser.set_defaults(func=lambda a: _run_replay(a.run_id, a.events_dir))
 
     args = parser.parse_args()
     if not args.command:

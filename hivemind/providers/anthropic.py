@@ -1,6 +1,7 @@
 """Anthropic provider adapter using LangChain. Supports native Anthropic and Azure (Foundry) Claude."""
 
 import os
+from typing import Iterator
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage
@@ -55,7 +56,7 @@ class AnthropicProvider(BaseProvider):
             if not self.api_key:
                 raise ValueError("Anthropic requires api_key or ANTHROPIC_API_KEY")
 
-    def generate(self, model: str, prompt: str) -> str:
+    def generate(self, model: str, prompt: str, stream: bool = False) -> str | Iterator[str]:
         """Call Anthropic (or Azure Claude) API and return the model output text."""
         if self.azure:
             deployment = (model or self.azure_deployment or "").strip() or self.azure_deployment
@@ -75,4 +76,9 @@ class AnthropicProvider(BaseProvider):
             )
         message = llm.invoke([HumanMessage(content=prompt)])
         content = message.content
-        return content if isinstance(content, str) else str(content)
+        text = content if isinstance(content, str) else str(content)
+        if stream:
+            def _gen():
+                yield text
+            return _gen()
+        return text

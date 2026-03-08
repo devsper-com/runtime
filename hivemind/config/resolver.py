@@ -9,6 +9,7 @@ from hivemind.config.config_loader import (
     normalize_toml_to_flat,
 )
 from hivemind.config.schema import (
+    AgentsConfig,
     HivemindConfigModel,
     MemoryConfig,
     ModelsConfig,
@@ -18,7 +19,6 @@ from hivemind.config.schema import (
     TelemetryConfig,
     ToolsConfig,
 )
-
 
 _PROVIDER_ENV = {
     "azure_openai": [
@@ -39,11 +39,15 @@ _PROVIDER_ENV = {
 
 
 def _infer_worker_model_from_env() -> str:
-    if os.environ.get("AZURE_OPENAI_ENDPOINT") and os.environ.get("AZURE_OPENAI_API_KEY"):
+    if os.environ.get("AZURE_OPENAI_ENDPOINT") and os.environ.get(
+        "AZURE_OPENAI_API_KEY"
+    ):
         return "gpt-5-mini"
     if os.environ.get("OPENAI_API_KEY"):
         return "gpt-4o-mini"
-    if os.environ.get("AZURE_ANTHROPIC_ENDPOINT") or os.environ.get("AZURE_ANTHROPIC_API_KEY"):
+    if os.environ.get("AZURE_ANTHROPIC_ENDPOINT") or os.environ.get(
+        "AZURE_ANTHROPIC_API_KEY"
+    ):
         return "claude-opus-4-6-2"
     if os.environ.get("ANTHROPIC_API_KEY"):
         return "claude-3-haiku-20240307"
@@ -53,11 +57,15 @@ def _infer_worker_model_from_env() -> str:
 
 
 def _infer_planner_model_from_env() -> str:
-    if os.environ.get("AZURE_OPENAI_ENDPOINT") and os.environ.get("AZURE_OPENAI_API_KEY"):
+    if os.environ.get("AZURE_OPENAI_ENDPOINT") and os.environ.get(
+        "AZURE_OPENAI_API_KEY"
+    ):
         return "gpt-4o"
     if os.environ.get("OPENAI_API_KEY"):
         return "gpt-4o-mini"
-    if os.environ.get("AZURE_ANTHROPIC_ENDPOINT") or os.environ.get("AZURE_ANTHROPIC_API_KEY"):
+    if os.environ.get("AZURE_ANTHROPIC_ENDPOINT") or os.environ.get(
+        "AZURE_ANTHROPIC_API_KEY"
+    ):
         return "claude-opus-4-6-2"
     if os.environ.get("ANTHROPIC_API_KEY"):
         return "claude-3-haiku-20240307"
@@ -112,14 +120,29 @@ def _build_merged_raw(
     worker_default = _infer_worker_model_from_env()
     planner_default = _infer_planner_model_from_env()
     defaults: dict = {
-        "swarm": {"workers": 4, "adaptive_planning": False, "max_iterations": 10},
+        "swarm": {
+            "workers": 4,
+            "adaptive_planning": False,
+            "adaptive_execution": False,
+            "max_iterations": 10,
+            "speculative_execution": False,
+            "cache_enabled": False,
+        },
+        "agents": {"roles": ["research_agent", "code_agent", "analysis_agent", "critic_agent"]},
         "models": {"planner": planner_default, "worker": worker_default},
         "memory": {"enabled": True, "store_results": True, "top_k": 5},
         "tools": {"enabled": None, "top_k": 0},
         "telemetry": {"enabled": True, "save_events": True},
         "events_dir": ".hivemind/events",
         "data_dir": ".hivemind",
-        "providers": {"azure": {"endpoint": "", "deployment": "", "api_key": "", "api_version": ""}},
+        "providers": {
+            "azure": {
+                "endpoint": "",
+                "deployment": "",
+                "api_key": "",
+                "api_version": "",
+            }
+        },
     }
     user_norm = normalize_toml_to_flat(user_raw)
     project_norm = normalize_toml_to_flat(project_raw)
@@ -133,7 +156,9 @@ def _apply_env_overrides(merged: dict) -> dict:
     if os.environ.get("HIVEMIND_WORKER_MODEL"):
         merged.setdefault("models", {})["worker"] = os.environ["HIVEMIND_WORKER_MODEL"]
     if os.environ.get("HIVEMIND_PLANNER_MODEL"):
-        merged.setdefault("models", {})["planner"] = os.environ["HIVEMIND_PLANNER_MODEL"]
+        merged.setdefault("models", {})["planner"] = os.environ[
+            "HIVEMIND_PLANNER_MODEL"
+        ]
     if os.environ.get("HIVEMIND_EVENTS_DIR"):
         merged["events_dir"] = os.environ["HIVEMIND_EVENTS_DIR"]
     if os.environ.get("HIVEMIND_DATA_DIR"):
@@ -150,6 +175,7 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
     if config_path:
         from pathlib import Path
         from hivemind.config.config_loader import _load_toml
+
         project_raw = _load_toml(Path(config_path))
     else:
         project_raw = load_project_config()
@@ -162,6 +188,7 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
 
     # Build Pydantic model
     swarm = SwarmConfig(**(merged.get("swarm") or {}))
+    agents = AgentsConfig(**(merged.get("agents") or {}))
     models = ModelsConfig(**(merged.get("models") or {}))
     memory = MemoryConfig(**(merged.get("memory") or {}))
     tools = ToolsConfig(**(merged.get("tools") or {}))
@@ -172,6 +199,7 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
 
     return HivemindConfigModel(
         swarm=swarm,
+        agents=agents,
         models=models,
         memory=memory,
         tools=tools,

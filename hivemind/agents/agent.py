@@ -7,7 +7,7 @@ from hivemind.types.event import Event, events
 from hivemind.utils.event_logger import EventLog
 from hivemind.utils.models import generate
 
-PROMPT_TEMPLATE = """You are an AI worker in a distributed system.
+PROMPT_TEMPLATE = """{role_prefix}
 
 Task:
 {task_description}
@@ -15,7 +15,7 @@ Task:
 
 Produce the best possible output."""
 
-PROMPT_TEMPLATE_WITH_TOOLS = """You are an AI worker in a distributed system. You may use tools.
+PROMPT_TEMPLATE_WITH_TOOLS = """{role_prefix} You may use tools.
 
 Task:
 {task_description}
@@ -88,6 +88,7 @@ class Agent:
         max_tool_iterations: int = 5,
         memory_router=None,
         store_result_to_memory: bool = False,
+        reasoning_store=None,
     ):
         self.model_name = model_name
         self.event_log = event_log or EventLog()
@@ -95,6 +96,7 @@ class Agent:
         self.max_tool_iterations = max_tool_iterations
         self.memory_router = memory_router
         self.store_result_to_memory = store_result_to_memory
+        self.reasoning_store = reasoning_store
 
     def run(self, task: Task) -> str:
         self._emit(events.AGENT_STARTED, {"task_id": task.id})
@@ -110,10 +112,15 @@ class Agent:
             except Exception:
                 pass
 
+        from hivemind.agents.roles import get_role_config
+        role_config = get_role_config(getattr(task, "role", None))
+        role_prefix = role_config.prompt_prefix
+
         if self.use_tools:
-            text = self._run_with_tools(task, memory_section)
+            text = self._run_with_tools(task, memory_section, role_prefix=role_prefix)
         else:
             prompt = PROMPT_TEMPLATE.format(
+                role_prefix=role_prefix,
                 task_description=task.description,
                 memory_section=memory_section,
             )
@@ -123,6 +130,16 @@ class Agent:
         task.result = text
         if self.store_result_to_memory and text and getattr(self.memory_router, "store", None):
             self._store_result_to_memory(task, text)
+        if self.reasoning_store and text:
+            try:
+                node = self.reasoning_store.add_node(
+                    agent_id=getattr(task, "role", "") or "agent",
+                    task_id=task.id,
+                    content=text[:10000],
+                )
+                self._emit(events.REASONING_NODE_ADDED, {"node_id": node.id, "task_id": task.id})
+            except Exception:
+                pass
         self._emit(events.TASK_COMPLETED, {"task_id": task.id})
         self._emit(events.AGENT_FINISHED, {"task_id": task.id})
 
@@ -149,13 +166,15 @@ class Agent:
             record = index.ensure_embedding(record)
         store.store(record)
 
-    def _run_with_tools(self, task: Task, memory_section: str = "") -> str:
+    def _run_with_tools(self, task: Task, memory_section: str = "", role_prefix: str = "") -> str:
         from hivemind.tools.selector import get_tools_for_task
         from hivemind.tools.tool_runner import run_tool
 
-        tools = get_tools_for_task(task.description if task else "")
+        role = getattr(task, "role", None)
+        tools = get_tools_for_task(task.description if task else "", role=role)
         tools_section = _format_tools_section(tools)
         prompt = PROMPT_TEMPLATE_WITH_TOOLS.format(
+            role_prefix=role_prefix,
             task_description=task.description,
             memory_section=memory_section,
             tools_section=tools_section,

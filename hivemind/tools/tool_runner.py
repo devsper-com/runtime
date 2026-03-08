@@ -2,8 +2,9 @@
 Tool runner: execute a tool by name with validated arguments and safe error handling.
 """
 
+import time
+
 from hivemind.tools.registry import get
-from hivemind.tools.base import Tool
 
 
 def _validate_args(args: dict, schema: dict) -> str | None:
@@ -44,14 +45,33 @@ def run_tool(name: str, args: dict) -> str:
 
     Validates args against the tool's input_schema, runs the tool, and returns
     its string output. On validation failure or exception, returns a formatted error string.
+    Records usage to tool analytics when available.
     """
+    start = time.perf_counter()
     tool = get(name)
     if tool is None:
+        _record_analytics(name, False, start)
         return f"Tool not found: {name}"
     err = _validate_args(args, tool.input_schema)
     if err is not None:
+        _record_analytics(name, False, start)
         return f"Validation error: {err}"
     try:
-        return tool.run(**args)
+        result = tool.run(**args)
+        success = not (isinstance(result, str) and result.startswith("Tool error:"))
+        _record_analytics(name, success, start)
+        return result
     except Exception as e:
+        _record_analytics(name, False, start)
         return f"Tool error: {type(e).__name__}: {e}"
+
+
+def _record_analytics(tool_name: str, success: bool, start_time: float) -> None:
+    """Record tool invocation to analytics if available."""
+    try:
+        from hivemind.analytics import get_default_analytics
+
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        get_default_analytics().record(tool_name, success, latency_ms)
+    except Exception:
+        pass

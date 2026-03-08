@@ -51,8 +51,8 @@ class OpenAIProvider(BaseProvider):
             self._llm = None
             self._llm_cache = {}
 
-    def generate(self, model: str, prompt: str) -> str:
-        """Call OpenAI or Azure OpenAI and return the model output text."""
+    def generate(self, model: str, prompt: str, stream: bool = False):
+        """Call OpenAI or Azure OpenAI and return the model output text (or stream chunks if stream=True)."""
         if self.azure:
             deployment = (model or self.azure_deployment or "").strip() or self.azure_deployment
             if not deployment:
@@ -74,4 +74,9 @@ class OpenAIProvider(BaseProvider):
             )
             message = llm.invoke([HumanMessage(content=prompt)])
         content = message.content
-        return content if isinstance(content, str) else str(content)
+        text = content if isinstance(content, str) else str(content)
+        if stream:
+            def _gen():
+                yield text
+            return _gen()
+        return text
