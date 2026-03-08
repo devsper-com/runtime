@@ -4,6 +4,47 @@ The Hivemind CLI is invoked as **`hivemind`** (installed with the `hivemind-ai` 
 
 ## Commands
 
+### `hivemind init`
+
+Sets up a new project in the current directory.
+
+**Behavior:**
+
+- Creates `hivemind.toml` with sensible defaults (workers, models, memory, tools).
+- Optionally creates an example `workflow.hivemind.toml` and a `dataset/` folder for data workflows.
+- Use after cloning or starting a new project so `hivemind run` and other commands find config.
+
+**Example:**
+
+```bash
+hivemind init
+```
+
+**Exit code:** 0 on success.
+
+---
+
+### `hivemind doctor`
+
+Verifies the environment and configuration.
+
+**Behavior:**
+
+- Checks for required API keys (e.g. `GITHUB_TOKEN`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` depending on provider).
+- Validates project config file (e.g. `hivemind.toml`) if present.
+- Reports tool registry status (built-in and plugin tools).
+- Use to debug "not configured" or missing-provider issues before running tasks.
+
+**Example:**
+
+```bash
+hivemind doctor
+```
+
+**Exit code:** 0 if checks pass, non-zero if something is missing or invalid.
+
+---
+
 ### `hivemind run "task description"`
 
 Runs the swarm with the given task. The swarm plans subtasks, runs them with agents (with tools and memory if configured), and prints results.

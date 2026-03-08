@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-03-09
+
+### Added
+
+- **`hivemind init`** — Set up a new project (creates `hivemind.toml`, example workflow, dataset folder). Documented in [CLI](docs/cli.md).
+- **`hivemind doctor`** — Verify environment (API keys, config file, tool registry). Documented in [CLI](docs/cli.md).
+- **GitHub Models (Copilot)** — Provider routing with `github:model` (e.g. `github:gpt-4o`, `github:claude-3.5-sonnet`). Set `GITHUB_TOKEN`. Documented in [Providers](docs/providers.md).
+- **Automatic model routing** — `planner = "auto"` and `worker = "auto"` in `[models]` for cost/latency/quality-aware selection. Documented in [Providers](docs/providers.md) and [Configuration](docs/configuration.md).
+
+### Changed
+
+- README: PyPI badge fixed (shields.io), badges centered, styling and bloat removed.
+- Docs: CLI reference now includes `init` and `doctor`; providers doc covers GitHub Models and auto routing; configuration doc describes `"auto"` for `[models]`.
+
 ## [1.0.0] - 2025-03-08
 
 ### Added

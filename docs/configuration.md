@@ -24,10 +24,10 @@ The first existing project file wins (hivemind.toml before workflow.hivemind.tom
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `planner` | string | (inferred) | Model for the planner (e.g. `azure:gpt-4o`, `gpt-4o-mini`). |
-| `worker` | string | (inferred) | Model for agents (e.g. `azure:gpt-4o`, `gpt-4o-mini`). |
+| `planner` | string | (inferred) | Model for the planner (e.g. `azure:gpt-4o`, `gpt-4o-mini`, or `"auto"`). |
+| `worker` | string | (inferred) | Model for agents (e.g. `azure:gpt-4o`, `gpt-4o-mini`, or `"auto"`). |
 
-Model names are passed to the provider router; use the same format as env (e.g. `gpt-4o`, or `azure:gpt-4o` if using Azure).
+Model names are passed to the provider router; use the same format as env (e.g. `gpt-4o`, or `azure:gpt-4o` if using Azure). Use **`"auto"`** for automatic model routing: the router picks a model by task type (planning vs execution) for cost/latency/quality balance. See [Providers](providers.md#automatic-model-routing).
 
 ### `[memory]`
 
