@@ -1,0 +1,15 @@
+[swarm]
+workers = 4
+adaptive_planning = true
+
+[models]
+planner = "azure:gpt-4o"
+worker = "azure:gpt-4o"
+
+[memory]
+enabled = true
+top_k = 5
+
+[tools]
+top_k = 10
+enabled = ["research", "coding", "documents"]

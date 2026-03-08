@@ -35,10 +35,12 @@ TOOL_NAME_PATTERN = re.compile(r"TOOL:\s*(\S+)", re.IGNORECASE)
 INPUT_PREFIX = re.compile(r"INPUT:\s*", re.IGNORECASE)
 
 
-def _format_tools_section() -> str:
-    from hivemind.tools.registry import list_tools
+def _format_tools_section(tools: list | None = None) -> str:
+    if tools is None:
+        from hivemind.tools.registry import list_tools
+        tools = list_tools()
     lines = []
-    for t in list_tools():
+    for t in tools:
         lines.append(f"- {t.name}: {t.description}")
         lines.append(f"  input_schema: {json.dumps(t.input_schema)}")
     return "\n".join(lines)
@@ -148,9 +150,11 @@ class Agent:
         store.store(record)
 
     def _run_with_tools(self, task: Task, memory_section: str = "") -> str:
+        from hivemind.tools.selector import get_tools_for_task
         from hivemind.tools.tool_runner import run_tool
 
-        tools_section = _format_tools_section()
+        tools = get_tools_for_task(task.description if task else "")
+        tools_section = _format_tools_section(tools)
         prompt = PROMPT_TEMPLATE_WITH_TOOLS.format(
             task_description=task.description,
             memory_section=memory_section,

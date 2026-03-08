@@ -53,15 +53,32 @@ def _short_id() -> str:
 class Planner:
     """Converts one Task into a list of subtasks with sequential dependencies."""
 
-    def __init__(self, model_name: str = "gpt-4o", event_log: EventLog | None = None):
+    def __init__(
+        self,
+        model_name: str = "gpt-4o",
+        event_log: EventLog | None = None,
+        strategy=None,
+        prompt_suffix: str = "",
+    ):
         self.model_name = model_name
         self.event_log = event_log or EventLog()
+        self.strategy = strategy
+        self.prompt_suffix = prompt_suffix or ""
 
     def plan(self, task: Task) -> list[Task]:
-        """Break task into 5 subtasks. Emit planner lifecycle events."""
+        """Break task into subtasks (strategy DAG or LLM). Emit planner lifecycle events."""
         self._emit(events.PLANNER_STARTED, {"task_id": task.id})
 
-        prompt = PLANNER_PROMPT.format(task_description=task.description)
+        if self.strategy is not None:
+            subtasks = self.strategy.plan(task)
+            if subtasks:
+                for st in subtasks:
+                    self._emit(events.TASK_CREATED, {"task_id": st.id, "description": st.description})
+                self._emit(events.PLANNER_FINISHED, {"task_id": task.id, "subtask_count": len(subtasks)})
+                return subtasks
+
+        task_description = (task.description or "") + self.prompt_suffix
+        prompt = PLANNER_PROMPT.format(task_description=task_description)
         raw = generate(self.model_name, prompt)
         steps = self._parse_numbered_list(raw)
 

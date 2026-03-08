@@ -4,8 +4,12 @@ Swarm: entrypoint for users. Orchestrates planner → scheduler → executor →
 User code:
     swarm = Swarm(worker_count=4)
     result = swarm.run("Analyze diffusion model research")
+    # Or with config file:
+    swarm = Swarm(config="hivemind.toml")
+    result = swarm.run("analyze diffusion models")
 """
 
+from pathlib import Path
 from datetime import datetime, timezone
 
 from hivemind.types.task import Task
@@ -23,23 +27,39 @@ class Swarm:
 
     def __init__(
         self,
-        worker_count: int = 4,
-        worker_model: str = "mock",
-        planner_model: str = "mock",
+        worker_count: int | None = None,
+        worker_model: str | None = None,
+        planner_model: str | None = None,
         event_log: EventLog | None = None,
-        adaptive: bool = False,
+        adaptive: bool | None = None,
         memory_router=None,
         store_swarm_memory: bool = True,
-        use_tools: bool = False,
+        use_tools: bool | None = None,
+        config: str | Path | object | None = None,
     ) -> None:
-        self.worker_count = worker_count
-        self.worker_model = worker_model
-        self.planner_model = planner_model
+        # Load from config file or config object if provided
+        cfg = None
+        if config is not None:
+            if isinstance(config, (str, Path)):
+                from hivemind.config import get_config
+                cfg = get_config(config_path=str(config))
+            else:
+                cfg = config
+        if cfg is not None:
+            self.worker_count = worker_count if worker_count is not None else getattr(cfg.swarm, "workers", 4)
+            self.worker_model = worker_model if worker_model is not None else cfg.models.worker
+            self.planner_model = planner_model if planner_model is not None else cfg.models.planner
+            self.adaptive = adaptive if adaptive is not None else getattr(cfg.swarm, "adaptive_planning", False)
+            self.use_tools = use_tools if use_tools is not None else True
+        else:
+            self.worker_count = worker_count if worker_count is not None else 4
+            self.worker_model = worker_model if worker_model is not None else "mock"
+            self.planner_model = planner_model if planner_model is not None else "mock"
+            self.adaptive = adaptive if adaptive is not None else False
+            self.use_tools = use_tools if use_tools is not None else False
         self.event_log = event_log or EventLog()
-        self.adaptive = adaptive
         self.memory_router = memory_router
         self.store_swarm_memory = store_swarm_memory
-        self.use_tools = use_tools
         self._last_scheduler: Scheduler | None = None
 
     def run(self, user_task: str) -> dict[str, str]:
@@ -49,7 +69,19 @@ class Swarm:
         self._emit(events.SWARM_STARTED, {"user_task": user_task[:200]})
 
         root = Task(id="root", description=user_task, dependencies=[])
-        planner = Planner(model_name=self.planner_model, event_log=self.event_log)
+        from hivemind.intelligence.strategy_selector import StrategySelector
+        from hivemind.intelligence.strategies import get_strategy_for
+
+        selector = StrategySelector()
+        selected = selector.select(root)
+        strategy_instance = get_strategy_for(selected)
+        prompt_suffix = selector.suggest_planner_prompt_suffix(selected)
+        planner = Planner(
+            model_name=self.planner_model,
+            event_log=self.event_log,
+            strategy=strategy_instance,
+            prompt_suffix=prompt_suffix,
+        )
         subtasks = planner.plan(root)
 
         scheduler = Scheduler()
@@ -85,6 +117,15 @@ class Swarm:
         if self._last_scheduler is None:
             return []
         return self._last_scheduler.get_completed_tasks()
+
+    def map_reduce(self, dataset: list, map_fn, reduce_fn, worker_count: int | None = None):
+        """
+        First-class map-reduce: run map_fn on each item in parallel, then reduce_fn on results.
+        Uses the same worker pool pattern as the executor.
+        """
+        from hivemind.swarm.map_reduce import map_reduce as _map_reduce
+        workers = worker_count if worker_count is not None else self.worker_count
+        return _map_reduce(dataset, map_fn, reduce_fn, worker_count=workers)
 
     def _store_swarm_memory(self, user_task: str, scheduler: Scheduler) -> None:
         """Store important outputs (research findings, summaries, results) into memory after run."""

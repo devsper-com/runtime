@@ -17,13 +17,16 @@ class MemoryView(Static):
         self._entries = entries
         self._refresh_display()
 
-    def load_from_store(self, limit: int = 20) -> None:
-        """Load from default memory store."""
+    def load_from_store(self, limit: int = 20, namespace: str | None = None) -> None:
+        """Load from default memory store. If namespace is set, filter by namespace tag."""
         try:
             from hivemind.memory.memory_store import get_default_store
 
             store = get_default_store()
-            records = store.list_memory(limit=limit)
+            records = store.list_memory(limit=limit * 2 if namespace else limit)
+            if namespace:
+                from hivemind.memory.namespaces import filter_by_namespace
+                records = filter_by_namespace(records, namespace)[:limit]
             self._entries = [
                 {
                     "id": r.id[:8] + "…" if len(r.id) > 8 else r.id,

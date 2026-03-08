@@ -30,3 +30,6 @@ __all__ = [
     "MemoryIndex",
     "MemoryRouter",
 ]
+
+# Optional: import submodules for summarizer, namespaces, scoring
+# from hivemind.memory import summarizer, namespaces, scoring

@@ -13,6 +13,8 @@ from hivemind.tui.task_view import TaskView
 from hivemind.tui.swarm_view import SwarmView
 from hivemind.tui.memory_view import MemoryView
 from hivemind.tui.logs_view import LogsView
+from hivemind.tui.activity_feed_view import ActivityFeedView
+from hivemind.tui.knowledge_graph_view import KnowledgeGraphView
 
 
 class DashboardScreen(Screen[None]):
@@ -40,6 +42,10 @@ class DashboardScreen(Screen[None]):
         height: 1fr;
         min-height: 10;
     }
+    #dashboard-mid {
+        height: 1fr;
+        min-height: 8;
+    }
     .d-panel {
         width: 1fr;
         height: 1fr;
@@ -60,7 +66,7 @@ class DashboardScreen(Screen[None]):
         padding: 1 2;
         margin: 0 1 1 1;
     }
-    TaskView, SwarmView, MemoryView, LogsView {
+    TaskView, SwarmView, MemoryView, LogsView, ActivityFeedView, KnowledgeGraphView {
         scrollbar-size: 1 1;
         overflow-y: auto;
         height: 1fr;
@@ -81,7 +87,7 @@ class DashboardScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         with Container(id="dashboard-container"):
             yield Static(
-                "  Dashboard — Tasks | Swarm Graph | Memory | Logs  —  Press Esc to back to chat",
+                "  Dashboard — Tasks | Swarm Graph | Memory | Activity | Knowledge Graph | Logs  —  Esc to back",
                 id="dashboard-header",
             )
             with Horizontal(id="dashboard-top"):
@@ -94,6 +100,13 @@ class DashboardScreen(Screen[None]):
                 with Vertical(classes="d-panel"):
                     yield Static("Memory", classes="d-panel-title")
                     yield MemoryView(id="memory-view")
+            with Horizontal(id="dashboard-mid"):
+                with Vertical(classes="d-panel"):
+                    yield Static("Activity Feed", classes="d-panel-title")
+                    yield ActivityFeedView(id="activity-feed-view")
+                with Vertical(classes="d-panel"):
+                    yield Static("Knowledge Graph", classes="d-panel-title")
+                    yield KnowledgeGraphView(id="knowledge-graph-view")
             with Vertical(id="dashboard-logs"):
                 yield Static("Logs", classes="d-panel-title")
                 yield LogsView(id="logs-view")
@@ -110,6 +123,19 @@ class DashboardScreen(Screen[None]):
             if getattr(self, "_event_log_path", None):
                 lv.set_log_path(self._event_log_path)
             lv.refresh_logs()
+        except Exception:
+            pass
+        try:
+            af = self.query_one("#activity-feed-view", ActivityFeedView)
+            af.set_events_folder(events_folder)
+            if getattr(self, "_event_log_path", None):
+                af.set_log_path(self._event_log_path)
+            af.refresh_events()
+        except Exception:
+            pass
+        try:
+            kg = self.query_one("#knowledge-graph-view", KnowledgeGraphView)
+            kg.load_from_memory()
         except Exception:
             pass
         try:

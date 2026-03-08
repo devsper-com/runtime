@@ -23,4 +23,11 @@ from hivemind.tools import experiments
 from hivemind.tools import flagship
 from hivemind.tools import memory
 
+# Load plugins from entry_points (hivemind.plugins)
+try:
+    from hivemind.plugins.plugin_loader import load_plugins
+    load_plugins()
+except Exception:
+    pass
+
 __all__ = ["Tool", "register", "get", "list_tools", "run_tool"]

@@ -1,0 +1,41 @@
+"""Tests for smart tool selection."""
+
+import pytest
+
+from hivemind.tools.selector import select_tools_for_task, get_tools_for_task, _tool_category
+from hivemind.tools.registry import list_tools
+from hivemind.tools.base import Tool
+
+
+def test_select_tools_for_task_top_k_zero_returns_all():
+    tools = list_tools()
+    if not tools:
+        pytest.skip("no tools registered")
+    selected = select_tools_for_task("search the web", top_k=0, enabled_categories=None)
+    assert len(selected) == len(tools)
+
+
+def test_select_tools_for_task_top_k_limits():
+    tools = list_tools()
+    if len(tools) < 3:
+        pytest.skip("need at least 3 tools")
+    selected = select_tools_for_task("do something", top_k=3, enabled_categories=None)
+    assert len(selected) <= 3
+
+
+def test_get_tools_for_task_no_config_returns_all():
+    tools = get_tools_for_task("task", config=None)
+    all_tools = list_tools()
+    assert len(tools) == len(all_tools)
+
+
+def test_tool_category_inferred_from_module():
+    class FakeTool(Tool):
+        name = "fake"
+        description = "fake"
+        input_schema = {}
+        def run(self, **kwargs): return ""
+    t = FakeTool()
+    t.__class__.__module__ = "hivemind.tools.research.foo"
+    cat = _tool_category(t)
+    assert cat == "research"

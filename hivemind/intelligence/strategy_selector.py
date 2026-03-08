@@ -12,6 +12,8 @@ class ExecutionStrategy(str, Enum):
     RESEARCH = "research"
     CODE_ANALYSIS = "code_analysis"
     DATA_ANALYSIS = "data_analysis"
+    DOCUMENT = "document"
+    EXPERIMENT = "experiment"
     GENERAL = "general"
 
 
@@ -27,6 +29,14 @@ DATA_KEYWORDS = [
     "data", "dataset", "csv", "analysis", "experiment", "metric",
     "statistic", "plot", "visualization", "pipeline", "training",
 ]
+DOCUMENT_KEYWORDS = [
+    "document", "pdf", "docx", "ingest", "extract", "corpus",
+    "paper", "report", "write", "summary",
+]
+EXPERIMENT_KEYWORDS = [
+    "experiment", "sweep", "parameter", "benchmark", "ablation",
+    "compare", "metric", "evaluate", "run",
+]
 
 
 class StrategySelector:
@@ -39,6 +49,8 @@ class StrategySelector:
             ExecutionStrategy.RESEARCH: RESEARCH_KEYWORDS,
             ExecutionStrategy.CODE_ANALYSIS: CODE_KEYWORDS,
             ExecutionStrategy.DATA_ANALYSIS: DATA_KEYWORDS,
+            ExecutionStrategy.DOCUMENT: DOCUMENT_KEYWORDS,
+            ExecutionStrategy.EXPERIMENT: EXPERIMENT_KEYWORDS,
         }
 
     def select(self, task: Task | str) -> ExecutionStrategy:
@@ -53,10 +65,8 @@ class StrategySelector:
             for kw in keywords:
                 if kw in text:
                     scores[strategy] += 1
-        best = max(
-            (s for s in ExecutionStrategy if s != ExecutionStrategy.GENERAL),
-            key=lambda s: scores[s],
-        )
+        candidates = [s for s in ExecutionStrategy if s != ExecutionStrategy.GENERAL]
+        best = max(candidates, key=lambda s: scores[s])
         return best if scores[best] > 0 else ExecutionStrategy.GENERAL
 
     def suggest_planner_prompt_suffix(self, strategy: ExecutionStrategy) -> str:
@@ -67,4 +77,8 @@ class StrategySelector:
             return " Focus on: structure, dependencies, tests, refactors, documentation."
         if strategy == ExecutionStrategy.DATA_ANALYSIS:
             return " Focus on: data loading, stats, visualizations, experiments, metrics."
+        if strategy == ExecutionStrategy.DOCUMENT:
+            return " Focus on: document ingest, extraction, linking, and reporting."
+        if strategy == ExecutionStrategy.EXPERIMENT:
+            return " Focus on: setup, run, comparison, and experiment reporting."
         return ""
