@@ -25,6 +25,17 @@ See [Swarm Runtime](swarm_runtime.md) and [Architecture](architecture.md) for de
 
 Agents see tools when `Swarm(..., use_tools=True)`. See [Tools](tools.md) for a full example and schema rules.
 
+## How do I use a config file (v1)?
+
+- Put a **`hivemind.toml`** in your project root (or use `~/.config/hivemind/config.toml`). See [Configuration](configuration.md) for the full schema (`[swarm]`, `[models]`, `[memory]`, `[tools]`, `[telemetry]`, `[providers.azure]`).
+- In code: `Swarm(config="hivemind.toml")` loads that file and applies env overrides. You can also pass a config object from `get_config()`.
+- Legacy `.hivemind/config.toml` and `[default]` keys are still supported and mapped into the new schema.
+
+## How do I run a workflow or query the knowledge graph (v1)?
+
+- **Workflow:** Define steps in **`workflow.hivemind.toml`** under `[workflow]` with `name` and `steps` (list of step descriptions). Run with `hivemind workflow <name>`.
+- **Knowledge graph:** Run `hivemind query "your search terms"` to search entities (concepts, datasets, methods) and relationships in the graph built from memory. See [CLI](cli.md#hivemind-query-query-text).
+
 ## How do I run my own models?
 
 - **Config:** Set `worker_model` and `planner_model` in config or environment (`HIVEMIND_WORKER_MODEL`, `HIVEMIND_PLANNER_MODEL`). Use the model name your provider expects (e.g. `gpt-4o`, `claude-3-haiku-20240307`, `gemini-1.5-flash`).

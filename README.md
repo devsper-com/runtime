@@ -19,11 +19,16 @@ Hivemind is a **distributed AI swarm runtime** for coordinating large numbers of
 ## Features
 
 - **Planner** → **Scheduler** → **Executor** → **Agents** — DAG-based task execution with configurable parallelism
-- **120+ tools** — Research, coding, data science, documents, experiments, memory, filesystem
-- **Memory & knowledge graph** — Episodic, semantic, research, artifact memory; entity/relationship extraction
+- **Strategy-based planning** — Auto-selected strategies (research, code analysis, data science, document, experiment) output DAGs; fallback to LLM planning
+- **120+ tools** — Research, coding, data science, documents, experiments, memory, filesystem; **smart tool selection** (top-k by similarity to task)
+- **TOML configuration** — `hivemind.toml` / `workflow.hivemind.toml` with Pydantic validation; env > project > user > defaults
+- **Memory & knowledge graph** — Episodic, semantic, research, artifact memory; summarization, namespaces, scoring; entity search and relationship traversal
+- **Map-reduce runtime** — `swarm.map_reduce(dataset, map_fn, reduce_fn)` using the worker pool
+- **Workflows** — Define steps in `workflow.hivemind.toml`; run with `hivemind workflow <name>`
+- **Plugin ecosystem** — Discover tools via entry_points (`hivemind.plugins`)
 - **Provider routing** — OpenAI, Anthropic, Azure, Gemini (model name → provider)
 - **EventLog, replay, telemetry** — Structured events for debugging and metrics
-- **CLI & TUI** — `hivemind run`, `hivemind research`, `hivemind analyze`, `hivemind tui` with dashboard
+- **CLI & TUI** — `hivemind run`, `hivemind research`, `hivemind analyze`, `hivemind memory`, `hivemind query`, `hivemind workflow`, `hivemind tui` with dashboard (tasks, swarm graph, memory, activity feed, knowledge graph, logs)
 
 ---
 
@@ -56,16 +61,25 @@ pip install hivemind-ai
 hivemind run "Summarize swarm intelligence in one paragraph."
 ```
 
-**Use in code:**
+**Use in code (with config file):**
 
 ```python
-from hivemind.swarm.swarm import Swarm
+from hivemind import Swarm
+
+swarm = Swarm(config="hivemind.toml")
+results = swarm.run("Analyze diffusion models and write a one-page summary.")
+```
+
+**Or with explicit parameters:**
+
+```python
+from hivemind import Swarm
 
 swarm = Swarm(worker_count=4, worker_model="gpt-4o-mini", planner_model="gpt-4o-mini", use_tools=True)
 results = swarm.run("Analyze diffusion models and write a one-page summary.")
 ```
 
-Set API keys via environment or `~/.config/hivemind/config.toml` (see [Configuration](#configuration) below).
+Set API keys via environment or config (see [Configuration](#configuration) below).
 
 ---
 
@@ -78,6 +92,8 @@ Set API keys via environment or `~/.config/hivemind/config.toml` (see [Configura
 | `hivemind research papers/` | Literature review on a directory of papers |
 | `hivemind analyze repo/` | Analyze repository architecture |
 | `hivemind memory [--limit N]` | List memory entries |
+| `hivemind query "diffusion models"` | Query knowledge graph (entity search, relationships) |
+| `hivemind workflow <name>` | Run a workflow by name (from `workflow.hivemind.toml`) |
 
 ---
 
@@ -89,7 +105,7 @@ hivemind tui
 
 - **Prompt** — Type a task and press **Enter** or **r** to run.
 - **Output** — Response and step status (e.g. “Planning…”, “Step 2 of 5…”).
-- **Dashboard (d)** — Tasks, swarm graph, memory, logs.
+- **Dashboard (d)** — Tasks, swarm graph, memory, activity feed, knowledge graph viewer, logs.
 - **Keys:** `r` Run, `d` Dashboard, `Esc` Unfocus, `o` Output, `q` Quit.
 
 ---
@@ -134,19 +150,43 @@ asciinema rec demo.cast
 
 ## Configuration
 
-Config order: **env** > **project** `.hivemind/config.toml` > **user** `~/.config/hivemind/config.toml` > defaults.
+Config order: **env** > **project** config > **user** `~/.config/hivemind/config.toml` > defaults.
 
-**Minimal TOML (keys in env):**
+**Config locations:** `./hivemind.toml`, `./workflow.hivemind.toml`, `~/.config/hivemind/config.toml`, or legacy `.hivemind/config.toml`.
+
+**Example `hivemind.toml` (v1 format):**
 
 ```toml
-[default]
-worker_model = "gpt-4o-mini"
-planner_model = "gpt-4o-mini"
-events_dir = ".hivemind/events"
-data_dir = ".hivemind"
+[swarm]
+workers = 6
+adaptive_planning = true
+max_iterations = 10
+
+[models]
+planner = "azure:gpt-4o"
+worker = "azure:gpt-4o"
+
+[memory]
+enabled = true
+store_results = true
+top_k = 5
+
+[tools]
+enabled = ["research", "coding", "documents"]
+top_k = 12
+
+[telemetry]
+enabled = true
+save_events = true
+
+[providers.azure]
+endpoint = ""
+deployment = ""
 ```
 
-**Env overrides:** `HIVEMIND_WORKER_MODEL`, `HIVEMIND_PLANNER_MODEL`, `HIVEMIND_EVENTS_DIR`, `HIVEMIND_DATA_DIR`, plus provider keys (`OPENAI_API_KEY`, `AZURE_OPENAI_*`, etc.). See [docs/providers.md](docs/providers.md) and [docs/development.md](docs/development.md).
+**Legacy format** (still supported): use `[default]` with `worker_model`, `planner_model`, `events_dir`, `data_dir`.
+
+**Env overrides:** `HIVEMIND_WORKER_MODEL`, `HIVEMIND_PLANNER_MODEL`, `HIVEMIND_EVENTS_DIR`, `HIVEMIND_DATA_DIR`, plus provider keys (`OPENAI_API_KEY`, `AZURE_OPENAI_*`, etc.). See [docs/providers.md](docs/providers.md), [docs/configuration.md](docs/configuration.md), and [docs/development.md](docs/development.md).
 
 ---
 
@@ -155,15 +195,16 @@ data_dir = ".hivemind"
 | Doc | Description |
 |-----|-------------|
 | [Introduction](docs/introduction.md) | What Hivemind is, problem it solves, core concepts |
-| [Architecture](docs/architecture.md) | Planner, Scheduler, Executor, Agents, Tools, Memory, events, telemetry, replay |
-| [Swarm runtime](docs/swarm_runtime.md) | Task lifecycle, flow, code snippets |
-| [Tools](docs/tools.md) | Tool architecture, registry, runner, creating tools, categories |
-| [Memory](docs/memory_system.md) | Memory types, store, retrieval, embedding search, knowledge graph |
+| [Architecture](docs/architecture.md) | Planner, Scheduler, Executor, Agents, Tools, Memory, strategies, config, map-reduce |
+| [Configuration](docs/configuration.md) | TOML config (v1), schema, locations, env overrides |
+| [Swarm runtime](docs/swarm_runtime.md) | Task lifecycle, flow, code snippets, map-reduce |
+| [Tools](docs/tools.md) | Tool architecture, registry, runner, smart tool selection, plugins |
+| [Memory](docs/memory_system.md) | Memory types, store, retrieval, summarization, namespaces, scoring |
 | [Providers](docs/providers.md) | Provider routing, model spec, Azure |
-| [CLI](docs/cli.md) | All CLI commands and parameters |
-| [TUI](docs/tui.md) | Layout, panels, keyboard shortcuts |
+| [CLI](docs/cli.md) | All CLI commands (run, tui, research, analyze, memory, query, workflow) |
+| [TUI](docs/tui.md) | Layout, panels (activity feed, knowledge graph), keyboard shortcuts |
 | [Examples](docs/examples.md) | Example workflows and commands |
-| [Development](docs/development.md) | Project structure, adding tools/providers, setup |
+| [Development](docs/development.md) | Project structure, adding tools/plugins/workflows, setup |
 | [Contributing](CONTRIBUTING.md) | Setup, testing, code style, PR guidelines |
 | [FAQ](docs/faq.md) | Common questions |
 

@@ -21,12 +21,14 @@ The layout is output-first: one main view with prompt at top and most of the spa
 
 ### Dashboard (key `d`)
 
-Pressing **`d`** opens the **Dashboard** screen with four panels:
+Pressing **`d`** opens the **Dashboard** screen with six panels:
 
-- **Task panel** — Lists tasks from the last run: task id, status (e.g. pending, running, completed), runtime, worker.
-- **Swarm graph panel** — Represents the task DAG / swarm structure from the last scheduler state.
-- **Memory panel** — Shows recent memory entries from the default store (loaded when the dashboard opens).
-- **Logs panel** — Shows event log content from the current run’s events folder (and optional log path).
+- **Tasks** — Lists tasks from the last run: task id, status (e.g. pending, running, completed), runtime, worker.
+- **Swarm graph** — Represents the task DAG / swarm structure from the last scheduler state (live view of the run).
+- **Memory** — Shows recent memory entries from the default store (loaded when the dashboard opens). Supports optional namespace filter (e.g. research_memory, coding_memory).
+- **Activity feed** — Chronological feed of agent actions: task started/completed, tool calls, from the event log.
+- **Knowledge graph** — Entities and relationships built from memory (documents, concepts, datasets, methods; edges). Built on demand when the dashboard opens.
+- **Logs** — Event log content from the current run’s events folder (and optional log path).
 
 **Leaving the dashboard:** Press **Esc** or **q** to return to the main (prompt + output) screen.
 

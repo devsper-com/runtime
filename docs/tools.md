@@ -92,3 +92,27 @@ Tools are grouped by domain; each category lives in its own subpackage and regis
 | **Flagship** | docproc corpus pipeline, research graph builder, repository semantic map, distributed document analysis |
 
 Use `list_tools()` or inspect the `hivemind.tools` package to see the full set (120+ tools).
+
+## Smart tool selection (v1)
+
+When config has `[tools] top_k > 0`, the agent does **not** receive all tools. Instead:
+
+- **Tool selector** (`hivemind.tools.selector`): embeds the task description and each tool’s name + description (using the same embedding function as memory), computes cosine similarity, and returns the **top_k** most relevant tools.
+- **Category filter:** If `[tools] enabled` is set (e.g. `["research", "coding", "documents"]`), only tools in those categories are considered; then top_k is applied within that set.
+- **Tool category:** Each tool can set an optional `category` attribute (e.g. `"research"`, `"coding"`). If unset, the selector infers it from the tool’s module path (e.g. `hivemind.tools.research.*` → `research`).
+
+This keeps the agent prompt smaller and focuses it on the most relevant tools for the task.
+
+## Plugin system (v1)
+
+External packages can register tools without modifying the Hivemind codebase.
+
+- **Entry point:** Declare a group `hivemind.plugins` in your package’s `pyproject.toml`:
+  ```toml
+  [project.entry-points."hivemind.plugins"]
+  bio = "hivemind_plugin_bio:register"
+  ```
+- **Loader:** When `hivemind.tools` is imported, the **plugin loader** (`hivemind.plugins.plugin_loader`) discovers all entry points, loads each callable, and expects either a list of `Tool` instances or a function that registers tools with `hivemind.tools.registry.register`.
+- **Registry:** Loaded plugins are recorded in `hivemind.plugins.plugin_registry` (name, version, list of tool names registered).
+
+Example plugin implementation: the callable can return `[Tool1(), Tool2()]` or call `register(tool)` for each tool and return nothing. See [Development](development.md) for project structure and adding plugins.

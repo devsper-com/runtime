@@ -7,20 +7,23 @@ High-level layout:
 ```
 hivemind/
   agents/          # Agent (LLM worker)
-  swarm/           # Planner, Scheduler, Executor, Swarm
-  tools/           # Tool base, registry, runner, categories (research, coding, …)
-  memory/          # MemoryStore, MemoryRouter, MemoryIndex, types, embeddings
-  knowledge/       # Knowledge graph
-  intelligence/   # Learning engine, strategy selector, task optimizer
-  providers/      # OpenAI, Anthropic, Gemini, router
-  runtime/        # Replay, telemetry, visualization
-  utils/          # event_logger, models (generate)
-  types/          # Task, Event, task status
-  config.py        # TOML + env config
-  cli.py           # CLI entrypoint
-  tui/             # Terminal UI (Textual)
-  dashboard/      # Optional dashboard components
+  config/          # TOML config: config_loader, schema, defaults, resolver (Pydantic)
+  swarm/           # Planner, Scheduler, Executor, Swarm, map_reduce
+  tools/           # Tool base, registry, runner, selector, categories (research, coding, …)
+  memory/          # MemoryStore, MemoryRouter, MemoryIndex, summarizer, namespaces, scoring
+  knowledge/       # Knowledge graph, query
+  intelligence/    # Strategy selector, strategies/ (research, code_analysis, …), task optimizer
+  plugins/         # plugin_loader, plugin_registry (entry_points)
+  workflow/        # Workflow loader, runner (workflow.hivemind.toml)
+  providers/       # OpenAI, Anthropic, Gemini, router
+  runtime/         # Replay, telemetry, visualization
+  utils/           # event_logger, models (generate)
+  types/           # Task, Event, task status
+  cli.py           # CLI entrypoint (run, tui, research, analyze, memory, query, workflow)
+  tui/             # Terminal UI (Textual): app, dashboard, activity feed, knowledge graph view
+  dashboard/       # Optional dashboard components
 examples/         # Research, coding, data science, documents, experiments
+benchmarks/       # Benchmarks (research pipeline, repository analysis, dataset analysis)
 tests/            # Pytest tests
 docs/             # Documentation
 ```
@@ -38,7 +41,7 @@ docs/             # Documentation
    Or with pip: `pip install -e ".[dev]"` (if dev extras exist) or `pip install -e .` and install dev deps (pytest, ruff, black) manually.
 
 2. **Config / env:**  
-   Copy `.env.example` to `.env` and set API keys (OpenAI, Anthropic, Google, or Azure). Alternatively use `~/.config/hivemind/config.toml` or `.hivemind/config.toml` as in the main README.
+   Copy `.env.example` to `.env` and set API keys (OpenAI, Anthropic, Google, or Azure). Alternatively use `hivemind.toml`, `~/.config/hivemind/config.toml`, or `.hivemind/config.toml`; see [Configuration](configuration.md).
 
 3. **Run tests:**
 
@@ -62,6 +65,26 @@ docs/             # Documentation
 5. Add tests under `tests/tools/` if needed.
 
 See [Tools](tools.md) for a full example.
+
+## Adding a plugin (v1)
+
+1. Create a package (e.g. `hivemind-plugin-bio`) with a callable that returns a list of `Tool` instances or that calls `register(tool)` for each tool.
+2. In the plugin’s `pyproject.toml`, declare the entry point:
+   ```toml
+   [project.entry-points."hivemind.plugins"]
+   bio = "hivemind_plugin_bio:register"
+   ```
+3. Install the plugin in the same environment as hivemind; when `hivemind.tools` is imported, the loader will discover and run it. See [Tools](tools.md#plugin-system-v1).
+
+## Adding a workflow (v1)
+
+1. Create or edit `workflow.hivemind.toml` in the project root (or current directory):
+   ```toml
+   [workflow]
+   name = "my_pipeline"
+   steps = ["step_one", "step_two", "step_three"]
+   ```
+2. Run it with `hivemind workflow my_pipeline`. Steps are executed in order (each step depends on the previous). The same executor and agent stack as `hivemind run` is used; config (worker model, tools, memory) applies.
 
 ## Extending the swarm runtime
 

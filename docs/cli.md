@@ -76,6 +76,52 @@ hivemind analyze .
 
 ---
 
+### `hivemind query "query text"`
+
+Queries the **knowledge graph**: entity search and relationship traversal over stored memory.
+
+**Examples:**
+
+```bash
+hivemind query "diffusion models"
+hivemind query "transformer"
+```
+
+**Behavior:**
+
+- Loads the default memory store, builds the knowledge graph from it, and runs entity search for the query text.
+- Prints matching entities (concepts, datasets, methods), relationships (edges), and document IDs that mention them.
+- Exit code: 0.
+
+---
+
+### `hivemind workflow <name>`
+
+Runs a **workflow** by name. Workflow definitions are read from `workflow.hivemind.toml` (or `hivemind.toml`) in the current or parent directory.
+
+**Example workflow file (`workflow.hivemind.toml`):**
+
+```toml
+[workflow]
+name = "research_pipeline"
+steps = ["corpus_builder", "topic_extraction", "citation_graph", "literature_review"]
+```
+
+**Examples:**
+
+```bash
+hivemind workflow research_pipeline
+```
+
+**Behavior:**
+
+- Loads the workflow with the given name; steps are run in order (each step depends on the previous).
+- Uses the same executor/agent stack as `hivemind run` (with config for worker model, tools, memory).
+- Prints each task ID and result.
+- Exit code: 0 on success, 1 if the workflow is not found or has no steps.
+
+---
+
 ### `hivemind memory [--limit N]`
 
 Lists memory entries from the default memory store.
@@ -122,7 +168,7 @@ hivemind tui
 
 ### Default: no command
 
-If you run **`hivemind`** with no subcommand, it currently starts the **TUI** (same as `hivemind tui`).
+If you run **`hivemind`** with no subcommand, it starts the **TUI** (same as `hivemind tui`).
 
 ---
 

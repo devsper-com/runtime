@@ -36,4 +36,4 @@
 5. Optionally, **adaptive planning** adds new subtasks when a task completes.
 6. **Results** are collected; optionally **swarm memory** and **knowledge graph** are updated for future runs.
 
-All of this runs **locally** with minimal setup—no distributed cluster required. Configuration is via environment variables and/or TOML (`~/.config/hivemind/config.toml`, `.hivemind/config.toml`).
+All of this runs **locally** with minimal setup—no distributed cluster required. Configuration is via environment variables and/or TOML: use `hivemind.toml` or `workflow.hivemind.toml` in the project, or `~/.config/hivemind/config.toml`, or legacy `.hivemind/config.toml`. You can also run predefined **workflows** from `workflow.hivemind.toml` with `hivemind workflow <name>`, and use the **SDK** with `Swarm(config="hivemind.toml")` for a config-driven swarm.

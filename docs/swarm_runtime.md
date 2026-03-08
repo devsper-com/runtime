@@ -14,8 +14,8 @@ If something goes wrong, **task_failed** can be used; the scheduler may still ma
 
 1. **Planner**  
    - Receives the root task.  
-   - Calls the LLM to produce a numbered list of steps.  
-   - Parses the list into subtasks with sequential dependencies (e.g. step 2 depends on step 1).  
+   - **Strategy selection (v1):** A strategy selector (keyword heuristics, optional embedding/LLM) picks a strategy (research, code analysis, data science, document, experiment). If the strategy returns a DAG of tasks, the planner uses it; otherwise it calls the LLM to produce a numbered list of steps.  
+   - Parses the list (or uses the strategy DAG) into subtasks with dependencies.  
    - Emits `task_created` for each subtask and returns the list.
 
 2. **Scheduler**  
@@ -35,10 +35,20 @@ If something goes wrong, **task_failed** can be used; the scheduler may still ma
 
 ## Running a Swarm (Code Snippets)
 
-**Minimal:**
+**With config file (v1):**
 
 ```python
-from hivemind.swarm.swarm import Swarm
+from hivemind import Swarm
+
+swarm = Swarm(config="hivemind.toml")
+results = swarm.run("Analyze diffusion models and write a one-page summary.")
+# results: dict[task_id, result_text]
+```
+
+**Minimal (explicit parameters):**
+
+```python
+from hivemind import Swarm
 
 swarm = Swarm(
     worker_count=4,
@@ -88,3 +98,23 @@ for task in completed:
 ```
 
 Events are written to the path in `event_log.log_path` (e.g. for replay or telemetry).
+
+## Map-reduce (v1)
+
+The swarm runtime includes a **map-reduce** primitive for batch processing over a dataset without using the task DAG:
+
+```python
+from hivemind import Swarm
+
+swarm = Swarm(worker_count=4)
+# Process each item in parallel, then reduce
+result = swarm.map_reduce(
+    dataset=[1, 2, 3, 4, 5],
+    map_fn=lambda x: x * 2,
+    reduce_fn=sum,
+)
+# result == 30
+```
+
+- **Flow:** The dataset is processed in parallel (up to `worker_count` items at a time); each item is passed to `map_fn`; results are collected and passed once to `reduce_fn`.
+- **Use case:** Batch embedding, batch file processing, or any embarrassingly parallel workload that ends in a single aggregation. The same asyncio/semaphore pattern as the executor is used.

@@ -22,9 +22,10 @@
 
 ### Planner
 
-- **Role:** Converts one root task into multiple subtasks with sequential dependencies.
+- **Role:** Converts one root task into multiple subtasks with sequential (or DAG) dependencies.
+- **Strategy-based planning (v1):** A **strategy selector** (keyword heuristics, optional embedding/LLM) chooses a strategy (research, code analysis, data science, document pipeline, experiment). Each strategy returns a fixed DAG of tasks (e.g. research: corpus_builder → topic_extraction → citation_graph → literature_review). If a strategy is selected and returns tasks, the planner uses that DAG; otherwise it falls back to an LLM call to break the task into steps.
 - **Input:** A single `Task` (e.g. the user’s high-level goal).
-- **Output:** A list of `Task` objects, each with an ID, description, and dependency list (e.g. task 2 depends on task 1).
+- **Output:** A list of `Task` objects, each with an ID, description, and dependency list.
 - **Events:** `planner_started`, `task_created` (per subtask), `planner_finished`.
 - **Optional:** Adaptive planning can extend the DAG at runtime (e.g. `expand_tasks` after a task completes).
 
@@ -52,6 +53,8 @@
 
 - **Role:** Named, schema-driven functions agents can call (e.g. read_file, codebase_indexer, store_memory).
 - **Registry:** Tools register by name; the agent receives a list of tools and calls them via a simple protocol (e.g. `TOOL: name`, `INPUT: {...}`).
+- **Smart tool selection (v1):** When config has `[tools] top_k > 0`, the **tool selector** embeds the task description and each tool’s name+description, computes similarity, and passes only the top-k tools to the agent. Optional `[tools] enabled` restricts to categories (e.g. research, coding, documents).
+- **Plugins (v1):** External packages can register tools via the `hivemind.plugins` entry point; the loader runs after built-in categories so plugin tools appear in the same registry.
 - **Runner:** Validates arguments against each tool’s `input_schema`, runs the tool, and returns a string result (or error message).
 
 ### Memory
@@ -64,7 +67,18 @@
 ### Knowledge Graph
 
 - **Role:** Builds and queries a graph over memory (documents, concepts, datasets, methods; edges like mentions, cites, related_to).
+- **Query interface (v1):** `hivemind/knowledge/query.py` provides entity search (match query text to node labels) and relationship traversal (1–2 hops). CLI: `hivemind query "diffusion models"`.
 - **Integration:** Can be populated from tool outputs or document pipelines and used to enrich context for later tasks.
+
+### Configuration (v1)
+
+- **Module:** `hivemind/config/` — `config_loader.py`, `schema.py`, `defaults.py`, `resolver.py` with Pydantic models.
+- **Locations:** `./hivemind.toml`, `./workflow.hivemind.toml`, `~/.config/hivemind/config.toml`, legacy `.hivemind/config.toml`.
+- **Priority:** env > project config > user config > defaults. Exposed via `get_config()`; `Swarm(config="hivemind.toml")` loads from file.
+
+### Map-reduce runtime (v1)
+
+- **Module:** `hivemind/swarm/map_reduce.py` — `swarm.map_reduce(dataset, map_fn, reduce_fn)` partitions the dataset, runs `map_fn` on each item in parallel (worker pool), then runs `reduce_fn` on the collected results. Uses the same asyncio/semaphore pattern as the executor.
 
 ---
 

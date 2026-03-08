@@ -46,3 +46,28 @@ This enables **semantic retrieval**: e.g. “analyze diffusion model papers” c
 - **get_memory_context(task_description):** Formats those memories as a string block (e.g. “RELEVANT MEMORY …”) for injection into the agent prompt.
 
 The swarm (or agent) typically passes a `MemoryRouter` into the `Swarm`/`Agent` so each task gets relevant prior context without loading the full store.
+
+## Summarization (v1)
+
+- **Module:** `hivemind.memory.summarizer`
+- **summarize_extractive(records, max_chars):** Concatenates record contents up to a character limit (no LLM).
+- **summarize_with_llm(records, model_name):** Uses an LLM to produce a short summary of the records; falls back to extractive on failure.
+- **summarize(records, use_llm=False):** Single entry point; set `use_llm=True` for LLM summarization.
+
+Useful for condensing many memories into a single context block or for namespace-level summaries.
+
+## Namespaces (v1)
+
+- **Module:** `hivemind.memory.namespaces`
+- **Concept:** Memories can be tagged with a namespace (e.g. `research_memory`, `coding_memory`, `dataset_memory`) using a tag prefix `ns:<namespace>`.
+- **Helpers:** `add_namespace(record, namespace)`, `record_namespace(record)`, `filter_by_namespace(records, namespace)`.
+- **Constants:** `RESEARCH_MEMORY`, `CODING_MEMORY`, `DATASET_MEMORY`.
+
+The TUI memory view and any custom UI can filter by namespace when loading from the store.
+
+## Scoring (v1)
+
+- **Module:** `hivemind.memory.scoring`
+- **recency_score(record):** Newer memories score higher (exponential decay).
+- **importance_score(record):** Heuristic based on content length and tag count.
+- **score_and_sort(records, similarity_scores=None):** Combines similarity (e.g. from embedding search), recency, and importance to rank and sort records. Use this to re-rank results from the memory index before returning to the agent or UI.
