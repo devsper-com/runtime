@@ -12,7 +12,7 @@ jobs:
   pypi-publish:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # Required for PyPI trusted publishing (OIDC)
+      id-token: write 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,9 +30,3 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        # Trusted publishing: add this repo as a Trusted Publisher on PyPI;
-        # no secrets needed. To use an API token instead, add repository
-        # secrets PYPI_API_TOKEN and set:
-        # env:
-        #   TWINE_USERNAME: __token__
-        #   TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
