@@ -136,37 +136,171 @@ def _run_analyze(path: str) -> int:
     return _run_example(script, path or ".")
 
 
-def _run_workflow_cmd(name: str) -> int:
-    """Run a workflow by name (from workflow.hivemind.toml)."""
+def _workflow_dispatch(args: object) -> int:
+    """Dispatch workflow list | validate | run | <name>."""
+    a = args
+    first = getattr(a, "first", None)
+    second = getattr(a, "second", None)
+    inputs = getattr(a, "input", None) or []
+    if first == "list":
+        return _workflow_list()
+    if first == "validate":
+        return _workflow_validate(second or "")
+    if first == "run":
+        return _workflow_run(second or "", inputs)
+    if first:
+        return _workflow_run(first, inputs)
+    return _workflow_list()
+
+
+def _workflow_list() -> int:
+    """List all defined workflows with name, version, step count, description."""
+    try:
+        from rich.console import Console
+        from rich.table import Table
+        from hivemind.workflow.loader import list_workflows, load_workflow
+    except ImportError:
+        from hivemind.workflow.loader import list_workflows, load_workflow
+        names = list_workflows()
+        for n in names:
+            wf = load_workflow(n)
+            if wf:
+                print(f"{wf.name}  v{wf.version}  steps={len(wf.steps)}  {wf.description or ''}")
+        return 0
+    console = Console()
+    names = list_workflows()
+    if not names:
+        console.print("No workflows defined. Add [workflow] to workflow.hivemind.toml or hivemind.toml.")
+        return 0
+    table = Table(title="Workflows")
+    table.add_column("Name", style="cyan")
+    table.add_column("Version", style="dim")
+    table.add_column("Steps", justify="right")
+    table.add_column("Description", style="dim")
+    for n in names:
+        wf = load_workflow(n)
+        if wf:
+            table.add_row(
+                wf.name,
+                wf.version,
+                str(len(wf.steps)),
+                (wf.description or "")[:60],
+            )
+    console.print(table)
+    return 0
+
+
+def _workflow_validate(name: str) -> int:
+    """Validate workflow by name. Exit 0 if valid, 1 if errors."""
+    from hivemind.workflow.loader import load_workflow
+    from hivemind.workflow.validator import ValidationReport, validate_workflow
+    wf = load_workflow(name)
+    if not wf:
+        print(f"Workflow '{name}' not found.", file=sys.stderr)
+        return 1
+    report = validate_workflow(wf)
+    try:
+        from rich.console import Console
+        from rich.markup import escape
+        console = Console()
+        if report.errors:
+            for e in report.errors:
+                console.print(f"[red]✗[/red] {escape(e)}")
+        if report.warnings:
+            for w in report.warnings:
+                console.print(f"[yellow]⚠[/yellow] {escape(w)}")
+        if report.info:
+            for i in report.info:
+                console.print(f"[dim]ℹ[/dim] {escape(i)}")
+        if report.valid and not report.errors:
+            console.print("[green]✓[/green] Validation passed.")
+        elif report.errors:
+            console.print("[red]✗[/red] Validation failed.")
+    except ImportError:
+        for e in report.errors:
+            print(f"✗ {e}", file=sys.stderr)
+        for w in report.warnings:
+            print(f"⚠ {w}", file=sys.stderr)
+        for i in report.info:
+            print(f"ℹ {i}")
+        if report.valid:
+            print("✓ Validation passed.")
+        else:
+            print("✗ Validation failed.", file=sys.stderr)
+    return 0 if report.valid else 1
+
+
+def _workflow_run(name: str, input_pairs: list[str]) -> int:
+    """Run workflow by name with optional --input key=value. Print summary table after."""
     from hivemind.config import get_config
     from hivemind.memory.memory_router import MemoryRouter
     from hivemind.memory.memory_store import get_default_store
     from hivemind.memory.memory_index import MemoryIndex
     from hivemind.workflow.loader import load_workflow
-    from hivemind.workflow.runner import run_workflow
-
+    from hivemind.workflow.runner import WorkflowRunner
     wf = load_workflow(name)
-    if not wf or not wf.get("steps"):
-        print(f"Workflow '{name}' not found or has no steps.", file=sys.stderr)
+    if not wf:
+        print(f"Workflow '{name}' not found.", file=sys.stderr)
         return 1
+    inputs = {}
+    for pair in input_pairs:
+        if "=" in pair:
+            k, v = pair.split("=", 1)
+            inputs[k.strip()] = v.strip()
+        else:
+            inputs[pair.strip()] = ""
     cfg = get_config()
     memory_router = MemoryRouter(
         store=get_default_store(),
         index=MemoryIndex(get_default_store()),
         top_k=5,
     )
-    results = run_workflow(
-        steps=wf["steps"],
-        worker_model=cfg.worker_model,
-        worker_count=getattr(cfg.swarm, "workers", 2),
-        memory_router=memory_router,
-        use_tools=True,
-    )
-    for task_id, result in results.items():
-        print(f"--- {task_id} ---")
-        print((result or "")[:2000])
-        if (result or "") and len(result) > 2000:
-            print("...")
+    runner = WorkflowRunner()
+    try:
+        ctx = runner.run(
+            wf,
+            inputs=inputs,
+            worker_model=cfg.worker_model,
+            worker_count=getattr(cfg.swarm, "workers", 2),
+            memory_router=memory_router,
+            use_tools=True,
+        )
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    try:
+        from rich.console import Console
+        from rich.table import Table
+        console = Console()
+        table = Table(title="Workflow run summary")
+        table.add_column("Step", style="cyan")
+        table.add_column("Status", justify="center")
+        table.add_column("Duration", justify="right")
+        table.add_column("Note", style="dim")
+        for step_id, sr in ctx.steps.items():
+            if sr.skipped:
+                status = "[yellow]skipped[/yellow]"
+            elif sr.error:
+                status = "[red]failed[/red]"
+            else:
+                status = "[green]completed[/green]"
+            table.add_row(
+                step_id,
+                status,
+                f"{sr.duration_seconds:.2f}s",
+                sr.error or ("(skipped)" if sr.skipped else ""),
+            )
+        console.print(table)
+    except ImportError:
+        for step_id, sr in ctx.steps.items():
+            status = "skipped" if sr.skipped else ("failed" if sr.error else "completed")
+            print(f"  {step_id}  {status}  {sr.duration_seconds:.2f}s  {sr.error or ''}")
+    for step_id, sr in ctx.steps.items():
+        if not sr.skipped and not sr.error and sr.raw_result:
+            print(f"\n--- {step_id} ---")
+            print((sr.raw_result or "")[:2000])
+            if (sr.raw_result or "") and len(sr.raw_result) > 2000:
+                print("...")
     return 0
 
 
@@ -628,20 +762,34 @@ Examples:
 
     workflow_parser = subparsers.add_parser(
         "workflow",
-        help="Run a workflow by name",
-        description="Execute a predefined workflow from workflow.hivemind.toml.",
+        help="List, validate, or run workflows",
+        description="List, validate, or run workflows from workflow.hivemind.toml.",
         epilog="""
 Examples:
-  hivemind workflow research_pipeline
-  hivemind workflow my_custom_workflow
+  hivemind workflow list
+  hivemind workflow validate my_workflow
+  hivemind workflow run my_workflow --input text="hello"
+  hivemind workflow my_workflow
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     workflow_parser.add_argument(
-        "name",
-        help="Workflow name (e.g. research_pipeline)",
+        "first",
+        nargs="?",
+        help="Subcommand: list | validate | run; or workflow name to run",
     )
-    workflow_parser.set_defaults(func=lambda a: _run_workflow_cmd(a.name))
+    workflow_parser.add_argument(
+        "second",
+        nargs="?",
+        help="Workflow name (for validate/run)",
+    )
+    workflow_parser.add_argument(
+        "--input",
+        action="append",
+        metavar="KEY=VALUE",
+        help="Runtime input (repeat for multiple). Used with run.",
+    )
+    workflow_parser.set_defaults(func=_workflow_dispatch)
 
     init_parser = subparsers.add_parser(
         "init",

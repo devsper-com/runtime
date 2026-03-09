@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-03-09
+
+### Added
+
+- **Workflow pipeline engine (v1.4)** — Replaced the sequential step runner with a full pipeline: **typed outputs** between steps, **conditional branching** (`if:`), **explicit dependencies** (`depends_on`), and a **validator** command.
+- **New module `hivemind/workflow/`** — `schema.py` (Pydantic DSL: WorkflowDefinition, WorkflowStep, OutputField, StepCondition), `context.py` (WorkflowContext, StepResult, template resolution `{input.x}`, `{steps.id.result}`, `{steps.id.field}`), `conditions.py` (safe `if:` expression evaluation, no eval), `resolver.py` (topological sort, waves, cycle detection), `validator.py` (ValidationReport, reference/DAG/condition checks, dead-output warnings), `runner.py` (WorkflowRunner with parallel waves, retries, output_schema parsing). Loader returns `WorkflowDefinition`; legacy list-of-strings workflows still load and run.
+- **CLI:** `hivemind workflow list` — List workflows (name, version, step count, description). `hivemind workflow validate <name>` — Validate and print report (✓/✗/⚠ with Rich). `hivemind workflow run <name> [--input KEY=VALUE ...]` — Run with runtime inputs and summary table. `hivemind workflow <name>` still runs the workflow (backward compatible).
+- **Workflow TOML format** — Steps can define `id`, `task`, `depends_on`, `if` (expression), `output_schema` (list of name/type/required), `role`, `model`, `retry`, `timeout_seconds`. Inputs declared in `inputs`; templates use `{input.x}` and `{steps.step_id.result}` or `{steps.step_id.field}` from structured output.
+- **Tests** — `tests/test_workflow.py`: sequential/parallel execution, condition skips/blocking, template resolution, output_schema parsing, cycle detection, validator bad reference and dead-output warning, backward compat.
+
+### Changed
+
+- `load_workflow(name)` now returns `WorkflowDefinition | None` (Pydantic model). Legacy workflows (steps as list of strings) are wrapped with auto-generated step ids and sequential dependencies.
+- `run_workflow(steps, ...)` (legacy) now uses WorkflowRunner under the hood; return type `dict[str, str]` (step_id → result) unchanged.
+
 ## [1.3.0] - 2026-03-09
 
 ### Added

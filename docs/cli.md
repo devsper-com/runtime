@@ -136,30 +136,63 @@ hivemind query "transformer"
 
 ---
 
-### `hivemind workflow <name>`
+### `hivemind workflow` (list, validate, run)
 
-Runs a **workflow** by name. Workflow definitions are read from `workflow.hivemind.toml` (or `hivemind.toml`) in the current or parent directory.
+Workflow definitions are read from `workflow.hivemind.toml` (or `hivemind.toml`) in the current or parent directory. As of v1.4, workflows support **branching**, **typed outputs**, and **explicit dependencies**.
 
-**Example workflow file (`workflow.hivemind.toml`):**
+**Subcommands / usage:**
+
+- **`hivemind workflow list`** — List all defined workflows (name, version, step count, description).
+- **`hivemind workflow validate <name>`** — Validate a workflow (references, DAG, conditions). Exit 0 if valid, 1 if errors. Uses Rich: ✓ for pass, ✗ for errors, ⚠ for warnings.
+- **`hivemind workflow run <name> [--input KEY=VALUE ...]`** — Run a workflow with optional runtime inputs. After completion prints a summary table (step id, status, duration) and step outputs.
+- **`hivemind workflow <name>`** — Same as `hivemind workflow run <name>` (backward compatible).
+
+**Example workflow file (v1.4 format):**
 
 ```toml
-[workflow]
-name = "research_pipeline"
-steps = ["corpus_builder", "topic_extraction", "citation_graph", "literature_review"]
+[workflow.summarize_and_route]
+name = "Summarize and Route"
+version = "1.0"
+
+[[workflow.summarize_and_route.steps]]
+id = "summarize"
+task = "Summarize the following document: {input.text}"
+
+[[workflow.summarize_and_route.steps]]
+id = "classify"
+task = "Classify this summary into one of: technical, business, legal. Summary: {steps.summarize.result}"
+depends_on = ["summarize"]
+
+[[workflow.summarize_and_route.steps.output_schema]]
+name = "category"
+type = "str"
+required = true
+
+[[workflow.summarize_and_route.steps]]
+id = "technical_deep_dive"
+task = "Perform a deep technical analysis: {steps.summarize.result}"
+depends_on = ["classify"]
+
+[workflow.summarize_and_route.steps.if]
+expression = "steps.classify.category == 'technical'"
 ```
+
+**Legacy format (still supported):** `[workflow]` with `name` and `steps = ["step1", "step2"]` runs steps in order with auto-generated ids.
 
 **Examples:**
 
 ```bash
+hivemind workflow list
+hivemind workflow validate summarize_and_route
+hivemind workflow run summarize_and_route --input text="Your document here."
 hivemind workflow research_pipeline
 ```
 
 **Behavior:**
 
-- Loads the workflow with the given name; steps are run in order (each step depends on the previous).
-- Uses the same executor/agent stack as `hivemind run` (with config for worker model, tools, memory).
-- Prints each task ID and result.
-- Exit code: 0 on success, 1 if the workflow is not found or has no steps.
+- **list:** Prints a table of workflows (name, version, steps, description).
+- **validate:** Checks `depends_on` references, DAG cycles, template/condition references, and reports dead output warnings.
+- **run:** Validates required inputs, runs steps in dependency order (waves); steps in the same wave run in parallel. Steps with `if:` are skipped when the condition is false; dependents of skipped steps are also skipped. Prints summary table and step results. Exit 0 on success, 1 if workflow not found or validation fails.
 
 ---
 

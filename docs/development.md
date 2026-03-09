@@ -76,15 +76,26 @@ See [Tools](tools.md) for a full example.
    ```
 3. Install the plugin in the same environment as hivemind; when `hivemind.tools` is imported, the loader will discover and run it. See [Tools](tools.md#plugin-system-v1).
 
-## Adding a workflow (v1)
+## Adding a workflow (v1.4)
 
-1. Create or edit `workflow.hivemind.toml` in the project root (or current directory):
+1. Create or edit `workflow.hivemind.toml` in the project root (or current directory). **v1.4 format** supports typed outputs, dependencies, and conditions:
    ```toml
-   [workflow]
-   name = "my_pipeline"
-   steps = ["step_one", "step_two", "step_three"]
+   [workflow.my_pipeline]
+   name = "My Pipeline"
+   version = "1.0"
+
+   [[workflow.my_pipeline.steps]]
+   id = "step_one"
+   task = "First step: {input.prompt}"
+
+   [[workflow.my_pipeline.steps]]
+   id = "step_two"
+   task = "Second step using {steps.step_one.result}"
+   depends_on = ["step_one"]
    ```
-2. Run it with `hivemind workflow my_pipeline`. Steps are executed in order (each step depends on the previous). The same executor and agent stack as `hivemind run` is used; config (worker model, tools, memory) applies.
+   See [CLI](cli.md#hivemind-workflow-list-validate-run) for full DSL (output_schema, if:, retry, role, model).
+2. **Legacy format** still works: `[workflow]` with `name` and `steps = ["a", "b"]` runs steps in order with auto-generated ids.
+3. Commands: `hivemind workflow list`, `hivemind workflow validate my_pipeline`, `hivemind workflow run my_pipeline --input prompt="..."`. The same executor/agent stack as `hivemind run` is used; config (worker model, tools, memory) applies.
 
 ## Extending the swarm runtime
 
