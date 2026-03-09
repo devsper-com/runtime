@@ -1,6 +1,10 @@
 # Deploy docs to GitHub Pages (hivemind.rithul.dev)
 # - On push to main: deploy "latest" from current main
 # - On release published: deploy versioned docs from tag (e.g. 1.2.0)
+#
+# Required: Repo Settings → Pages → Build and deployment → Source:
+#   "Deploy from a branch" → Branch: gh-pages → / (root)
+# (This workflow pushes to gh-pages; it does not use the "GitHub Actions" deploy source.)
 
 name: Docs
 
@@ -70,8 +74,8 @@ jobs:
             echo "$out" | grep -v -E "MkDocs 2\.0|backward-incompatible|plugin system|theming system|No migration path|Closed contribution|Currently unlicensed|Our full analysis|squidfunk\.github\.io/mkdocs-material/blog" || true
             return $s
           }
-          run_filtered mike deploy --push --update-aliases "${{ steps.version.outputs.version }}" latest
-          run_filtered mike set-default --push latest
+          run_filtered mike deploy --push --allow-empty --update-aliases "${{ steps.version.outputs.version }}" latest
+          run_filtered mike set-default --push --allow-empty latest
 
       - name: Ensure CNAME on gh-pages
         run: |
@@ -127,8 +131,8 @@ jobs:
             echo "$out" | grep -v -E "MkDocs 2\.0|backward-incompatible|plugin system|theming system|No migration path|Closed contribution|Currently unlicensed|Our full analysis|squidfunk\.github\.io/mkdocs-material/blog" || true
             return $s
           }
-          run_filtered mike deploy --push "${{ steps.version.outputs.version }}"
-          run_filtered mike alias --push "${{ steps.version.outputs.version }}" stable
+          run_filtered mike deploy --push --allow-empty "${{ steps.version.outputs.version }}"
+          run_filtered mike alias --push --allow-empty "${{ steps.version.outputs.version }}" stable
 
       - name: Ensure CNAME on gh-pages
         run: |
