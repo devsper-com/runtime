@@ -54,7 +54,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # Suppress Material's MkDocs 2.0 warning (we pin mkdocs<2)
           run_filtered() {
-            out=$("$@" 2>&1); s=$?
+            set +e
+            out=$("$@" 2>&1)
+            s=$?
+            set -e
             echo "$out" | grep -v -E "MkDocs 2\.0|backward-incompatible|plugin system|theming system|No migration path|Closed contribution|Currently unlicensed|Our full analysis|squidfunk\.github\.io/mkdocs-material/blog" || true
             return $s
           }
@@ -101,7 +104,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # Suppress Material's MkDocs 2.0 warning (we pin mkdocs<2)
           run_filtered() {
-            out=$("$@" 2>&1); s=$?
+            set +e
+            out=$("$@" 2>&1)
+            s=$?
+            set -e
             echo "$out" | grep -v -E "MkDocs 2\.0|backward-incompatible|plugin system|theming system|No migration path|Closed contribution|Currently unlicensed|Our full analysis|squidfunk\.github\.io/mkdocs-material/blog" || true
             return $s
           }
