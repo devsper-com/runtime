@@ -9,7 +9,36 @@ const config = {
   projectName: 'hivemind',
   trailingSlash: false,
   onBrokenLinks: 'warn',
-  onBrokenMarkdownLinks: 'warn',
+  markdown: {
+    hooks: {
+      onBrokenMarkdownLinks: 'warn',
+    },
+  },
+
+  headTags: [
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'preconnect',
+        href: 'https://fonts.googleapis.com',
+      },
+    },
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'preconnect',
+        href: 'https://fonts.gstatic.com',
+        crossorigin: 'anonymous',
+      },
+    },
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'stylesheet',
+        href: 'https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap',
+      },
+    },
+  ],
 
   presets: [
     [
@@ -39,10 +68,11 @@ const config = {
   themeConfig: {
     colorMode: {
       defaultMode: 'dark',
-      respectPrefersColorScheme: true,
+      respectPrefersColorScheme: false,
     },
     navbar: {
       title: 'Hivemind',
+      hideOnScroll: true,
       logo: {
         alt: 'Hivemind',
         src: 'img/logo.svg',
@@ -57,6 +87,7 @@ const config = {
         {
           href: 'https://github.com/rithulkamesh/hivemind',
           position: 'right',
+          label: 'GitHub',
           className: 'header-github-link',
           'aria-label': 'GitHub',
         },
@@ -88,6 +119,9 @@ const config = {
       theme: require('prism-react-renderer').themes.github,
       darkTheme: require('prism-react-renderer').themes.vsDark,
       additionalLanguages: ['bash', 'toml', 'python'],
+    },
+    sidebar: {
+      hideable: false,
     },
   },
 

@@ -1,110 +1,710 @@
 /**
- * Hivemind docs – developer-focused, dark-first
+ * Hivemind docs — premium monochrome design system
+ * Next.js docs meets Linear: minimal, typographically confident, fast-feeling
  */
 
+/* ---------------------------------------------------------------------------
+   Design tokens (CSS custom properties)
+   --------------------------------------------------------------------------- */
 :root {
-  --ifm-font-family-base: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --ifm-font-family-monospace: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+  /* Palette */
+  --hm-bg: #0a0a0a;
+  --hm-surface: #111111;
+  --hm-border: #1f1f1f;
+  --hm-muted: #666666;
+  --hm-text: #fafafa;
+  --hm-text-passive: #e8e8e8;
+  --hm-accent: #e5e5e5;
+
+  /* Typography */
+  --hm-font-sans: "DM Sans", "Geist", system-ui, -apple-system, sans-serif;
+  --hm-font-mono: "JetBrains Mono", "Geist Mono", ui-monospace, monospace;
+
+  /* Layout — compact, dense */
+  --hm-sidebar-width: 200px;
+  --hm-prose-width: 65ch;
+  --hm-content-max: 80ch;
+  --doc-sidebar-width: 200px;
+  --hm-space-xs: 0.25rem;
+  --hm-space-sm: 0.5rem;
+  --hm-space-md: 0.75rem;
+  --hm-space-lg: 1rem;
+  --hm-space-xl: 1.25rem;
+
+  /* Motion */
+  --hm-transition: 100ms opacity ease;
 }
 
-[data-theme='dark'] {
-  --ifm-background-color: #0f172a;
-  --ifm-background-surface-color: #1e293b;
-  --ifm-color-primary: #34d399;
-  --ifm-color-primary-dark: #2dd4a0;
-  --ifm-color-primary-darker: #10b981;
-  --ifm-color-primary-darkest: #059669;
-  --ifm-color-primary-light: #6ee7b7;
-  --ifm-color-primary-lighter: #a7f3d0;
-  --ifm-color-primary-lightest: #d1fae5;
-  --ifm-navbar-background-color: #0f172a;
-  --ifm-footer-background-color: #0f172a;
+/* Force dark theme only */
+[data-theme="light"] {
+  --hm-bg: #0a0a0a;
+  --hm-surface: #111111;
+  --hm-border: #1f1f1f;
+  --hm-muted: #666666;
+  --hm-text: #fafafa;
+  --hm-accent: #e5e5e5;
 }
 
-/* Hero on home page */
-.hero {
-  padding: 4rem 0 5rem;
-  text-align: center;
+html {
+  color-scheme: dark;
 }
 
-.hero__title {
-  font-size: 3rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
+body {
+  background: var(--hm-bg);
+  color: var(--hm-text);
+  font-family: var(--hm-font-sans);
 }
 
-.hero__subtitle {
-  font-size: 1.25rem;
-  color: var(--ifm-color-emphasis-700);
-  margin-bottom: 0.5rem;
+/* Override Docusaurus defaults to use our tokens */
+[data-theme="dark"] {
+  --ifm-background-color: var(--hm-bg);
+  --ifm-background-surface-color: var(--hm-surface);
+  --ifm-color-primary: var(--hm-accent);
+  --ifm-color-content: var(--hm-text);
+  --ifm-color-content-secondary: var(--hm-text-passive);
+  --ifm-font-family-base: var(--hm-font-sans);
+  --ifm-font-family-monospace: var(--hm-font-mono);
+  --ifm-navbar-background-color: var(--hm-bg);
+  --ifm-footer-background-color: var(--hm-bg);
+  --ifm-toc-border-color: var(--hm-border);
+  --ifm-code-background: #0f0f0f;
+  --ifm-link-color: var(--hm-text);
+  --ifm-link-hover-color: var(--hm-accent);
 }
 
-.hero__tagline {
-  font-size: 1.1rem;
-  color: var(--ifm-color-emphasis-600);
-  max-width: 560px;
-  margin: 0 auto 1.5rem;
-  line-height: 1.6;
-}
-
-.hero__install {
-  margin-bottom: 2rem;
-}
-
-.hero__install code {
-  display: inline-block;
-  padding: 0.5rem 1rem;
-  background: var(--ifm-code-background);
-  border-radius: 6px;
-  font-size: 1rem;
-  margin-right: 1rem;
-}
-
-.hero__cli {
-  color: var(--ifm-color-emphasis-600);
-  font-size: 0.95rem;
-}
-
-.hero__links {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.hero__links .button {
-  margin: 0;
-}
-
-/* Code blocks */
-.prism-code {
-  font-size: 0.9rem;
-  border-radius: 6px;
-}
-
-/* Navbar */
+/* ---------------------------------------------------------------------------
+   Navbar — minimal, compact
+   --------------------------------------------------------------------------- */
 .navbar {
-  box-shadow: 0 1px 0 var(--ifm-toc-border-color);
+  background: var(--hm-bg) !important;
+  border-bottom: 1px solid var(--hm-border);
+  box-shadow: none;
+  padding: var(--hm-space-sm) var(--hm-space-lg);
+  min-height: 48px;
+}
+
+.navbar__inner {
+  max-width: none;
+}
+
+.navbar__title {
+  font-family: var(--hm-font-mono) !important;
+  font-size: 0.75rem !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--hm-text) !important;
 }
 
 .navbar__link {
+  font-size: 0.8125rem;
   font-weight: 500;
+  color: var(--hm-muted) !important;
+  transition: var(--hm-transition);
 }
 
-/* Sidebar */
+.navbar__link:hover {
+  color: var(--hm-text) !important;
+  opacity: 0.9;
+}
+
+.navbar__logo {
+  display: none;
+}
+
+/* Hide logo img, show text wordmark only */
+.navbar__brand {
+  font-family: var(--hm-font-mono) !important;
+  font-size: 0.75rem !important;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--hm-text) !important;
+}
+
+.navbar__brand img {
+  display: none;
+}
+
+/* Nav: no icons, text only */
+.navbar .navbar__link svg,
+.navbar .navbar__link img,
+.header-github-link svg,
+.header-github-link img {
+  display: none;
+}
+
+.header-github-link:hover {
+  opacity: 0.9;
+}
+
+/* Single theme: hide color mode toggle */
+.navbar__item[class*="colorModeToggle"],
+[class*="colorModeToggle"] {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Sidebar — 240px, no fill, utilitarian
+   --------------------------------------------------------------------------- */
+/* Override theme's 300px sidebar */
+.theme-doc-sidebar-container,
+[class*="sidebar"] {
+  --doc-sidebar-width: var(--hm-sidebar-width);
+}
+
+.theme-doc-sidebar-container {
+  width: var(--hm-sidebar-width);
+  background: transparent !important;
+}
+
+.menu {
+  padding: var(--hm-space-md) 0 var(--hm-space-md) var(--hm-space-xs);
+}
+
+.menu__list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.menu__list-item {
+  margin: 0;
+}
+
+/* Group headers: title case, compact */
+.menu__list-item-category > .menu__list-item-collapsible {
+  font-family: var(--hm-font-mono) !important;
+  font-size: 9px !important;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: var(--hm-muted) !important;
+  font-weight: 500;
+  padding: var(--hm-space-md) 0 var(--hm-space-xs) 0;
+  margin-top: var(--hm-space-sm);
+}
+
+.menu__list-item-category:first-child > .menu__list-item-collapsible {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* Inactive links */
 .menu__link {
-  font-size: 0.9375rem;
+  font-size: 0.8125rem;
+  color: #555555 !important;
+  border-left: 2px solid transparent;
+  padding: var(--hm-space-xs) 0 var(--hm-space-xs) var(--hm-space-md);
+  margin-left: 0;
+  transition: var(--hm-transition);
 }
 
+.menu__link:hover {
+  color: var(--hm-text) !important;
+  opacity: 0.9;
+}
+
+/* Active item: white text + 2px left border */
 .menu__link--active {
-  font-weight: 600;
+  color: var(--hm-text) !important;
+  font-weight: 500;
+  border-left: 2px solid var(--hm-text);
 }
 
-/* Tables */
-table {
+/* Sidebar: no category carets (removes broken icon) */
+.menu__link--sublist-caret::after {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Breadcrumb — plain muted mono, no icons
+   --------------------------------------------------------------------------- */
+.theme-doc-breadcrumbs {
+  margin-bottom: var(--hm-space-md);
+}
+
+.theme-doc-breadcrumbs .breadcrumbs {
+  list-style: none;
+  padding-left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0;
+}
+
+.theme-doc-breadcrumbs .breadcrumbs__item {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Hide home icon; show "Overview" as text */
+.theme-doc-breadcrumbs .breadcrumbHomeIcon_YNFT,
+.theme-doc-breadcrumbs .breadcrumbs__link svg,
+.theme-doc-breadcrumbs .breadcrumbs__link img {
+  display: none !important;
+}
+
+.theme-doc-breadcrumbs .breadcrumbs__link[href="/"]::before {
+  content: "Overview";
+}
+
+.theme-doc-breadcrumbs .breadcrumbs__link,
+.theme-doc-breadcrumbs .breadcrumbs__item {
+  font-family: var(--hm-font-mono) !important;
+  font-size: 0.8125rem;
+  color: var(--hm-muted) !important;
+}
+
+.theme-doc-breadcrumbs .breadcrumbs__link:hover {
+  color: var(--hm-text) !important;
+}
+
+/* Plain "Overview / Introduction" — slash separator between items */
+.theme-doc-breadcrumbs .breadcrumbs__item + .breadcrumbs__item::before {
+  content: "/";
+  color: var(--hm-muted);
+  margin-right: 0.35rem;
+  pointer-events: none;
+}
+
+.theme-doc-breadcrumbs .breadcrumb__separator {
+  display: none;
+}
+
+/* Remove pill/chip and version badge */
+.theme-doc-breadcrumbs .badge,
+.theme-doc-version-badge {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Doc content — 65ch prose, clean
+   --------------------------------------------------------------------------- */
+.main-wrapper {
+  background: var(--hm-bg);
+}
+
+/* Doc layout: compact container */
+.container.padding-top--md.padding-bottom--lg,
+[class*="mainWrapper"] .container {
+  padding-top: var(--hm-space-lg) !important;
+  padding-bottom: var(--hm-space-xl) !important;
+  padding-left: var(--hm-space-lg) !important;
+  padding-right: var(--hm-space-lg) !important;
+}
+
+.markdown {
+  max-width: var(--hm-prose-width);
   font-size: 0.9375rem;
+  line-height: 1.65;
+}
+
+.markdown h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: var(--hm-space-lg);
+  letter-spacing: -0.02em;
+}
+
+.markdown h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-top: 1.75rem;
+  margin-bottom: var(--hm-space-sm);
+  padding-bottom: var(--hm-space-xs);
+  border-bottom: 1px solid var(--hm-border);
+}
+
+.markdown h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: var(--hm-space-lg);
+  margin-bottom: var(--hm-space-xs);
+}
+
+.markdown p {
+  color: var(--hm-text-passive);
+  margin-bottom: var(--hm-space-md);
+}
+
+.markdown li {
+  color: var(--hm-text-passive);
+}
+
+.markdown li strong {
+  color: var(--hm-text);
+}
+
+.markdown a {
+  color: var(--hm-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: var(--hm-transition);
+}
+
+.markdown a:hover {
+  color: var(--hm-accent);
+  opacity: 0.95;
+}
+
+/* Version badge is hidden in breadcrumb block above */
+
+/* ---------------------------------------------------------------------------
+   Quick links (Overview page) — borderless definition list style
+   --------------------------------------------------------------------------- */
+[class*="docItemContainer"] .markdown ul:has(li a[href^="/docs/"]) {
+  list-style: none;
+  padding-left: 0;
+  border: none;
+}
+
+[class*="docItemContainer"] .markdown ul:has(li a[href^="/docs/"]) li a::after {
+  content: "\00A0\2014\00A0";
+  font-weight: 400;
+  color: var(--hm-text-passive);
+}
+
+[class*="docItemContainer"] .markdown ul li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--hm-space-sm);
+  margin-bottom: var(--hm-space-xs);
+}
+
+[class*="docItemContainer"] .markdown ul li a {
+  font-weight: 500;
+  color: var(--hm-text);
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: color 0.2s ease;
+}
+[class*="docItemContainer"] .markdown ul li a:hover {
+  color: var(--hm-accent);
+}
+
+[class*="docItemContainer"] .markdown ul li {
+  color: var(--hm-text-passive);
+}
+
+[class*="docItemContainer"] .markdown ul li {
+  flex-wrap: wrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Code blocks — #0f0f0f bg, 1px border, monochrome
+   --------------------------------------------------------------------------- */
+.prism-code {
+  background: #0f0f0f !important;
+  border: 1px solid var(--hm-border);
+  border-radius: 0;
+  font-family: var(--hm-font-mono) !important;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  padding: var(--hm-space-md) !important;
+}
+
+/* Single-color code (optional dim tint — use very subtle so it's almost monochrome) */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #6b6b6b;
+}
+
+.token.punctuation {
+  color: #888888;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant {
+  color: #a3a3a3;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.inserted {
+  color: #d4d4d4;
+}
+
+/* Inline code */
+.markdown code {
+  background: #0f0f0f;
+  border: 1px solid var(--hm-border);
+  padding: 0.2em 0.4em;
+  font-size: 0.875em;
+  font-family: var(--hm-font-mono) !important;
+  color: var(--hm-accent);
+  border-radius: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Tables
+   --------------------------------------------------------------------------- */
+.markdown table {
+  font-size: 0.9375rem;
+  border: 1px solid var(--hm-border);
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--hm-border);
+  padding: var(--hm-space-sm) var(--hm-space-md);
+  text-align: left;
+}
+
+.markdown th {
+  font-weight: 600;
+  color: var(--hm-text);
+  background: var(--hm-surface);
+}
+
+.markdown td {
+  color: var(--hm-text);
+}
+
+/* ---------------------------------------------------------------------------
+   Doc paginator — minimal right-aligned text link with arrow
+   --------------------------------------------------------------------------- */
+.pagination-nav {
+  margin-top: var(--hm-space-xl);
+  padding-top: var(--hm-space-lg);
+  border: none;
+  box-shadow: none;
+}
+
+.pagination-nav__link {
+  border: 1px solid var(--hm-border) !important;
+  border-radius: 0;
+  background: transparent !important;
+  transition: var(--hm-transition);
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--hm-muted) !important;
+  opacity: 0.9;
+}
+
+.pagination-nav__label {
+  font-family: var(--hm-font-mono);
+  font-size: 0.8125rem;
+}
+
+.pagination-nav__sublabel {
+  display: none;
+}
+
+/* Next only: right-aligned, arrow */
+.pagination-nav__item--next {
+  margin-left: auto;
+}
+
+.pagination-nav__item--next .pagination-nav__link {
+  text-align: right;
+}
+
+.pagination-nav__item--next .pagination-nav__label::after {
+  content: " →";
+}
+
+/* ---------------------------------------------------------------------------
+   Footer — minimal, or hidden on landing
+   --------------------------------------------------------------------------- */
+.footer {
+  background: var(--hm-bg) !important;
+  border-top: 1px solid var(--hm-border);
+  padding: var(--hm-space-lg) var(--hm-space-lg);
+  box-shadow: none;
+}
+
+.footer__title {
+  font-family: var(--hm-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--hm-muted);
+}
+
+.footer__link-item {
+  color: var(--hm-muted);
+  transition: var(--hm-transition);
+}
+
+.footer__link-item:hover {
+  color: var(--hm-text);
+  opacity: 0.9;
+}
+
+.footer__copyright {
+  color: var(--hm-muted);
+  font-size: 0.75rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Homepage — terminal-style, compact, with left padding
+   --------------------------------------------------------------------------- */
+.landing-page {
+  min-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  padding: var(--hm-space-xl) var(--hm-space-lg) var(--hm-space-xl) var(--hm-space-lg);
+  padding-left: max(var(--hm-space-lg), env(safe-area-inset-left));
+  max-width: 720px;
+  margin: 0 auto;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.landing-page .hero-wordmark {
+  font-family: var(--hm-font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--hm-muted);
+  margin-bottom: 2.5rem;
+}
+
+.landing-page .hero-headline {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  color: var(--hm-text);
+  margin-bottom: var(--hm-space-md);
+  max-width: 14ch;
+}
+
+.landing-page .hero-description {
+  font-size: 0.9375rem;
+  color: var(--hm-muted);
+  margin-bottom: var(--hm-space-lg);
+  max-width: 40ch;
+  line-height: 1.55;
+}
+
+.landing-page .hero-install {
+  display: inline-block;
+  font-family: var(--hm-font-mono);
+  font-size: 0.8125rem;
+  background: #0f0f0f;
+  border: 1px solid var(--hm-border);
+  padding: var(--hm-space-sm) var(--hm-space-md);
+  color: var(--hm-text);
+  margin-bottom: var(--hm-space-xl);
+}
+
+.landing-page .hero-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hm-space-lg);
+}
+
+.landing-page .hero-links a {
+  font-family: var(--hm-font-mono);
+  font-size: 0.8125rem;
+  color: var(--hm-muted);
+  text-decoration: none;
+  transition: var(--hm-transition);
+}
+
+.landing-page .hero-links a:hover {
+  color: var(--hm-text);
+  opacity: 0.9;
+}
+
+/* No footer on landing */
+.landing-page ~ .footer,
+body:has(.landing-page) .footer {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   TOC (right sidebar) — muted default, only active item white, smooth animation
+   --------------------------------------------------------------------------- */
+.table-of-contents {
+  font-family: var(--hm-font-mono);
+  font-size: 0.8125rem;
 }
 
 .table-of-contents__link {
-  font-size: 0.875rem;
+  color: var(--hm-muted) !important;
+  display: block;
+  padding: var(--hm-space-xs) 0;
+  border-left: 2px solid transparent;
+  margin-left: -2px;
+  padding-left: var(--hm-space-sm);
+  transition: color 0.25s ease, border-color 0.25s ease;
+}
+
+.table-of-contents__link:hover {
+  color: var(--hm-text) !important;
+}
+
+/* Only the in-view heading gets active (white + border); rest stay muted. Transition animates when scroll changes active item. */
+.table-of-contents__link--active {
+  color: var(--hm-text) !important;
+  border-left-color: var(--hm-text);
+}
+
+/* All links get toc-highlight; only the one with --active should be white */
+.table-of-contents__link.toc-highlight:not(.table-of-contents__link--active) {
+  color: var(--hm-muted) !important;
+  border-left-color: transparent !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Hover states — opacity only, no color shifts where possible
+   --------------------------------------------------------------------------- */
+a, button, .menu__link, .navbar__link {
+  transition: opacity 100ms ease;
+}
+
+/* ---------------------------------------------------------------------------
+   Page transition — 100ms opacity fade (handled by Docusaurus; no extra)
+   --------------------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------------------
+   Mobile — sidebar as hamburger, full-screen overlay
+   --------------------------------------------------------------------------- */
+@media (max-width: 996px) {
+  .navbar__toggle {
+    display: block;
+    color: var(--hm-text);
+  }
+
+  .menu__link--active {
+    border-left-color: var(--hm-text);
+  }
+
+  .theme-doc-sidebar-container {
+    width: 100%;
+  }
+
+  /* Overlay menu: same mono aesthetic */
+  .navbar-sidebar {
+    background: var(--hm-bg) !important;
+  }
+
+  .navbar-sidebar__brand {
+    font-family: var(--hm-font-mono);
+    font-size: 0.875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--hm-text);
+  }
+
+  .menu__link {
+    font-family: var(--hm-font-sans);
+  }
+}
+
+/* Hide duplicate "Docs" in navbar on mobile if needed */
+@media (max-width: 996px) {
+  .navbar__item:nth-child(2) {
+    display: none;
+  }
 }

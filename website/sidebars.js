@@ -1,16 +1,22 @@
 /** @type {import('@docusaurus/plugin-content-docs').SidebarsConfig} */
 const sidebars = {
   docs: [
-    'index',
-    'introduction',
+    { type: 'doc', id: 'index', label: 'Overview' },
+    { type: 'doc', id: 'introduction', label: 'Introduction' },
     {
       type: 'category',
       label: 'Getting started',
-      items: ['configuration', 'cli', 'examples'],
+      collapsed: false,
+      items: [
+        { type: 'link', label: 'Installation', href: '/docs' },
+        'configuration',
+        'examples',
+      ],
     },
     {
       type: 'category',
       label: 'Concepts',
+      collapsed: false,
       items: [
         'architecture',
         'swarm_runtime',
@@ -19,10 +25,25 @@ const sidebars = {
         'providers',
       ],
     },
-    'tui',
-    'development',
-    'release_checklist',
-    'faq',
+    {
+      type: 'category',
+      label: 'Reference',
+      collapsed: false,
+      items: [
+        { type: 'doc', id: 'cli', label: 'CLI Reference' },
+        { type: 'link', label: 'Configuration Schema', href: '/docs/configuration#schema-v1-format' },
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Contributing',
+      collapsed: false,
+      items: [
+        'development',
+        'release_checklist',
+        'faq',
+      ],
+    },
   ],
 };
 
