@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-03-09
+
+### Added
+
+- **`hivemind build`** — Autonomous application builder: generate a working repository from an app description. Orchestrates scaffold → implement → test → debug loop with isolated sandbox and code intelligence (repo index, dependency graph). Use `hivemind build "fastapi todo app"` or `-o ./output` for custom output directory.
+- **`hivemind credentials`** — Manage API keys and secrets via the OS keychain (keyring): `set`, `list`, `delete`, `migrate` from `.env`/config, `export` for sourcing. Documented in [CLI](docs/cli.md). Config resolver injects keyring credentials when env vars are not set.
+- **`hivemind upgrade`** — Check for updates (PyPI), show changelog between versions, detect installer (pip/uv), and perform upgrade. Supports `--check`, `-y`, `--version`, `--dry-run`. Optional in-session update notice when a new version is available.
+- **Credentials module** (`hivemind/credentials/`): `CredentialStore`, keyring-backed storage, migration from config/`.env`.
+- **Upgrade module** (`hivemind/upgrade/`): version check with 24h cache, changelog fetch/parse, installer detection, notifier.
+- **Dev module** (`hivemind/dev/`): builder, scaffold, sandbox, debugger, repo_index for autonomous app building.
+- New dependency: `keyring>=24.0` for secure credential storage.
+
+### Changed
+
+- Config resolution injects credentials from the keyring when the corresponding environment variables are not set, so providers work without storing secrets in config files.
+- TUI: dashboard and dev view updates.
+- Docs: CLI reference includes `credentials`; configuration and FAQ updated.
+
 ## [1.1.1] - 2026-03-09
 
 ### Changed
