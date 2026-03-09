@@ -741,20 +741,80 @@ def _run_tools(args: object) -> int:
     return 0
 
 
-def _run_cache(subcommand: str) -> int:
-    """Cache subcommand: stats | clear."""
+def _run_cache(subcommand: str, threshold: float | None = None) -> int:
+    """Cache subcommand: stats | clear | tune."""
     from hivemind.cache import TaskCache
+    from pathlib import Path
 
+    db_path = Path(".hivemind") / "task_cache.db"
     cache = TaskCache()
     if subcommand == "stats":
         st = cache.stats()
-        print(f"Cached task results: {st['entries']}")
+        print(f"Cached task results (exact): {st['entries']}")
+        try:
+            from hivemind.cache.store import get_default_cache_store
+            store = get_default_cache_store(db_path)
+            sst = store.stats()
+            semantic_count = sst.get("semantic_entries", 0)
+            if semantic_count > 0:
+                try:
+                    from hivemind.config import get_config
+                    cfg = get_config()
+                    th = getattr(getattr(cfg, "cache", None), "similarity_threshold", 0.92)
+                except Exception:
+                    th = 0.92
+                print(f"Semantic cache: enabled (threshold: {th})")
+                print(f"Cache entries: {st['entries'] + semantic_count} tasks")
+                print("Hit rate: N/A (run with semantic cache to collect)")
+                print("Avg similarity: N/A")
+                print("Est. tokens saved: N/A")
+            else:
+                print("Semantic cache: disabled or empty")
+        except Exception:
+            pass
         return 0
     if subcommand == "clear":
         cache.clear()
+        try:
+            from hivemind.cache.store import get_default_cache_store
+            get_default_cache_store(db_path).clear()
+        except Exception:
+            pass
         print("Cache cleared.")
         return 0
-    print("Usage: hivemind cache stats | hivemind cache clear", file=sys.stderr)
+    if subcommand == "tune":
+        try:
+            from hivemind.cache.task_cache import SemanticTaskCache
+            from hivemind.cache.embedding_index import _cosine_sim, bytes_to_embedding
+            sem = SemanticTaskCache(
+                similarity_threshold=threshold or 0.92,
+                max_age_hours=168.0,
+            )
+            entries = sem.store.list_semantic_entries()
+            if len(entries) < 2:
+                print("Need at least 2 semantic cache entries to tune.")
+                return 0
+            # Use last 50
+            entries = entries[-50:]
+            # Load embeddings
+            vecs = [bytes_to_embedding(e[0]) for e in entries]
+            ths = [0.85, 0.88, 0.90, 0.92, 0.95]
+            print("Threshold | Entries that would match self | Avg other-match count")
+            print("----------|-------------------------------|----------------------")
+            for th in ths:
+                self_ok = sum(1 for i in range(len(vecs)) if _cosine_sim(vecs[i], vecs[i]) >= th)
+                other_count = 0
+                for i in range(len(vecs)):
+                    for j in range(len(vecs)):
+                        if i != j and _cosine_sim(vecs[i], vecs[j]) >= th:
+                            other_count += 1
+                avg_other = other_count / len(vecs) if vecs else 0
+                print(f"  {th:.2f}     | {self_ok}/{len(vecs)}                          | {avg_other:.1f}")
+            return 0
+        except Exception as e:
+            print(f"Cache tune failed: {e}", file=sys.stderr)
+            return 1
+    print("Usage: hivemind cache stats | hivemind cache clear | hivemind cache tune [--threshold 0.90]", file=sys.stderr)
     return 1
 
 
@@ -1167,6 +1227,7 @@ Examples:
 Examples:
   hivemind cache stats
   hivemind cache clear
+  hivemind cache tune [--threshold 0.90]
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1174,10 +1235,16 @@ Examples:
         "subcommand",
         nargs="?",
         default="stats",
-        choices=["stats", "clear"],
-        help="stats | clear",
+        choices=["stats", "clear", "tune"],
+        help="stats | clear | tune",
     )
-    cache_parser.set_defaults(func=lambda a: _run_cache(a.subcommand))
+    cache_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Similarity threshold for tune (e.g. 0.90)",
+    )
+    cache_parser.set_defaults(func=lambda a: _run_cache(a.subcommand, getattr(a, "threshold", None)))
 
     build_parser = subparsers.add_parser(
         "build",

@@ -9,6 +9,9 @@ class events(Enum):
     TASK_STARTED = "task_started"
     TASK_COMPLETED = "task_completed"
     TASK_FAILED = "task_failed"
+    TASK_CACHE_HIT = "task_cache_hit"  # v1.6: payload task_id, similarity, original_description
+    TASK_CACHE_MISS = "task_cache_miss"  # v1.6: payload task_id
+    TASK_MODEL_SELECTED = "task_model_selected"  # v1.6: payload task_id, tier, model
     AGENT_STARTED = "agent_started"
     AGENT_FINISHED = "agent_finished"
     PLANNER_STARTED = "planner_started"

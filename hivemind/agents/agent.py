@@ -1,4 +1,6 @@
+import asyncio
 import json
+import os
 import re
 from datetime import datetime, timezone
 
@@ -81,6 +83,46 @@ def _parse_tool_call(text: str) -> tuple[str | None, dict | None]:
     return name, args if isinstance(args, dict) else {}
 
 
+def _parse_all_tool_calls(text: str) -> list[tuple[str, dict]]:
+    """Return all (tool_name, args) pairs found in text (multiple TOOL:/INPUT: blocks)."""
+    out: list[tuple[str, dict]] = []
+    rest = text
+    while True:
+        name_m = TOOL_NAME_PATTERN.search(rest)
+        if not name_m:
+            break
+        name = name_m.group(1).strip()
+        after_name = rest[name_m.end() :]
+        input_m = INPUT_PREFIX.search(after_name)
+        if not input_m:
+            break
+        start = input_m.end()
+        rest = after_name[start:].lstrip()
+        if not rest.startswith("{"):
+            out.append((name, {}))
+            continue
+        depth = 0
+        end = 0
+        for i, c in enumerate(rest):
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end == 0:
+            out.append((name, {}))
+            continue
+        try:
+            args = json.loads(rest[:end])
+        except json.JSONDecodeError:
+            args = {}
+        out.append((name, args if isinstance(args, dict) else {}))
+        rest = rest[end:].lstrip()
+    return out
+
+
 class Agent:
     def __init__(
         self,
@@ -92,6 +134,7 @@ class Agent:
         store_result_to_memory: bool = False,
         reasoning_store=None,
         user_task: str | None = None,
+        parallel_tools: bool = True,
     ):
         self.model_name = model_name
         self.event_log = event_log or EventLog()
@@ -101,8 +144,10 @@ class Agent:
         self.store_result_to_memory = store_result_to_memory
         self.reasoning_store = reasoning_store
         self.user_task = user_task
+        self.parallel_tools = parallel_tools and os.environ.get("HIVEMIND_DISABLE_PARALLEL_TOOLS", "").strip() != "1"
 
-    def run(self, task: Task) -> str:
+    def run(self, task: Task, model_override: str | None = None) -> str:
+        model = model_override if model_override else self.model_name
         self._emit(events.AGENT_STARTED, {"task_id": task.id})
         self._emit(events.TASK_STARTED, {"task_id": task.id})
 
@@ -125,14 +170,14 @@ class Agent:
         role_prefix = role_config.prompt_prefix
 
         if self.use_tools:
-            text = self._run_with_tools(task, memory_section, role_prefix=role_prefix)
+            text = self._run_with_tools(task, memory_section, role_prefix=role_prefix, model_name=model)
         else:
             prompt = PROMPT_TEMPLATE.format(
                 role_prefix=role_prefix,
                 task_description=task.description,
                 memory_section=memory_section,
             )
-            text = generate(self.model_name, prompt)
+            text = generate(model, prompt)
 
         task.status = TaskStatus.COMPLETED
         task.result = text
@@ -174,10 +219,17 @@ class Agent:
             record = index.ensure_embedding(record)
         store.store(record)
 
-    def _run_with_tools(self, task: Task, memory_section: str = "", role_prefix: str = "") -> str:
+    def _run_with_tools(
+        self,
+        task: Task,
+        memory_section: str = "",
+        role_prefix: str = "",
+        model_name: str | None = None,
+    ) -> str:
         from hivemind.tools.selector import get_tools_for_task
         from hivemind.tools.tool_runner import run_tool
 
+        model = model_name or self.model_name
         role = getattr(task, "role", None)
         task_type = role or "general"
         score_store = None
@@ -201,18 +253,57 @@ class Agent:
         conversation = [prompt]
         for _ in range(self.max_tool_iterations):
             full_prompt = "\n\n".join(conversation)
-            response = generate(self.model_name, full_prompt)
-            tool_name, tool_args = _parse_tool_call(response)
-            if tool_name is None:
+            response = generate(model, full_prompt)
+            tool_calls = _parse_all_tool_calls(response)
+            if not tool_calls:
                 return response.strip()
-            result = run_tool(tool_name, tool_args, task_type=task_type)
-            self._emit(
-                events.TOOL_CALLED,
-                {"task_id": task.id, "tool": tool_name, "result_preview": result[:200]},
-            )
+            if len(tool_calls) == 1 or not self.parallel_tools:
+                tool_name, tool_args = tool_calls[0]
+                result = run_tool(tool_name, tool_args, task_type=task_type)
+                self._emit(
+                    events.TOOL_CALLED,
+                    {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
+                )
+                conversation.append(f"Response:\n{response}")
+                conversation.append(f"Tool result ({tool_name}):\n{result or ''}")
+                continue
+            results = self._run_tools_parallel_sync(tool_calls, task_type, task)
             conversation.append(f"Response:\n{response}")
-            conversation.append(f"Tool result ({tool_name}):\n{result}")
+            for (tool_name, _), result in zip(tool_calls, results):
+                self._emit(
+                    events.TOOL_CALLED,
+                    {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
+                )
+                conversation.append(f"Tool result ({tool_name}):\n{result or ''}")
         return conversation[-1].strip() or "Max tool iterations reached."
+
+    def _run_tools_parallel_sync(
+        self,
+        tool_calls: list[tuple[str, dict]],
+        task_type: str,
+        task: Task,
+    ) -> list[str]:
+        """Run multiple tool calls in parallel (sync entry point)."""
+        from hivemind.tools.tool_runner import run_tool
+        loop = asyncio.new_event_loop()
+        try:
+            async def run_one(name: str, args: dict) -> str:
+                return await loop.run_in_executor(
+                    None, lambda n=name, a=args: run_tool(n, a, task_type=task_type)
+                )
+            async def run_all() -> list[str]:
+                tasks = [run_one(name, args) for name, args in tool_calls]
+                return list(await asyncio.gather(*tasks, return_exceptions=True))
+            raw = loop.run_until_complete(run_all())
+            out: list[str] = []
+            for r in raw:
+                if isinstance(r, Exception):
+                    out.append(f"Tool error: {type(r).__name__}: {r}")
+                else:
+                    out.append(r or "")
+            return out
+        finally:
+            loop.close()
 
     def _emit(self, event_type: events, payload: dict) -> None:
         self.event_log.append_event(

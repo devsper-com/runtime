@@ -196,7 +196,7 @@ def test_pause_stops_new_tasks():
 
     import asyncio
     orig_run = agent.run
-    def mock_run(task):
+    def mock_run(task, model_override=None):
         started.append(task.id)
         task.result = "ok"
         task.status = TaskStatus.COMPLETED

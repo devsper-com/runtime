@@ -21,6 +21,9 @@ The first existing project file wins (hivemind.toml before workflow.hivemind.tom
 | `workers` | int | 4 | Max concurrent tasks (worker pool size). |
 | `adaptive_planning` | bool | false | Whether to expand the DAG after task completion. |
 | `max_iterations` | int | 10 | Upper bound on planning/expansion. |
+| `speculative_execution` | bool | false | Allow speculative execution of tasks with one running dependency. |
+| `cache_enabled` | bool | false | Enable task result cache (exact and optionally semantic). |
+| `parallel_tools` | bool | true | (v1.6) Run independent tool calls in parallel within an agent turn. |
 
 ### `[models]`
 
@@ -28,8 +31,19 @@ The first existing project file wins (hivemind.toml before workflow.hivemind.tom
 |-----|------|---------|-------------|
 | `planner` | string | (inferred) | Model for the planner (e.g. `azure:gpt-4o`, `gpt-4o-mini`, or `"auto"`). |
 | `worker` | string | (inferred) | Model for agents (e.g. `azure:gpt-4o`, `gpt-4o-mini`, or `"auto"`). |
+| `fast` | string | (none) | (v1.6) Model for **simple** tasks (e.g. haiku/flash). Used when complexity routing is enabled. |
+| `quality` | string | (planner) | (v1.6) Model for **complex** tasks. Defaults to planner when not set. |
 
-Model names are passed to the provider router; use the same format as env (e.g. `gpt-4o`, or `azure:gpt-4o` if using Azure). Use **`"auto"`** for automatic model routing: the router picks a model by task type (planning vs execution) for cost/latency/quality balance. See [Providers](providers#automatic-model-routing).
+Model names are passed to the provider router; use the same format as env (e.g. `gpt-4o`, or `azure:gpt-4o` if using Azure). Use **`"auto"`** for automatic model routing: the router picks a model by task type (planning vs execution) for cost/latency/quality balance. See [Providers](providers#automatic-model-routing). With **complexity routing** (v1.6), simple tasks use `fast`, medium use `worker`, and complex use `quality`.
+
+### `[cache]` (v1.6)
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | true | Enable cache when swarm has `cache_enabled`. |
+| `semantic` | bool | false | Use embedding-based similarity lookup instead of exact match only. |
+| `similarity_threshold` | float | 0.92 | Min cosine similarity for a cache hit (tune per project). |
+| `max_age_hours` | float | 168 | Expire entries after this many hours (default 1 week). |
 
 ### `[memory]`
 

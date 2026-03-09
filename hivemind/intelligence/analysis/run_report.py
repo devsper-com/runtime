@@ -48,6 +48,12 @@ class RunReport:
     models_used: list[str]
     peak_parallelism: int
     plain_english_analysis: str | None
+    # v1.6
+    model_tier_breakdown: dict[str, int] | None = None  # simple/medium/complex counts
+    estimated_cost_without_routing: float | None = None
+    theoretical_sequential_duration: float | None = None
+    actual_duration: float | None = None
+    parallelism_efficiency: float | None = None
 
 
 def _find_log_path(events_dir: str | Path, run_id: str) -> str | None:
@@ -178,6 +184,7 @@ def build_report_from_events(run_id: str, events_dir: str | Path) -> RunReport:
     task_error: dict[str, str] = {}
     tools_by_task: dict[str, list[str]] = {}
     tool_failures_by_task: dict[str, list[str]] = {}
+    task_tier: dict[str, str] = {}  # v1.6: task_id -> simple|medium|complex
     root_task = ""
     started_ts: str | None = None
     finished_ts: str | None = None
@@ -206,6 +213,8 @@ def build_report_from_events(run_id: str, events_dir: str | Path) -> RunReport:
         elif typ == "tool_called" and task_id:
             tool = payload.get("tool") or "unknown"
             tools_by_task.setdefault(task_id, []).append(tool)
+        elif typ == "task_model_selected" and task_id:
+            task_tier[task_id] = payload.get("tier") or "medium"
         elif typ == "swarm_finished":
             finished_ts = ts_str
 
@@ -315,6 +324,24 @@ def build_report_from_events(run_id: str, events_dir: str | Path) -> RunReport:
     from hivemind.intelligence.analysis.cost_estimator import CostEstimator
     estimated_cost_usd = CostEstimator.estimate(tasks_list, [])
 
+    # v1.6: model tier breakdown
+    model_tier_breakdown: dict[str, int] = {}
+    for tid in task_tier:
+        t = task_tier[tid]
+        model_tier_breakdown[t] = model_tier_breakdown.get(t, 0) + 1
+
+    # v1.6: theoretical sequential duration and parallelism efficiency
+    theoretical_sequential_duration = sum(duration_by_task.values())
+    actual_duration = total_duration_seconds
+    parallelism_efficiency = (
+        (actual_duration / theoretical_sequential_duration)
+        if theoretical_sequential_duration and theoretical_sequential_duration > 0
+        else None
+    )
+
+    # v1.6: estimated cost without routing (placeholder; full impl would need per-task model)
+    estimated_cost_without_routing = None
+
     return RunReport(
         run_id=run_id,
         root_task=root_task or "unknown",
@@ -335,4 +362,9 @@ def build_report_from_events(run_id: str, events_dir: str | Path) -> RunReport:
         models_used=[],
         peak_parallelism=peak_parallelism,
         plain_english_analysis=None,
+        model_tier_breakdown=model_tier_breakdown or None,
+        estimated_cost_without_routing=estimated_cost_without_routing,
+        theoretical_sequential_duration=theoretical_sequential_duration if theoretical_sequential_duration else None,
+        actual_duration=actual_duration,
+        parallelism_efficiency=parallelism_efficiency,
     )

@@ -11,6 +11,7 @@ from hivemind.config.config_loader import (
 )
 from hivemind.config.schema import (
     AgentsConfig,
+    CacheConfig,
     HivemindConfigModel,
     MemoryConfig,
     ModelsConfig,
@@ -157,6 +158,12 @@ def _build_merged_raw(
         "memory": {"enabled": True, "store_results": True, "top_k": 5},
         "tools": {"enabled": None, "top_k": 0},
         "telemetry": {"enabled": True, "save_events": True},
+        "cache": {
+            "enabled": True,
+            "semantic": False,
+            "similarity_threshold": 0.92,
+            "max_age_hours": 168.0,
+        },
         "events_dir": ".hivemind/events",
         "data_dir": ".hivemind",
         "providers": {
@@ -220,6 +227,7 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
     memory = MemoryConfig(**(merged.get("memory") or {}))
     tools = ToolsConfig(**(merged.get("tools") or {}))
     telemetry = TelemetryConfig(**(merged.get("telemetry") or {}))
+    cache = CacheConfig(**(merged.get("cache") or {}))
     providers_data = merged.get("providers") or {}
     azure_data = providers_data.get("azure") or {}
     providers = ProvidersConfig(azure=ProviderAzureConfig(**azure_data))
@@ -231,6 +239,7 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
         memory=memory,
         tools=tools,
         telemetry=telemetry,
+        cache=cache,
         events_dir=merged.get("events_dir", ".hivemind/events"),
         data_dir=merged.get("data_dir", ".hivemind"),
         providers=providers,

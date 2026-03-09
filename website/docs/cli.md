@@ -359,16 +359,25 @@ hivemind replay abc123-run-id
 
 ---
 
-### `hivemind cache` (stats | clear)
+### `hivemind cache` (stats | clear | tune)
 
-Shows or clears the task result cache.
+Shows, clears, or tunes the task result cache.
+
+**Subcommands:**
+
+- **`stats`** — Cached task count (exact match). When the semantic cache is enabled and has entries, also shows: semantic cache threshold, total entries, and placeholders for hit rate / avg similarity / est. tokens saved (when available).
+- **`clear`** — Deletes all cached results (exact and semantic).
+- **`tune`** — Re-evaluates the last 50 semantic cache entries at different similarity thresholds (0.85–0.95) so you can calibrate `similarity_threshold`; use `--threshold` to set the current threshold for comparison.
 
 **Examples:**
 
 ```bash
 hivemind cache stats
 hivemind cache clear
+hivemind cache tune --threshold 0.90
 ```
+
+**Environment:** `HIVEMIND_DISABLE_SEMANTIC_CACHE=1` disables semantic cache lookup in the executor (for debugging).
 
 ---
 

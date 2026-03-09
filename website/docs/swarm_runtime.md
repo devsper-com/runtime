@@ -27,11 +27,13 @@ If something goes wrong, **task_failed** can be used; the scheduler may still ma
    - Loop: while not `scheduler.is_finished()`, get ready tasks, run each in a worker (with a concurrency limit), then `mark_completed(task_id)`.  
    - Each “run” is delegated to an **Agent**.  
    - If adaptive planning is enabled, the planner can add new tasks after a task completes; the scheduler accepts them and they enter the same loop.
+   - **Fast path (v1.6):** Semantic task cache (embedding-based lookup), model complexity routing (simple → fast model, complex → quality model), and **streaming DAG** unblocking (dependents start as soon as a task completes). See [Configuration](configuration#cache-v16) for `[cache]` and `[models]` fast/quality.
 
 4. **Agent runtime**  
    - For one task: build prompt (task description + optional memory context + optional tools list).  
    - Call LLM; if tools are enabled, parse tool calls, run tools via the tool runner, append results to the conversation, and repeat until the agent returns a final answer.  
-   - Set `task.result` and emit `task_completed`.
+   - Set `task.result` and emit `task_completed`.  
+   - **Parallel tools (v1.6):** When multiple tool calls appear in one turn, independent tools run in parallel (config `swarm.parallel_tools`; bypass with `HIVEMIND_DISABLE_PARALLEL_TOOLS=1`).
 
 ## Running a Swarm (Code Snippets)
 

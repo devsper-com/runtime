@@ -10,6 +10,15 @@ class SwarmConfig(BaseModel):
     max_iterations: int = 10
     speculative_execution: bool = False
     cache_enabled: bool = False
+    parallel_tools: bool = True  # v1.6: run independent tool calls in parallel within agents
+
+
+class CacheConfig(BaseModel):
+    """v1.6: cache section for semantic task cache."""
+    enabled: bool = True
+    semantic: bool = False
+    similarity_threshold: float = 0.92
+    max_age_hours: float = 168.0  # 1 week
 
 
 class AgentsConfig(BaseModel):
@@ -20,6 +29,8 @@ class AgentsConfig(BaseModel):
 class ModelsConfig(BaseModel):
     planner: str = "mock"
     worker: str = "mock"
+    fast: str | None = None  # v1.6: simple tier (e.g. haiku/flash)
+    quality: str | None = None  # v1.6: complex tier (defaults to planner)
 
 
 class MemoryConfig(BaseModel):
@@ -58,6 +69,7 @@ class HivemindConfigModel(BaseModel):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
     events_dir: str = ".hivemind/events"
     data_dir: str = ".hivemind"
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)

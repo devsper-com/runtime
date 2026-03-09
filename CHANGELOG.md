@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - TBD
+
+### Added
+
+- **Fast Path Execution Engine (v1.6)** — Four independent optimizations for the common case:
+  - **Semantic task cache** — Embedding-based similarity lookup instead of exact match only. Configure `[cache]` with `semantic = true`, `similarity_threshold`, `max_age_hours`. New events: `TASK_CACHE_HIT` (task_id, similarity, original_description), `TASK_CACHE_MISS`. Bypass: `HIVEMIND_DISABLE_SEMANTIC_CACHE=1`.
+  - **Model complexity routing** — Route tasks to fast / worker / quality models by tier (simple, medium, complex). New `[models]` keys: `fast`, `quality`. New event: `TASK_MODEL_SELECTED` (task_id, tier, model). RunReport: `model_tier_breakdown`, `estimated_cost_without_routing`, `theoretical_sequential_duration`, `actual_duration`, `parallelism_efficiency`.
+  - **Streaming DAG unblocking** — Dependents start as soon as each task completes (continuous unblocking) instead of wave-based execution.
+  - **Parallel tool execution** — Independent tool calls in a single agent turn run in parallel. Config: `swarm.parallel_tools` (default true). Bypass: `HIVEMIND_DISABLE_PARALLEL_TOOLS=1`.
+- **CLI: `hivemind cache tune [--threshold 0.90]`** — Re-evaluate last 50 semantic cache entries at different thresholds for calibration.
+- **CLI: `hivemind cache stats`** — Now shows semantic cache status (threshold, entries, hit rate / avg similarity / tokens saved when available).
+- **Config:** `[cache]` section (`enabled`, `semantic`, `similarity_threshold`, `max_age_hours`), `[swarm]` `parallel_tools`, `[models]` `fast` and `quality`.
+- **Tests:** `tests/test_v16.py` (semantic cache, complexity router, streaming DAG, parallel tools). **Benchmarks:** `tests/benchmarks/test_v16_perf.py` (cache lookup, complexity classification, parallel tools, streaming vs wave).
+
+### Changed
+
+- Executor uses streaming DAG by default; wave-based execution when `streaming_dag=False`.
+- Agent accepts `model_override` and `parallel_tools`; tool loop can run multiple tool calls in parallel when `parallel_tools` is true.
+
 ## [1.5.0] - TBD
 
 ### Added

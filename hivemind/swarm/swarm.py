@@ -92,6 +92,8 @@ class Swarm:
                 cfg.swarm, "speculative_execution", False
             )
             self.cache_enabled = getattr(cfg.swarm, "cache_enabled", False)
+            self.parallel_tools = getattr(cfg.swarm, "parallel_tools", True)
+            self._config = cfg
         else:
             self.worker_count = worker_count if worker_count is not None else 4
             worker_raw = worker_model if worker_model is not None else "mock"
@@ -102,6 +104,8 @@ class Swarm:
             self.use_tools = use_tools if use_tools is not None else False
             self.speculative_execution = False
             self.cache_enabled = False
+            self.parallel_tools = True
+            self._config = None
         self.event_log = event_log or EventLog()
         self.memory_router = memory_router
         self.store_swarm_memory = store_swarm_memory
@@ -155,12 +159,30 @@ class Swarm:
             use_tools=self.use_tools,
             reasoning_store=reasoning_store,
             user_task=user_task,
+            parallel_tools=getattr(self, "parallel_tools", True),
         )
         task_cache = None
+        semantic_cache = None
         if getattr(self, "cache_enabled", False):
             from hivemind.cache import TaskCache
 
             task_cache = TaskCache()
+            cfg = getattr(self, "_config", None)
+            if cfg and getattr(getattr(cfg, "cache", None), "semantic", False):
+                from hivemind.cache.task_cache import SemanticTaskCache
+
+                cache_cfg = cfg.cache
+                semantic_cache = SemanticTaskCache(
+                    similarity_threshold=getattr(cache_cfg, "similarity_threshold", 0.92),
+                    max_age_hours=getattr(cache_cfg, "max_age_hours", 168.0),
+                )
+        complexity_router = None
+        models_config = None
+        if self._config is not None:
+            from hivemind.providers.complexity_router import TaskComplexityRouter
+
+            complexity_router = TaskComplexityRouter()
+            models_config = self._config.models
         executor = Executor(
             scheduler=scheduler,
             agent=agent,
@@ -171,6 +193,10 @@ class Swarm:
             speculative_execution=getattr(self, "speculative_execution", False),
             task_cache=task_cache,
             pause_event=self._pause_event,
+            semantic_cache=semantic_cache,
+            complexity_router=complexity_router,
+            models_config=models_config,
+            streaming_dag=True,
         )
         executor.run_sync()
 
