@@ -59,6 +59,16 @@ Model names are passed to the provider router; use the same format as env (e.g. 
 | `store_results` | bool | true | Whether to store swarm results into memory. |
 | `top_k` | int | 5 | Number of memories to inject into the agent context. |
 
+### `[knowledge]` (v1.8)
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `guide_planning` | bool | true | Inject relevant KG context into the planner when confidence > `min_confidence`. |
+| `min_confidence` | float | 0.30 | Skip planner KG injection below this; also minimum confidence for extracted nodes. |
+| `auto_extract` | bool | true | After each run, extract entities and relationships from task results into the knowledge graph (background, non-blocking). |
+
+The knowledge graph is persisted under `data_dir/knowledge_graph.json`. Use `hivemind doctor` to see node/edge counts and last updated time.
+
 ### `[tools]`
 
 | Key | Type | Default | Description |

@@ -839,6 +839,111 @@ def _run_memory(limit: int) -> int:
     return 0
 
 
+def _run_synthesize(
+    query: str,
+    no_kg: bool = False,
+    json_out: bool = False,
+    since: str | None = None,
+) -> int:
+    """Cross-run synthesis: answer query using all memory and optional KG."""
+    import json
+    from datetime import datetime, timezone
+    from rich.console import Console
+    from rich.panel import Panel
+    from hivemind.config import get_config
+    from hivemind.memory.memory_store import get_default_store
+    from hivemind.memory.memory_index import MemoryIndex
+    from hivemind.knowledge.knowledge_graph import KnowledgeGraph
+    from hivemind.intelligence.synthesis import CrossRunSynthesizer
+    from hivemind.utils.models import resolve_model
+    from hivemind.providers.model_router import TaskType
+
+    cfg = get_config()
+    store = get_default_store()
+    index = MemoryIndex(store=store)
+    worker_model = resolve_model(cfg.models.worker, TaskType.ANALYSIS)
+    kg = None if no_kg else KnowledgeGraph(store=store)
+    if kg and not no_kg:
+        kg.load()
+        kg.build_from_memory(merge=True)
+    synthesizer = CrossRunSynthesizer(memory_index=index, knowledge_graph=kg, worker_model=worker_model)
+    since_dt = None
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    out_chunks = []
+    console = Console()
+    if json_out:
+        full = synthesizer.synthesize(query, max_sources=20, stream=False, use_kg=not no_kg, since=since_dt)
+        answer = full if isinstance(full, str) else "".join(full)
+        memories = index.query_across_runs(query, top_k=20, include_archived=False)
+        if since_dt:
+            memories = [m for m in memories if m.timestamp >= since_dt]
+        run_ids = list(dict.fromkeys(getattr(m, "run_id", "") or "" for m in memories))
+        run_ids = [r for r in run_ids if r]
+        obj = {"query": query, "sources_used": len(memories), "run_ids": run_ids, "answer": answer}
+        print(json.dumps(obj, indent=2))
+        return 0
+    with console.status("Synthesizing..."):
+        it = synthesizer.synthesize(query, max_sources=20, stream=True, use_kg=not no_kg, since=since_dt)
+        for chunk in it:
+            out_chunks.append(chunk)
+            console.print(chunk, end="")
+    console.print()
+    memories = index.query_across_runs(query, top_k=20, include_archived=False)
+    if since_dt:
+        memories = [m for m in memories if m.timestamp >= since_dt]
+    run_ids = list(dict.fromkeys(getattr(m, "run_id", "") or "" for m in memories))
+    run_ids = [r for r in run_ids if r]
+    console.print(Panel(f"Sources: {len(memories)} records across {len(run_ids)} runs\nRun IDs: {', '.join(run_ids[:15])}{'...' if len(run_ids) > 15 else ''}", title="Sources"))
+    return 0
+
+
+def _run_memory_consolidate(dry_run: bool = False, min_cluster_size: int = 3) -> int:
+    """Consolidate similar memory records: cluster, summarize, archive."""
+    import asyncio
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn
+    from hivemind.config import get_config
+    from hivemind.memory.memory_store import get_default_store
+    from hivemind.memory.memory_index import MemoryIndex
+    from hivemind.memory.consolidation import MemoryConsolidator
+    from hivemind.utils.models import resolve_model
+    from hivemind.providers.model_router import TaskType
+
+    store = get_default_store()
+    index = MemoryIndex(store=store)
+    cfg = get_config()
+    worker_model = resolve_model(cfg.models.worker, TaskType.ANALYSIS)
+    consolidator = MemoryConsolidator(min_cluster_size=min_cluster_size)
+    records = store.list_memory(limit=5000, include_archived=False)
+    console = Console()
+    console.print(f"Scanning {len(records)} memory records...")
+    try:
+        report = asyncio.get_event_loop().run_until_complete(
+            consolidator.consolidate(store, index, worker_model, dry_run=dry_run)
+        )
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        report = loop.run_until_complete(
+            consolidator.consolidate(store, index, worker_model, dry_run=dry_run)
+        )
+    avg_per = report.records_archived / report.clusters_consolidated if report.clusters_consolidated else 0
+    console.print(f"Found {report.clusters_found} clusters (avg {avg_per:.1f} records/cluster)")
+    console.print(f"Consolidating {report.clusters_consolidated} clusters with {min_cluster_size}+ records...")
+    with Progress(SpinnerColumn(), console=console) as progress:
+        progress.add_task("consolidate", total=report.clusters_consolidated)
+    console.print("Results:")
+    console.print(f"  Records archived:   {report.records_archived}")
+    console.print(f"  Summaries created:   {report.records_created}")
+    console.print(f"  Est. tokens saved:   ~{report.tokens_saved_estimate} per run")
+    if dry_run:
+        console.print("Run hivemind memory consolidate without --dry-run to apply changes.")
+    return 0
+
+
 def _run_completion(parser: argparse.ArgumentParser, shell: str) -> int:
     """Print shell completion script."""
     try:
@@ -1049,19 +1154,47 @@ Examples:
 
     memory_parser = subparsers.add_parser(
         "memory",
-        help="List memory entries",
-        description="List stored memory entries from past swarm runs.",
+        help="List memory or consolidate",
+        description="List stored memory entries or consolidate similar records.",
         epilog="""
 Examples:
   hivemind memory
   hivemind memory -n 50
+  hivemind memory consolidate [--dry-run] [--min-cluster-size 3]
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     memory_parser.add_argument(
-        "--limit", "-n", type=int, default=20, help="Max entries to show"
+        "--limit", "-n", type=int, default=20, help="Max entries to show (for list)"
     )
-    memory_parser.set_defaults(func=lambda a: _run_memory(a.limit))
+    memory_sub = memory_parser.add_subparsers(dest="memory_cmd", help="memory subcommand")
+    memory_list_p = memory_sub.add_parser("list", help="List memory entries (default)")
+    memory_list_p.add_argument("--limit", "-n", type=int, default=20, help="Max entries")
+    memory_list_p.set_defaults(func=lambda a: _run_memory(getattr(a, "limit", 20)))
+    memory_parser.set_defaults(memory_cmd="list", func=lambda a: _run_memory(getattr(a, "limit", 20)))
+    memory_consolidate_p = memory_sub.add_parser("consolidate", help="Cluster and summarize similar memories")
+    memory_consolidate_p.add_argument("--dry-run", action="store_true", help="Preview without writing")
+    memory_consolidate_p.add_argument("--min-cluster-size", type=int, default=3, help="Min records per cluster (default 3)")
+    memory_consolidate_p.set_defaults(func=lambda a: _run_memory_consolidate(getattr(a, "dry_run", False), getattr(a, "min_cluster_size", 3)))
+
+    synthesize_parser = subparsers.add_parser(
+        "synthesize",
+        help="Cross-run synthesis",
+        description="Answer a question using all memory (and optional knowledge graph) across runs.",
+        epilog="""
+Examples:
+  hivemind synthesize "What have I learned about rate limiting in APIs?"
+  hivemind synthesize "Summarize findings about transformer architectures" --no-kg
+  hivemind synthesize "What datasets have I worked with?" --json
+  hivemind synthesize "Recent findings" --since 2025-01-01
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    synthesize_parser.add_argument("query", help="Question to synthesize from memory")
+    synthesize_parser.add_argument("--no-kg", action="store_true", help="Skip knowledge graph, use memory only")
+    synthesize_parser.add_argument("--json", action="store_true", help="Output JSON: query, sources_used, run_ids, answer")
+    synthesize_parser.add_argument("--since", metavar="DATE", help="Filter memory to records after date (ISO)")
+    synthesize_parser.set_defaults(func=lambda a: _run_synthesize(a.query, a.no_kg, a.json, getattr(a, "since", None)))
 
     query_parser = subparsers.add_parser(
         "query",

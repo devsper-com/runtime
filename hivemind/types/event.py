@@ -27,6 +27,10 @@ class events(Enum):
     PREFETCH_HIT = "prefetch_hit"
     PREFETCH_MISS = "prefetch_miss"
     TASK_STRUCTURED_OUTPUT_CORRECTED = "task_structured_output_corrected"
+    # v1.8
+    PLANNER_KG_CONTEXT_INJECTED = "planner_kg_context_injected"
+    KNOWLEDGE_EXTRACTED = "knowledge_extracted"
+    MEMORY_CONSOLIDATED = "memory_consolidated"
 
 class Event(BaseModel):
     timestamp: datetime

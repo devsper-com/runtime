@@ -85,7 +85,10 @@ def normalize_toml_to_flat(data: dict) -> dict:
             result.setdefault("models", {})["planner"] = legacy["planner_model"]
     if "memory" in data and isinstance(data["memory"], dict):
         result["memory"] = data["memory"]
+    if "knowledge" in data and isinstance(data["knowledge"], dict):
+        result["knowledge"] = data["knowledge"]
     if "tools" in data and isinstance(data["tools"], dict):
+        result["tools"] = data["tools"]
         result["tools"] = data["tools"]
     if "telemetry" in data and isinstance(data["telemetry"], dict):
         result["telemetry"] = data["telemetry"]

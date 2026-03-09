@@ -11,7 +11,7 @@ The system supports four **memory types** for routing and indexing:
 | **Research** | Literature, papers, citations, findings. |
 | **Artifact** | Code, outputs, or structured artifacts (e.g. codebase summaries, reports). |
 
-Each stored record has: `id`, `memory_type`, `timestamp`, `source_task`, `content`, `tags`, and optional `embedding`.
+Each stored record has: `id`, `memory_type`, `timestamp`, `source_task`, `content`, `tags`, optional `embedding`, and (v1.8) `run_id` (which swarm run produced it) and `archived` (whether it was consolidated into a summary).
 
 ## Memory Store
 
@@ -30,9 +30,17 @@ Records are serialized with tags as a comma-separated string and embedding as JS
 
 - **MemoryIndex** maintains optional embeddings on records.
 - **ensure_embedding(record):** Computes and attaches an embedding if missing (uses the project’s embedding function).
-- **query_memory(text, top_k):** Embeds the query text, scores stored records by cosine similarity to the query embedding, and returns the top-k records. Records without embeddings are skipped for ranking (or a fallback like “latest by timestamp” can be used if none have embeddings).
+- **query_memory(text, top_k):** Embeds the query text, scores stored records by cosine similarity, returns top-k. Excludes **archived** by default (v1.8); use `include_archived=True` to include them.
+- **query_across_runs(text, top_k):** (v1.8) Same over all runs; optional `run_id_filter`. Excludes archived by default.
 
 This enables **semantic retrieval**: e.g. “analyze diffusion model papers” can pull in research and semantic memories about diffusion models.
+
+## Consolidation (v1.8)
+
+- **Module:** `hivemind.memory.consolidation`
+- **MemoryConsolidator:** Clusters records by embedding similarity (e.g. AgglomerativeClustering with cosine distance), summarizes each cluster of ≥ N records with an LLM, stores one new record per cluster (tag `consolidated`), and marks originals as **archived**.
+- **CLI:** `hivemind memory consolidate [--dry-run] [--min-cluster-size 3]`. Requires the optional `[data]` extra (scikit-learn).
+- **Effect:** Archived records are excluded from `query_memory` and `query_across_runs` by default, so agent context stays small while preserving summaries.
 
 ## Knowledge Graph Integration
 

@@ -9,6 +9,7 @@ User code:
     result = swarm.run("analyze diffusion models")
 """
 
+import asyncio
 import json
 import os
 import threading
@@ -136,15 +137,32 @@ class Swarm:
         from hivemind.intelligence.strategy_selector import StrategySelector
         from hivemind.intelligence.strategies import get_strategy_for
 
+        knowledge_graph = None
+        if self._config is not None:
+            kg_cfg = getattr(self._config, "knowledge", None)
+            if kg_cfg and (getattr(kg_cfg, "guide_planning", False) or getattr(kg_cfg, "auto_extract", False)):
+                from hivemind.knowledge.knowledge_graph import KnowledgeGraph
+                from hivemind.memory.memory_store import get_default_store
+                knowledge_graph = KnowledgeGraph(store=get_default_store())
+                knowledge_graph.load()
+                knowledge_graph.build_from_memory(merge=True)
         selector = StrategySelector()
         selected = selector.select(root)
         strategy_instance = get_strategy_for(selected)
         prompt_suffix = selector.suggest_planner_prompt_suffix(selected)
+        guide_planning = False
+        min_confidence = 0.30
+        if self._config is not None and getattr(self._config, "knowledge", None):
+            guide_planning = getattr(self._config.knowledge, "guide_planning", False)
+            min_confidence = getattr(self._config.knowledge, "min_confidence", 0.30)
         planner = Planner(
             model_name=self.planner_model,
             event_log=self.event_log,
             strategy=strategy_instance,
             prompt_suffix=prompt_suffix,
+            knowledge_graph=knowledge_graph,
+            guide_planning=guide_planning,
+            min_confidence=min_confidence,
         )
         subtasks = planner.plan(root)
 
@@ -272,6 +290,29 @@ class Swarm:
                 if run_id:
                     report = build_report_from_events(run_id, events_dir)
                     RunHistory().record_run(report)
+                    if self._config and getattr(getattr(self._config, "knowledge", None), "auto_extract", False):
+                        from hivemind.knowledge.knowledge_graph import KnowledgeGraph
+                        from hivemind.knowledge.extractor import KnowledgeExtractor
+                        from hivemind.memory.memory_store import get_default_store
+                        kg = KnowledgeGraph(store=get_default_store())
+                        kg.load()
+                        kg.build_from_memory(merge=True)
+                        completed_tasks = self.last_completed_tasks
+                        min_conf = getattr(self._config.knowledge, "min_confidence", 0.60)
+                        extractor = KnowledgeExtractor(min_confidence=min_conf)
+                        try:
+                            asyncio.get_event_loop().run_until_complete(
+                                extractor.extract_from_run(
+                                    run_id, completed_tasks, kg, event_log=self.event_log
+                                )
+                            )
+                        except Exception:
+                            loop = asyncio.new_event_loop()
+                            loop.run_until_complete(
+                                extractor.extract_from_run(
+                                    run_id, completed_tasks, kg, event_log=self.event_log
+                                )
+                            )
         except Exception:
             pass
         return results
@@ -322,12 +363,14 @@ class Swarm:
                 mt = MemoryType.SEMANTIC
             else:
                 mt = MemoryType.EPISODIC
+            run_id = getattr(self.event_log, "run_id", "") or ""
             record = MemoryRecord(
                 id=generate_memory_id(),
                 memory_type=mt,
                 source_task=task.id,
                 content=content[:15000],
                 tags=["swarm", "task", task.id, user_task[:100]],
+                run_id=run_id,
             )
             record = index.ensure_embedding(record)
             store.store(record)

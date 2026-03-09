@@ -32,14 +32,48 @@ class MemoryIndex:
         text: str,
         top_k: int = 5,
         min_similarity: float = 0.0,
+        include_archived: bool = False,
     ) -> list[MemoryRecord]:
         """
         Semantic search: embed query, score against stored records with embeddings,
         return top_k by similarity above min_similarity. Records without embeddings
         are skipped for ranking; if none have embeddings, return latest by timestamp.
         Use min_similarity > 0 (e.g. 0.45) to avoid injecting barely-related memory.
+        By default excludes archived records (consolidation).
         """
-        records = self.store.list_memory(limit=500)
+        records = self.store.list_memory(limit=500, include_archived=include_archived)
+        if not records:
+            return []
+        query_emb = embed_text(text)
+        with_emb = [r for r in records if r.embedding is not None]
+        if not with_emb:
+            return records[:top_k]
+        scored = [
+            (_cosine_sim(query_emb, r.embedding), r)
+            for r in with_emb
+        ]
+        scored.sort(key=lambda x: -x[0])
+        if min_similarity > 0:
+            scored = [(s, r) for s, r in scored if s >= min_similarity]
+        return [r for _, r in scored[:top_k]]
+
+    def query_across_runs(
+        self,
+        text: str,
+        top_k: int = 20,
+        min_similarity: float = 0.0,
+        run_id_filter: str | None = None,
+        include_archived: bool = False,
+    ) -> list[MemoryRecord]:
+        """
+        v1.8: Same as query_memory but over more records (all runs), optional run_id filter.
+        Used by CrossRunSynthesizer. Excludes archived by default.
+        """
+        records = self.store.list_memory(
+            limit=2000,
+            include_archived=include_archived,
+            run_id_filter=run_id_filter,
+        )
         if not records:
             return []
         query_emb = embed_text(text)

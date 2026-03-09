@@ -474,6 +474,43 @@ def run_doctor() -> int:
     except Exception:
         pass
 
+    try:
+        from hivemind.memory.memory_store import get_default_store
+        store = get_default_store()
+        all_records = store.list_memory(limit=10000, include_archived=True)
+        active = [r for r in all_records if not getattr(r, "archived", False)]
+        archived_count = len(all_records) - len(active)
+        ok.append(f"Memory: {len(active)} active, {archived_count} archived records")
+        if len(active) > 1000:
+            warnings.append(
+                "Memory store has > 1000 non-archived records. Consider running 'hivemind memory consolidate'."
+            )
+    except Exception as e:
+        warnings.append(f"Memory store: {e}")
+
+    try:
+        from hivemind.knowledge.knowledge_graph import KnowledgeGraph
+        import os
+        kg = KnowledgeGraph(store=get_default_store())
+        kg.load()
+        g = kg.graph
+        n_nodes = g.number_of_nodes()
+        n_edges = g.number_of_edges()
+        try:
+            from hivemind.config import get_config
+            base = get_config().data_dir
+        except Exception:
+            base = os.environ.get("HIVEMIND_DATA_DIR", ".hivemind")
+        path = os.path.join(base, "knowledge_graph.json")
+        last_updated = "unknown"
+        if os.path.isfile(path):
+            from datetime import datetime, timezone
+            mtime = os.path.getmtime(path)
+            last_updated = datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
+        ok.append(f"Knowledge graph: {n_nodes} nodes, {n_edges} edges, last updated {last_updated}")
+    except Exception as e:
+        warnings.append(f"Knowledge graph: {e}")
+
     _check_plaintext_keys_in_toml(warnings)
 
     try:

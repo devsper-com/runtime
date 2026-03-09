@@ -242,9 +242,9 @@ hivemind workflow research_pipeline
 
 ---
 
-### `hivemind memory [--limit N]`
+### `hivemind memory` [--limit N] | `hivemind memory consolidate` (v1.8)
 
-Lists memory entries from the default memory store.
+**List (default):** Lists memory entries from the default memory store. **Consolidate (v1.8):** Clusters similar memories, summarizes clusters, archives originals (`--dry-run`, `--min-cluster-size`); requires `[data]` extra.
 
 **Examples:**
 
@@ -263,6 +263,12 @@ hivemind memory --limit 50
 - “No memory entries.” if the store is empty.
 
 **Exit code:** 0.
+
+---
+
+### `hivemind synthesize "query"` (v1.8)
+
+Answers a question using all memory across runs (and optional knowledge graph). Streams synthesis; cites `[run:SHORT_ID]`. Options: `--no-kg`, `--json`, `--since DATE`.
 
 ---
 

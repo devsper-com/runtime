@@ -52,18 +52,28 @@ class MemoryStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS ix_memory_timestamp ON memory(timestamp)"
             )
+            try:
+                conn.execute("ALTER TABLE memory ADD COLUMN run_id TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE memory ADD COLUMN archived INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
 
     def store(self, record: MemoryRecord) -> str:
         """Store a memory record. Returns record id."""
         row = record.to_store_row()
         emb = row.get("embedding")
         embedding_json = json.dumps(emb) if emb is not None else None
+        archived = row.get("archived", 0)
+        run_id = row.get("run_id", "") or ""
         with self._conn() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO memory
-                (memory_id, memory_type, content, tags, timestamp, source_task, embedding)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (memory_id, memory_type, content, tags, timestamp, source_task, embedding, run_id, archived)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row["memory_id"],
@@ -73,6 +83,8 @@ class MemoryStore:
                     row["timestamp"],
                     row["source_task"],
                     embedding_json,
+                    run_id,
+                    archived,
                 ),
             )
         return row["memory_id"]
@@ -82,7 +94,7 @@ class MemoryStore:
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.execute(
-                "SELECT memory_id, memory_type, content, tags, timestamp, source_task, embedding FROM memory WHERE memory_id = ?",
+                "SELECT memory_id, memory_type, content, tags, timestamp, source_task, embedding, run_id, archived FROM memory WHERE memory_id = ?",
                 (memory_id,),
             )
             row = cur.fetchone()
@@ -102,8 +114,10 @@ class MemoryStore:
         limit: int = 100,
         offset: int = 0,
         tag_contains: str | None = None,
+        include_archived: bool = False,
+        run_id_filter: str | None = None,
     ) -> list[MemoryRecord]:
-        """List records, optionally filtered by type and/or tag, with limit/offset."""
+        """List records, optionally filtered by type, tag, archived, run_id, with limit/offset."""
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             conditions = []
@@ -114,11 +128,17 @@ class MemoryStore:
             if tag_contains:
                 conditions.append("tags LIKE ?")
                 params.append(f"%{tag_contains}%")
+            if not include_archived:
+                conditions.append("COALESCE(archived, 0) = 0")
+            if run_id_filter is not None:
+                conditions.append("run_id = ?")
+                params.append(run_id_filter)
             where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
             params.extend([limit, offset])
             cur = conn.execute(
                 f"""
-                SELECT memory_id, memory_type, content, tags, timestamp, source_task, embedding
+                SELECT memory_id, memory_type, content, tags, timestamp, source_task, embedding,
+                       COALESCE(run_id, '') as run_id, COALESCE(archived, 0) as archived
                 FROM memory{where} ORDER BY timestamp DESC LIMIT ? OFFSET ?
                 """,
                 params,
@@ -138,12 +158,24 @@ class MemoryStore:
                 cur = conn.execute("SELECT memory_id FROM memory")
             return [r[0] for r in cur.fetchall()]
 
+    def set_archived(self, memory_id: str, archived: bool = True) -> bool:
+        """v1.8: Mark a record as archived (e.g. after consolidation)."""
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE memory SET archived = ? WHERE memory_id = ?",
+                (1 if archived else 0, memory_id),
+            )
+            return cur.rowcount > 0
+
 
 def _row_to_record(row: dict) -> MemoryRecord:
     tags_str = row.get("tags") or ""
     tags = [t.strip() for t in tags_str.split(",") if t.strip()]
     emb_raw = row.get("embedding")
     embedding = json.loads(emb_raw) if isinstance(emb_raw, str) and emb_raw else None
+    archived = row.get("archived")
+    if archived is None and "archived" not in row:
+        archived = 0
     return MemoryRecord(
         id=row["memory_id"],
         memory_type=MemoryType(row["memory_type"]),
@@ -152,6 +184,8 @@ def _row_to_record(row: dict) -> MemoryRecord:
         timestamp=datetime.fromisoformat(row["timestamp"]),
         source_task=row.get("source_task") or "",
         embedding=embedding,
+        run_id=row.get("run_id") or "",
+        archived=bool(archived) if isinstance(archived, (int, bool)) else False,
     )
 
 

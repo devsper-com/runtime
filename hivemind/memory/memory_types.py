@@ -30,6 +30,8 @@ class MemoryRecord(BaseModel):
     content: str
     tags: list[str] = Field(default_factory=list)
     embedding: list[float] | None = None
+    run_id: str = ""  # v1.8: which swarm run produced this (for cross-run synthesis)
+    archived: bool = False  # v1.8: consolidated into a summary record
 
     def to_store_row(self) -> dict[str, Any]:
         """Serialize for storage (embedding as JSON list or null)."""
@@ -41,6 +43,8 @@ class MemoryRecord(BaseModel):
             "timestamp": self.timestamp.isoformat(),
             "source_task": self.source_task,
             "embedding": self.embedding,
+            "run_id": getattr(self, "run_id", "") or "",
+            "archived": 1 if getattr(self, "archived", False) else 0,
         }
 
 

@@ -9,6 +9,7 @@ and legacy .hivemind/config.toml.
 from hivemind.config.resolver import resolve_config
 from hivemind.config.schema import (
     HivemindConfigModel,
+    KnowledgeConfig,
     MemoryConfig,
     ModelsConfig,
     ProviderAzureConfig,
@@ -35,6 +36,7 @@ __all__ = [
     "get_config",
     "HivemindConfig",
     "HivemindConfigModel",
+    "KnowledgeConfig",
     "MemoryConfig",
     "ModelsConfig",
     "ProviderAzureConfig",

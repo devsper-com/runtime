@@ -20,6 +20,7 @@ PLANNER_PROMPT = """Break the following task into 5 smaller steps.
 
 Task:
 {task_description}
+{kg_section}
 
 Return a numbered list.
 
@@ -60,11 +61,17 @@ class Planner:
         event_log: EventLog | None = None,
         strategy=None,
         prompt_suffix: str = "",
+        knowledge_graph=None,
+        guide_planning: bool = False,
+        min_confidence: float = 0.30,
     ):
         self.model_name = model_name
         self.event_log = event_log or EventLog()
         self.strategy = strategy
         self.prompt_suffix = prompt_suffix or ""
+        self.knowledge_graph = knowledge_graph
+        self.guide_planning = guide_planning
+        self.min_confidence = min_confidence
 
     def plan(self, task: Task) -> list[Task]:
         """Break task into subtasks (strategy DAG or LLM). Emit planner lifecycle events."""
@@ -81,7 +88,21 @@ class Planner:
                 return subtasks
 
         task_description = (task.description or "") + self.prompt_suffix
-        prompt = PLANNER_PROMPT.format(task_description=task_description)
+        kg_section = ""
+        if self.guide_planning and self.knowledge_graph is not None:
+            from hivemind.knowledge.query import query_for_planning, format_planning_context
+            planning_ctx = query_for_planning(self.knowledge_graph, task_description)
+            if planning_ctx.confidence > self.min_confidence:
+                kg_section = "\n\n## Relevant prior knowledge:\n" + format_planning_context(planning_ctx) + "\n\nUse this to avoid re-discovering known facts."
+                self._emit(
+                    events.PLANNER_KG_CONTEXT_INJECTED,
+                    {
+                        "concept_count": len(planning_ctx.relevant_concepts),
+                        "finding_count": len(planning_ctx.prior_findings),
+                        "confidence": planning_ctx.confidence,
+                    },
+                )
+        prompt = PLANNER_PROMPT.format(task_description=task_description, kg_section=kg_section or "")
         raw = generate(self.model_name, prompt)
         steps = self._parse_numbered_list(raw)
 

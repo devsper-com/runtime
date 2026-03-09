@@ -13,6 +13,7 @@ from hivemind.config.schema import (
     AgentsConfig,
     CacheConfig,
     HivemindConfigModel,
+    KnowledgeConfig,
     MemoryConfig,
     ModelsConfig,
     ProviderAzureConfig,
@@ -156,6 +157,7 @@ def _build_merged_raw(
         "agents": {"roles": ["research_agent", "code_agent", "analysis_agent", "critic_agent"]},
         "models": {"planner": planner_default, "worker": worker_default},
         "memory": {"enabled": True, "store_results": True, "top_k": 5},
+        "knowledge": {"guide_planning": True, "min_confidence": 0.30, "auto_extract": True},
         "tools": {"enabled": None, "top_k": 0},
         "telemetry": {"enabled": True, "save_events": True},
         "cache": {
@@ -225,6 +227,7 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
     agents = AgentsConfig(**(merged.get("agents") or {}))
     models = ModelsConfig(**(merged.get("models") or {}))
     memory = MemoryConfig(**(merged.get("memory") or {}))
+    knowledge = KnowledgeConfig(**(merged.get("knowledge") or {}))
     tools = ToolsConfig(**(merged.get("tools") or {}))
     telemetry = TelemetryConfig(**(merged.get("telemetry") or {}))
     cache = CacheConfig(**(merged.get("cache") or {}))
@@ -237,6 +240,7 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
         agents=agents,
         models=models,
         memory=memory,
+        knowledge=knowledge,
         tools=tools,
         telemetry=telemetry,
         cache=cache,

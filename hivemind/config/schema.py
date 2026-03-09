@@ -46,6 +46,13 @@ class MemoryConfig(BaseModel):
     top_k: int = 5
 
 
+class KnowledgeConfig(BaseModel):
+    """v1.8: knowledge-guided planning and auto-extraction."""
+    guide_planning: bool = True
+    min_confidence: float = 0.30
+    auto_extract: bool = True
+
+
 class ToolsConfig(BaseModel):
     enabled: list[str] | None = None  # None = all categories
     top_k: int = 0  # 0 = no limit
@@ -74,6 +81,7 @@ class HivemindConfigModel(BaseModel):
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)

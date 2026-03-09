@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-03-09
+
+### Added
+
+- **Knowledge-guided planning (v1.8)** — Planner injects relevant prior knowledge from the knowledge graph when confidence > threshold. New `query_for_planning(kg, task_description)` and `PlanningContext` in `hivemind/knowledge/query.py`; planner uses `format_planning_context` in the prompt. Config: `[knowledge] guide_planning`, `min_confidence`. Event: `PLANNER_KG_CONTEXT_INJECTED` (concept_count, finding_count, confidence).
+- **Cross-run synthesis (v1.8)** — Answer questions using all memory across runs. New `hivemind/intelligence/synthesis.py` (`CrossRunSynthesizer`). CLI: `hivemind synthesize "<query>"` with `--no-kg`, `--json`, `--since <date>`. Output cites sources as `[run:RUN_ID_SHORT]`.
+- **Automatic knowledge extraction (v1.8)** — Post-run heuristic extraction from task results into the knowledge graph. New `hivemind/knowledge/extractor.py` (`KnowledgeExtractor`, `KGNode`, `KGEdge`). Entities: documents (URLs, citations), concepts, datasets, methods. Relationships: uses, extends, outperforms, cites. Config: `[knowledge] auto_extract`, `min_confidence`. Knowledge graph persists to `data_dir/knowledge_graph.json`; `add_or_update_node`, `add_edge`, `save()`, `load()`. Event: `KNOWLEDGE_EXTRACTED` (run_id, nodes_added, edges_added, duration_seconds).
+- **Memory consolidation (v1.8)** — Cluster similar memories, summarize clusters, archive originals. New `hivemind/memory/consolidation.py` (`MemoryConsolidator`, `ConsolidationReport`). Schema: `memory` table gains `run_id`, `archived`. `MemoryIndex.query_memory` and `query_across_runs` exclude archived by default; `include_archived` parameter. CLI: `hivemind memory consolidate [--dry-run] [--min-cluster-size 3]`. Event: `MEMORY_CONSOLIDATED`. Requires `scikit-learn` (optional extra `[data]`).
+- **Config:** New `[knowledge]` section: `guide_planning`, `min_confidence`, `auto_extract`.
+- **Doctor:** Memory stats (active vs archived), warning when >1000 non-archived records; knowledge graph stats (nodes, edges, last updated).
+- **Tests:** `tests/test_v18.py` (planning context injected/skipped, synthesizer dedupe/citations, extractor concepts/relationships/confidence, consolidation cluster/dry-run/archived excluded, cross-run query).
+
+### Changed
+
+- Planner accepts optional `knowledge_graph`, `guide_planning`, `min_confidence`; Swarm builds/loads KG when knowledge config is enabled and passes to planner; after run, runs `KnowledgeExtractor.extract_from_run` in background when `auto_extract` is true.
+- Memory records store `run_id` (set from event_log when storing swarm memory) and `archived`; `list_memory` supports `include_archived`, `run_id_filter`.
+- `hivemind memory` supports subcommands: default list, `memory consolidate`.
+
 ## [1.7.0] - 2026-03-09
 
 ### Added

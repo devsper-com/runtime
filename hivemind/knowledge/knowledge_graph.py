@@ -2,10 +2,12 @@
 Knowledge graph: build relationships between stored memory.
 
 Nodes: documents, concepts, datasets, methods.
-Edges: mentions, cites, related_to.
-Uses networkx.
+Edges: mentions, cites, related_to, uses, extends, outperforms, constrains, blocks.
+Uses networkx. v1.8: add_or_update_node, add_edge, save/load for extraction.
 """
 
+import json
+import os
 import re
 from typing import Any
 
@@ -23,6 +25,11 @@ NODE_METHOD = "method"
 EDGE_MENTIONS = "mentions"
 EDGE_CITES = "cites"
 EDGE_RELATED_TO = "related_to"
+EDGE_USES = "uses"
+EDGE_EXTENDS = "extends"
+EDGE_OUTPERFORMS = "outperforms"
+EDGE_CONSTRAINS = "constrains"
+EDGE_BLOCKS = "blocks"
 
 
 def _extract_concepts(text: str, limit: int = 15) -> list[str]:
@@ -63,13 +70,15 @@ class KnowledgeGraph:
         self.store = store or get_default_store()
         self._graph: nx.MultiDiGraph = nx.MultiDiGraph()
 
-    def build_from_memory(self) -> nx.MultiDiGraph:
+    def build_from_memory(self, merge: bool = False) -> nx.MultiDiGraph:
         """
         Build graph from all stored memory. Returns the graph.
         Nodes: document:<id>, concept:<name>, dataset:<name>, method:<name>.
         Edges: document --mentions--> concept/dataset/method; concept --related_to--> concept.
+        If merge=True, add to existing graph instead of clearing (e.g. after load()).
         """
-        self._graph = nx.MultiDiGraph()
+        if not merge:
+            self._graph = nx.MultiDiGraph()
         records = self.store.list_memory(limit=2000)
         for r in records:
             doc_id = f"document:{r.id}"
@@ -124,3 +133,52 @@ class KnowledgeGraph:
             if pred.startswith("document:"):
                 doc_ids.append(self._graph.nodes[pred].get("memory_id", pred.replace("document:", "")))
         return doc_ids
+
+    def add_or_update_node(self, node_id: str, kind: str, label: str, **attrs: Any) -> None:
+        """v1.8: Add or update a node (e.g. from KnowledgeExtractor)."""
+        self._graph.add_node(node_id, kind=kind, label=label, **attrs)
+
+    def add_edge(self, from_id: str, to_id: str, edge_type: str) -> None:
+        """v1.8: Add a directed edge (e.g. from KnowledgeExtractor)."""
+        self._graph.add_node(from_id, **self._graph.nodes.get(from_id, {}))
+        self._graph.add_node(to_id, **self._graph.nodes.get(to_id, {}))
+        self._graph.add_edge(from_id, to_id, type=edge_type)
+
+    def _persist_path(self) -> str:
+        """Path to persisted graph JSON (data_dir/knowledge_graph.json)."""
+        try:
+            from hivemind.config import get_config
+            base = get_config().data_dir
+        except Exception:
+            base = os.environ.get("HIVEMIND_DATA_DIR", ".hivemind")
+        os.makedirs(base, exist_ok=True)
+        return os.path.join(base, "knowledge_graph.json")
+
+    def save(self) -> None:
+        """v1.8: Persist graph to JSON (nodes and edges only; no embeddings)."""
+        nodes = []
+        for nid, data in self._graph.nodes(data=True):
+            nodes.append({"id": nid, **{k: v for k, v in data.items() if isinstance(v, (str, int, float, bool))}})
+        edges = []
+        for u, v, data in self._graph.edges(data=True):
+            edges.append({"from": u, "to": v, "type": data.get("type", "related_to")})
+        payload = {"nodes": nodes, "edges": edges}
+        with open(self._persist_path(), "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=0)
+
+    def load(self) -> bool:
+        """v1.8: Load graph from JSON if file exists; merge into _graph. Returns True if loaded."""
+        path = self._persist_path()
+        if not os.path.isfile(path):
+            return False
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        for n in payload.get("nodes", []):
+            nid = n.pop("id", None)
+            if nid:
+                self._graph.add_node(nid, **n)
+        for e in payload.get("edges", []):
+            u, v = e.get("from"), e.get("to")
+            if u and v:
+                self._graph.add_edge(u, v, type=e.get("type", "related_to"))
+        return True
