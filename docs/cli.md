@@ -207,7 +207,7 @@ hivemind tui
 
 ---
 
-### `hivemind credentials` (set | list | delete | migrate | export)
+### `hivemind credentials` (set | list | delete | migrate | export) {#credentials}
 
 Manages API keys and secrets using the **OS keychain (keyring)** only. Credentials are never stored in config files.
 

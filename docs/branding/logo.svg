@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="acc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6EE7B7"/>
+      <stop offset="100%" style="stop-color:#34D399"/>
+    </linearGradient>
+  </defs>
+  <!-- Hexagonal hive pattern: center hex + 6 around -->
+  <g fill="none" stroke="url(#acc)" stroke-width="2.5" stroke-linejoin="round">
+    <path d="M60 12 L92 32 L92 68 L60 88 L28 68 L28 32 Z"/>
+    <path d="M60 32 L76 42 L76 62 L60 72 L44 62 L44 42 Z"/>
+  </g>
+  <!-- Network nodes -->
+  <circle cx="60" cy="50" r="4" fill="#6EE7B7"/>
+  <circle cx="44" cy="62" r="3" fill="#6EE7B7"/>
+  <circle cx="76" cy="62" r="3" fill="#6EE7B7"/>
+  <circle cx="38" cy="42" r="2.5" fill="#F59E0B"/>
+  <circle cx="82" cy="42" r="2.5" fill="#F59E0B"/>
+  <circle cx="60" cy="78" r="2.5" fill="#F59E0B"/>
+</svg>

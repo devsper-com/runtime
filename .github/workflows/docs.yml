@@ -1,0 +1,104 @@
+# Deploy docs to GitHub Pages (hivemind.rithul.dev)
+# - On push to main: deploy "latest" from current main
+# - On release published: deploy versioned docs from tag (e.g. 1.2.0)
+
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - "branding/**"
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs
+  cancel-in-progress: false
+
+jobs:
+  deploy-latest:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install docs dependencies
+        run: pip install ".[docs]"
+
+      - name: Get version
+        id: version
+        run: |
+          V=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          echo "version=$V" >> $GITHUB_OUTPUT
+
+      - name: Deploy latest to gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mike deploy --push --update-aliases "${{ steps.version.outputs.version }}" latest
+          mike set-default --push latest
+
+      - name: Ensure CNAME on gh-pages
+        run: |
+          git clone --branch gh-pages "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages-out
+          cd gh-pages-out
+          echo "hivemind.rithul.dev" > CNAME
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CNAME
+          git diff --staged --quiet || (git commit -m "chore(docs): ensure CNAME for custom domain" && git push)
+
+  deploy-version:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install docs dependencies
+        run: pip install ".[docs]"
+
+      - name: Parse version from tag
+        id: version
+        run: |
+          V="${GITHUB_REF#refs/tags/v}"
+          echo "version=$V" >> $GITHUB_OUTPUT
+
+      - name: Deploy versioned docs to gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mike deploy --push "${{ steps.version.outputs.version }}"
+          mike alias --push "${{ steps.version.outputs.version }}" stable
+
+      - name: Ensure CNAME on gh-pages
+        run: |
+          git clone --branch gh-pages "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages-out
+          cd gh-pages-out
+          echo "hivemind.rithul.dev" > CNAME
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CNAME
+          git diff --staged --quiet || (git commit -m "chore(docs): ensure CNAME for custom domain" && git push)
