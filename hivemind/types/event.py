@@ -17,6 +17,7 @@ class events(Enum):
     EXECUTOR_FINISHED = "executor_finished"
     TOOL_CALLED = "tool_called"
     REASONING_NODE_ADDED = "reasoning_node_added"
+    USER_INJECTION = "user_injection"
 
 class Event(BaseModel):
     timestamp: datetime

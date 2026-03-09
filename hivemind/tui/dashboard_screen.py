@@ -10,6 +10,7 @@ from textual.screen import Screen
 from textual.widgets import Static
 
 from hivemind.tui.task_view import TaskView
+from hivemind.tui.task_detail_screen import TaskDetailScreen
 from hivemind.tui.swarm_view import SwarmView
 from hivemind.tui.memory_view import MemoryView
 from hivemind.tui.logs_view import LogsView
@@ -28,6 +29,7 @@ class DashboardScreen(Screen[None]):
     BINDINGS = [
         ("escape", "back", "Back to chat"),
         ("q", "back", "Back to chat"),
+        ("enter", "open_task_detail", "Task detail"),
     ]
 
     CSS = """
@@ -188,9 +190,13 @@ class DashboardScreen(Screen[None]):
                         tasks.append(
                             {
                                 "task_id": task.id,
+                                "description": getattr(task, "description", "") or "",
                                 "status": status.lower(),
                                 "runtime": "-",
                                 "worker": "agent",
+                                "result": getattr(task, "result", "") or "",
+                                "error": getattr(task, "result", "") if status == "FAILED" else None,
+                                "role": getattr(task, "role", None),
                             }
                         )
             except Exception:
@@ -268,3 +274,17 @@ class DashboardScreen(Screen[None]):
 
     def action_back(self) -> None:
         self.dismiss(None)
+
+    def action_open_task_detail(self) -> None:
+        """Open task detail overlay for the selected task in TaskView."""
+        try:
+            tv = self.query_one("#task-view", TaskView)
+            task = tv.get_selected_task()
+            if task:
+                self.app.push_screen(TaskDetailScreen(task, self._app_ref))
+        except Exception:
+            pass
+
+    def on_task_view_task_selected(self, event: TaskView.TaskSelected) -> None:
+        """When TaskView emits TaskSelected (e.g. Enter on list), open detail."""
+        self.app.push_screen(TaskDetailScreen(event.task, self._app_ref))

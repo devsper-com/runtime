@@ -92,28 +92,74 @@ hivemind research .
 
 ---
 
-### `hivemind analyze repo/`
+### `hivemind analyze [run_id | path]`
 
-Runs the **repository analysis** example on a codebase path.
+**Run analysis (when argument looks like a run ID):** Builds a run report from the event log and optionally runs LLM analysis. Use a run ID from `hivemind runs` (e.g. `events_2025-03-09...`).
+
+**Repository analysis (when argument is a path):** Runs the repository analysis example on a codebase path.
 
 **Examples:**
 
 ```bash
-hivemind analyze path/to/repo
-hivemind analyze .
+hivemind analyze events_2025-03-09...     # run analysis (with optional --no-ai, --json)
+hivemind analyze events_xxx --no-ai       # stats only, no API call
+hivemind analyze .                        # repo analysis
+hivemind analyze path/to/repo             # repo analysis
+```
+
+**Parameters (run analysis):**
+
+- `run_id_or_path` (positional, optional): Run ID for run analysis, or path (e.g. `.`) for repo analysis.
+- `--no-ai` — Skip LLM analysis; show stats only.
+- `--json` — Output raw RunReport as JSON.
+
+**Behavior (run analysis):**
+
+- Loads events from the configured events directory, builds RunReport (timeline, critical path, bottleneck, peak parallelism, cost estimate).
+- Prints Rich report (overview, timeline table, critical path, tool usage). If not `--no-ai`, streams plain-English LLM analysis.
+- Exit code: 1 if run_id not found or event log empty.
+
+**Behavior (repo analysis):** Same as before: invokes `examples/coding/analyze_repository.py` with the given path.
+
+---
+
+### `hivemind run-analyze <run_id> [--no-ai] [--json]`
+
+Explicit **run analysis** command. Same as `hivemind analyze <run_id>` when the argument is a run ID.
+
+**Examples:**
+
+```bash
+hivemind run-analyze events_2025-03-09...
+hivemind run-analyze events_xxx --no-ai --json
+```
+
+---
+
+### `hivemind runs [run_id] [--limit N] [--failed] [--json]`
+
+Lists **run history** (recorded at each SWARM_FINISHED) or shows a single run’s report.
+
+**Examples:**
+
+```bash
+hivemind runs
+hivemind runs --limit 10 --failed
+hivemind runs --json
+hivemind runs events_2025-03-09...    # same as run-analyze <run_id> --no-ai
 ```
 
 **Parameters:**
 
-- `path` (positional, optional): Repository root path; default `.`.
+- `run_id` (positional, optional): If given, show report for this run (no AI; same as `run-analyze <run_id> --no-ai`).
+- `--limit`, `-n` — Max runs to list (default 20).
+- `--failed` — Only list runs with at least one failed task.
+- `--json` — Output runs list as JSON.
 
 **Behavior:**
 
-- Invokes `examples/coding/analyze_repository.py` with the given path.
-- Pipeline: codebase indexer → dependency graph → architecture analyzer → API surface → swarm synthesis.
-- Outputs under `examples/output/`.
-
-**Exit code:** 0 on success, 1 if the script is missing or the path is invalid.
+- Table columns: Run ID (short), Task (truncated), Strategy, Status (✓ completed / ✗ failed / ⚠ partial), Duration, Tasks, Cost, Date.
+- Run history is stored in `~/.config/hivemind/runs.db`.
 
 ---
 

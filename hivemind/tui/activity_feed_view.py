@@ -56,6 +56,11 @@ class ActivityFeedView(Static):
                         self._lines.append(f"[dim]✔ task {task_id}[/dim]")
                     elif ev == "tool_called":
                         self._lines.append(f"[dim]🔧 {tool} (task {task_id})[/dim]")
+                    elif ev == "user_injection":
+                        msg = (payload.get("message") or "")[:60]
+                        if len(payload.get("message") or "") > 60:
+                            msg += "…"
+                        self._lines.append(f"📌 [bold]User injected:[/] [dim]{msg}[/]")
                     else:
                         self._lines.append(f"[dim]{ev}[/dim]")
                 except Exception:

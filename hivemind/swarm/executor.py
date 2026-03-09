@@ -4,9 +4,11 @@ Executor: runtime engine that runs tasks via agents while respecting scheduler d
 Lifecycle: EXECUTOR_STARTED → (agent/task events per task) → EXECUTOR_FINISHED.
 Uses asyncio and a worker pool (Semaphore) to run up to worker_count tasks concurrently.
 Supports speculative execution and task cache lookup.
+Pause/resume: when pause_event is provided and clear, no new tasks are picked until it is set.
 """
 
 import asyncio
+import threading
 from datetime import datetime, timezone
 
 from hivemind.types.task import Task, TaskStatus
@@ -32,6 +34,7 @@ class Executor:
         adaptive: bool = False,
         speculative_execution: bool = False,
         task_cache: object = None,
+        pause_event: threading.Event | None = None,
     ) -> None:
         self.scheduler = scheduler
         self.agent = agent
@@ -41,6 +44,7 @@ class Executor:
         self.adaptive = adaptive
         self.speculative_execution = speculative_execution
         self.task_cache = task_cache
+        self.pause_event = pause_event
 
     def run_sync(self) -> None:
         """Run the execution loop to completion (synchronous entry point)."""
@@ -72,6 +76,9 @@ class Executor:
         loop = asyncio.get_running_loop()
 
         while not self.scheduler.is_finished():
+            if self.pause_event is not None and not self.pause_event.is_set():
+                await asyncio.sleep(0.2)
+                continue
             ready = self.scheduler.get_ready_tasks()
             speculative: list[Task] = []
             if self.speculative_execution:

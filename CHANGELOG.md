@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - TBD
+
+### Added
+
+- **Run analysis (v1.5)** — Post-run analysis, run history, and interactive TUI controls.
+- **New module `hivemind/intelligence/analysis/`** — `run_report.py` (RunReport, TaskSummary, `build_report_from_events`), `cost_estimator.py` (CostEstimator, MODEL_PRICING), `analyzer.py` (LLM plain-English analysis), `formatter.py` (Rich CLI output).
+- **CLI: `hivemind analyze <run_id>`** — Build run report from event log; optional `--no-ai` (stats only) and `--json` (raw RunReport). With a path (e.g. `.`) runs repository analysis instead.
+- **CLI: `hivemind run-analyze <run_id> [--no-ai] [--json]`** — Explicit run analysis command.
+- **CLI: `hivemind runs`** — List run history (Rich table: Run ID, Task, Strategy, Status, Duration, Tasks, Cost, Date). Options: `--limit N`, `--failed`, `--json`. `hivemind runs <run_id>` is shorthand for `hivemind run-analyze <run_id> --no-ai`.
+- **Run history** — `hivemind/runtime/run_history.py`: SQLite DB at `~/.config/hivemind/runs.db`; `record_run`, `list_runs`, `get_run`, `delete_run`, `get_stats`. Automatically called at SWARM_FINISHED.
+- **TUI: Pause/Resume (keybind `p`)** — SwarmController `pause()`/`resume()` on Swarm; executor checks `pause_event` before picking new tasks; status bar shows "⏸ PAUSED" when paused.
+- **TUI: Inject (keybind `i`)** — Overlay "Inject note to swarm"; stored as high-priority MemoryRecord (episodic, tag `user_injection`); MemoryRouter.get_memory_context includes injections; activity feed shows "📌 User injected: {message}".
+- **TUI: Task detail (Enter on selected task)** — In Dashboard Tasks view, arrow-key selection and Enter opens detail overlay: full description, result, tools, duration, retry, error.
+- **`hivemind doctor`** — Run history checks: DB exists, "Run history: {N} runs, ${cost} total spend"; warns if any run in last 7 days has >50% task failure rate.
+- **Tests** — `tests/test_analysis.py`: build_report_from_events, critical path, bottleneck, cost estimate (known/unknown model), run history record/list, runs CLI output, pause stops new tasks, inject in memory context.
+
+### Changed
+
+- Swarm records each run to RunHistory at SWARM_FINISHED.
+- Executor accepts optional `pause_event` (threading.Event); when clear, no new tasks start until set.
+- MemoryRouter.get_memory_context prepends records with tag `user_injection`.
+- MemoryStore.list_memory accepts optional `tag_contains` filter.
+- Event type `USER_INJECTION` for inject events in the activity feed.
+
 ## [1.4.0] - 2026-03-09
 
 ### Added

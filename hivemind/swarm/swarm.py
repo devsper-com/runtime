@@ -11,6 +11,7 @@ User code:
 
 import json
 import os
+import threading
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -106,6 +107,16 @@ class Swarm:
         self.store_swarm_memory = store_swarm_memory
         self._last_scheduler: Scheduler | None = None
         self._last_reasoning_store = None
+        self._pause_event = threading.Event()
+        self._pause_event.set()
+
+    def pause(self) -> None:
+        """Pause the executor: currently-running tasks finish, no new tasks start."""
+        self._pause_event.clear()
+
+    def resume(self) -> None:
+        """Resume the executor so new tasks can be picked."""
+        self._pause_event.set()
 
     def run(self, user_task: str) -> dict[str, str]:
         """
@@ -159,6 +170,7 @@ class Swarm:
             adaptive=self.adaptive,
             speculative_execution=getattr(self, "speculative_execution", False),
             task_cache=task_cache,
+            pause_event=self._pause_event,
         )
         executor.run_sync()
 
@@ -168,6 +180,18 @@ class Swarm:
         if self.store_swarm_memory and self.memory_router and results:
             self._store_swarm_memory(user_task, scheduler)
         self._emit(events.SWARM_FINISHED, {"task_count": len(results)})
+        try:
+            from hivemind.intelligence.analysis.run_report import build_report_from_events
+            from hivemind.runtime.run_history import RunHistory
+            log_path = getattr(self.event_log, "log_path", None)
+            if log_path:
+                events_dir = os.path.dirname(log_path)
+                run_id = getattr(self.event_log, "run_id", None)
+                if run_id:
+                    report = build_report_from_events(run_id, events_dir)
+                    RunHistory().record_run(report)
+        except Exception:
+            pass
         return results
 
     @property

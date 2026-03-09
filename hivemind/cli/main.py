@@ -136,6 +136,185 @@ def _run_analyze(path: str) -> int:
     return _run_example(script, path or ".")
 
 
+def _run_analyze_dispatch(args: object) -> int:
+    """Dispatch: run_id -> run analysis; path (., /path) -> repo analysis."""
+    run_id_or_path = getattr(args, "run_id_or_path", None)
+    no_ai = getattr(args, "no_ai", False)
+    json_out = getattr(args, "analyze_json", False)
+    if run_id_or_path is None or (isinstance(run_id_or_path, str) and not run_id_or_path.strip()):
+        from rich.console import Console
+        from hivemind.runtime.run_history import RunHistory
+        console = Console()
+        rows = RunHistory().list_runs(limit=5)
+        if rows:
+            console.print("Recent runs (use [cyan]hivemind analyze <run_id>[/] for run analysis):")
+            for r in rows[:5]:
+                console.print(f"  [dim]{r.run_id}[/]")
+        else:
+            console.print("No runs yet. Use [cyan]hivemind analyze <run_id>[/] after a run, or [cyan]hivemind analyze .[/] for repo analysis.")
+        return 0
+    s = str(run_id_or_path).strip()
+    if s in (".", "..") or "/" in s or os.path.exists(s):
+        return _run_analyze(s)
+    return _run_analyze_run(s, no_ai=no_ai, json_output=json_out)
+
+
+def _run_analyze_run(
+    run_id: str,
+    no_ai: bool = False,
+    json_output: bool = False,
+) -> int:
+    """Analyze a swarm run: load events, build report, optional LLM analysis."""
+    from hivemind.config import get_config
+    from hivemind.intelligence.analysis import (
+        build_report_from_events,
+        analyze,
+        print_run_report,
+        RunReport,
+    )
+    from hivemind.intelligence.analysis.cost_estimator import CostEstimator
+    from rich.console import Console
+    from rich.panel import Panel
+
+    cfg = get_config()
+    events_dir = cfg.events_dir
+    console = Console()
+
+    try:
+        report = build_report_from_events(run_id, events_dir)
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/] {e}")
+        return 1
+    except ValueError as e:
+        console.print(f"[red]Error:[/] {e}")
+        return 1
+
+    if json_output:
+        import json
+        from dataclasses import asdict
+        from hivemind.intelligence.analysis.run_report import TaskSummary
+        def _serialize(obj):
+            if hasattr(obj, "value"):
+                return obj.value
+            if hasattr(obj, "__dataclass_fields__"):
+                return {k: _serialize(getattr(obj, k)) for k in obj.__dataclass_fields__}
+            return obj
+        out = {
+            "run_id": report.run_id,
+            "root_task": report.root_task,
+            "strategy": report.strategy,
+            "started_at": report.started_at,
+            "finished_at": report.finished_at,
+            "total_duration_seconds": report.total_duration_seconds,
+            "total_tasks": report.total_tasks,
+            "completed_tasks": report.completed_tasks,
+            "failed_tasks": report.failed_tasks,
+            "skipped_tasks": report.skipped_tasks,
+            "critical_path": report.critical_path,
+            "bottleneck_task_id": report.bottleneck_task_id,
+            "tools_called": report.tools_called,
+            "tool_success_rate": report.tool_success_rate,
+            "estimated_cost_usd": report.estimated_cost_usd,
+            "models_used": report.models_used,
+            "peak_parallelism": report.peak_parallelism,
+            "tasks": [
+                {
+                    "task_id": t.task_id,
+                    "description": t.description,
+                    "role": t.role,
+                    "status": _serialize(t.status),
+                    "duration_seconds": t.duration_seconds,
+                    "tools_used": t.tools_used,
+                    "tool_failures": t.tool_failures,
+                    "tokens_used": t.tokens_used,
+                    "retry_count": t.retry_count,
+                    "error": t.error,
+                }
+                for t in report.tasks
+            ],
+        }
+        console.print(json.dumps(out, indent=2))
+        return 0
+
+    print_run_report(report, console)
+    if not no_ai:
+        worker_model = getattr(cfg, "worker_model", None) or getattr(cfg.models, "worker", "gpt-4o-mini")
+        from hivemind.utils.models import resolve_model
+        worker_model = resolve_model(worker_model, "analysis")
+        analysis_text = analyze(
+            report,
+            worker_model,
+            stream_callback=lambda c: console.print(c, end=""),
+        )
+        report.plain_english_analysis = analysis_text
+        console.print()
+        console.print(Panel(analysis_text, title="Plain-English Analysis", border_style="dim"))
+    return 0
+
+
+def _run_runs(args: object) -> int:
+    """List run history (Rich table) or run-analyze <run_id> --no-ai when run_id given."""
+    run_id = getattr(args, "run_id", None)
+    if run_id and str(run_id).strip():
+        return _run_analyze_run(str(run_id).strip(), no_ai=True, json_output=False)
+    from hivemind.runtime.run_history import RunHistory
+    limit = getattr(args, "limit", 20)
+    failed = getattr(args, "failed", False)
+    json_out = getattr(args, "runs_json", False)
+    history = RunHistory()
+    filter_status = "failed" if failed else None
+    rows = history.list_runs(limit=limit, filter_status=filter_status)
+    if json_out:
+        import json
+        out = [
+            {
+                "run_id": r.run_id,
+                "root_task": r.root_task[:200],
+                "strategy": r.strategy,
+                "started_at": r.started_at,
+                "duration_seconds": r.duration_seconds,
+                "total_tasks": r.total_tasks,
+                "completed_tasks": r.completed_tasks,
+                "failed_tasks": r.failed_tasks,
+                "estimated_cost_usd": r.estimated_cost_usd,
+            }
+            for r in rows
+        ]
+        print(json.dumps(out, indent=2))
+        return 0
+    from rich.console import Console
+    from rich.table import Table
+    console = Console()
+    table = Table(title="Run history")
+    table.add_column("Run ID", style="dim", max_width=36, overflow="fold")
+    table.add_column("Task", max_width=40, overflow="fold")
+    table.add_column("Strategy", width=10)
+    table.add_column("Status", width=14)
+    table.add_column("Duration", justify="right", width=10)
+    table.add_column("Tasks", justify="right", width=6)
+    table.add_column("Cost", justify="right", width=10)
+    table.add_column("Date", style="dim", width=24)
+    for r in rows:
+        short_id = r.run_id[:32] + "…" if len(r.run_id) > 32 else r.run_id
+        task_preview = (r.root_task or "")[:40] + ("…" if len(r.root_task or "") > 40 else "")
+        if r.failed_tasks > 0 and r.completed_tasks > 0:
+            status = "[yellow]⚠ partial[/]"
+        elif r.failed_tasks > 0:
+            status = "[red]✗ failed[/]"
+        else:
+            status = "[green]✓ completed[/]"
+        dur = f"{r.duration_seconds:.1f}s"
+        tasks = f"{r.completed_tasks}/{r.total_tasks}"
+        cost = f"${r.estimated_cost_usd:.4f}" if r.estimated_cost_usd is not None else "—"
+        date = (r.started_at or "")[:24]
+        table.add_row(short_id, task_preview, r.strategy or "—", status, dur, tasks, cost, date)
+    if rows:
+        console.print(table)
+    else:
+        console.print("No runs recorded. Run a swarm first (e.g. [cyan]hivemind run \"task\"[/]).")
+    return 0
+
+
 def _workflow_dispatch(args: object) -> int:
     """Dispatch workflow list | validate | run | <name>."""
     a = args
@@ -711,19 +890,102 @@ Examples:
 
     analyze_parser = subparsers.add_parser(
         "analyze",
-        help="Analyze repository architecture",
-        description="Run repository analysis to understand code structure and dependencies.",
+        help="Analyze a swarm run or repository",
+        description="With a run_id: build run report and optional LLM analysis. With a path: repository analysis.",
         epilog="""
 Examples:
-  hivemind analyze .
+  hivemind analyze events_2025-03-09...     # run analysis
+  hivemind analyze events_xxx --no-ai --json
+  hivemind analyze .                        # repo analysis
   hivemind analyze /path/to/repo
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     analyze_parser.add_argument(
-        "path", nargs="?", default=".", help="Repository root path"
+        "run_id_or_path",
+        nargs="?",
+        default=None,
+        help="Run ID (e.g. events_...) for run analysis, or path (e.g. .) for repo analysis",
     )
-    analyze_parser.set_defaults(func=lambda a: _run_analyze(a.path))
+    analyze_parser.add_argument(
+        "--no-ai",
+        action="store_true",
+        help="Skip LLM analysis (run analysis only)",
+    )
+    analyze_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="analyze_json",
+        help="Output RunReport as JSON (run analysis only)",
+    )
+    analyze_parser.set_defaults(func=_run_analyze_dispatch)
+
+    run_analyze_parser = subparsers.add_parser(
+        "run-analyze",
+        help="Analyze a swarm run by run_id",
+        description="Build run report from event log, optional LLM analysis.",
+        epilog="""
+Examples:
+  hivemind run-analyze events_2025-03-09...
+  hivemind run-analyze events_2025-03-09... --no-ai
+  hivemind run-analyze events_2025-03-09... --json
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    run_analyze_parser.add_argument("run_id", help="Run ID (e.g. from hivemind runs)")
+    run_analyze_parser.add_argument(
+        "--no-ai",
+        action="store_true",
+        help="Skip LLM analysis (stats only, no API call)",
+    )
+    run_analyze_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output raw RunReport as JSON",
+    )
+    run_analyze_parser.set_defaults(
+        func=lambda a: _run_analyze_run(a.run_id, a.no_ai, a.json_output)
+    )
+
+    runs_parser = subparsers.add_parser(
+        "runs",
+        help="List run history or show run summary",
+        description="List recent runs (or filter by --failed). With run_id: same as run-analyze <run_id> --no-ai.",
+        epilog="""
+Examples:
+  hivemind runs
+  hivemind runs --limit 10 --failed
+  hivemind runs --json
+  hivemind runs events_2025-03-09...
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    runs_parser.add_argument(
+        "run_id",
+        nargs="?",
+        default=None,
+        help="If given: show report for this run (no AI, same as run-analyze <run_id> --no-ai)",
+    )
+    runs_parser.add_argument(
+        "--limit",
+        "-n",
+        type=int,
+        default=20,
+        help="Max runs to list (default 20)",
+    )
+    runs_parser.add_argument(
+        "--failed",
+        action="store_true",
+        help="Only list runs with failed_tasks > 0",
+    )
+    runs_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="runs_json",
+        help="Output runs list as JSON",
+    )
+    runs_parser.set_defaults(func=_run_runs)
 
     memory_parser = subparsers.add_parser(
         "memory",

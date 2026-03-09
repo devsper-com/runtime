@@ -101,26 +101,28 @@ class MemoryStore:
         memory_type: MemoryType | None = None,
         limit: int = 100,
         offset: int = 0,
+        tag_contains: str | None = None,
     ) -> list[MemoryRecord]:
-        """List records, optionally filtered by type, with limit/offset."""
+        """List records, optionally filtered by type and/or tag, with limit/offset."""
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
+            conditions = []
+            params = []
             if memory_type is not None:
-                cur = conn.execute(
-                    """
-                    SELECT memory_id, memory_type, content, tags, timestamp, source_task, embedding
-                    FROM memory WHERE memory_type = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?
-                    """,
-                    (memory_type.value, limit, offset),
-                )
-            else:
-                cur = conn.execute(
-                    """
-                    SELECT memory_id, memory_type, content, tags, timestamp, source_task, embedding
-                    FROM memory ORDER BY timestamp DESC LIMIT ? OFFSET ?
-                    """,
-                    (limit, offset),
-                )
+                conditions.append("memory_type = ?")
+                params.append(memory_type.value)
+            if tag_contains:
+                conditions.append("tags LIKE ?")
+                params.append(f"%{tag_contains}%")
+            where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+            params.extend([limit, offset])
+            cur = conn.execute(
+                f"""
+                SELECT memory_id, memory_type, content, tags, timestamp, source_task, embedding
+                FROM memory{where} ORDER BY timestamp DESC LIMIT ? OFFSET ?
+                """,
+                params,
+            )
             rows = cur.fetchall()
         return [_row_to_record(dict(r)) for r in rows]
 

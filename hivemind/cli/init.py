@@ -476,6 +476,33 @@ def run_doctor() -> int:
 
     _check_plaintext_keys_in_toml(warnings)
 
+    try:
+        from hivemind.runtime.run_history import RunHistory, HISTORY_DB
+        history = RunHistory()
+        stats = history.get_stats()
+        n = stats.get("total_runs", 0)
+        total_cost = stats.get("total_estimated_cost_usd", 0.0)
+        if HISTORY_DB.exists():
+            ok.append(f"Run history: {n} runs recorded, ${total_cost:.4f} total estimated spend")
+        else:
+            ok.append("Run history: DB not yet created (will be created on first run)")
+        if n > 0:
+            from datetime import datetime, timezone, timedelta
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+            rows = history.list_runs(limit=50)
+            for r in rows:
+                started = getattr(r, "started_at", "") or ""
+                if started < cutoff:
+                    continue
+                total = getattr(r, "total_tasks", 0) or 0
+                failed = getattr(r, "failed_tasks", 0) or 0
+                if total > 0 and (failed / total) > 0.50:
+                    warnings.append(
+                        f"Run {getattr(r, 'run_id', '?')[:24]}... had >50% task failure ({failed}/{total}) in last 7 days"
+                    )
+    except Exception as e:
+        warnings.append(f"Run history: {e}")
+
     from rich.console import Console
 
     console = Console()

@@ -40,15 +40,23 @@ class MemoryRouter:
     def get_memory_context(self, task: str) -> str:
         """
         Format relevant memories as a string block for injection into the agent prompt.
+        User injections (tag user_injection) are always included first. Then semantic results.
         Empty if no memories meet the relevance threshold.
         """
+        lines = []
+        inject_records = self.store.list_memory(tag_contains="user_injection", limit=10)
+        if inject_records:
+            lines.append("USER INJECTIONS (high priority):")
+            for r in inject_records:
+                lines.append(f"- {r.content[:1000]}{'...' if len(r.content) > 1000 else ''}")
         records = self.get_relevant_memory(task)
-        if not records:
-            return ""
-        lines = ["RELEVANT MEMORY (previous research notes, findings, artifacts):"]
-        for r in records:
-            lines.append(
-                f"- [{r.memory_type.value}] {r.source_task or 'general'}: "
-                f"{r.content[:500]}{'...' if len(r.content) > 500 else ''}"
-            )
-        return "\n".join(lines)
+        if records:
+            if lines:
+                lines.append("")
+            lines.append("RELEVANT MEMORY (previous research notes, findings, artifacts):")
+            for r in records:
+                lines.append(
+                    f"- [{r.memory_type.value}] {r.source_task or 'general'}: "
+                    f"{r.content[:500]}{'...' if len(r.content) > 500 else ''}"
+                )
+        return "\n".join(lines) if lines else ""

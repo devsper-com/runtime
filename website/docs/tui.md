@@ -36,14 +36,20 @@ Pressing **`d`** opens the **Dashboard** screen with six panels:
 
 | Key | Action |
 |-----|--------|
-| **Enter** | Run swarm with the current prompt (if not empty). |
+| **Enter** | Run swarm with the current prompt (if not empty). In Dashboard Tasks view: open task detail for the selected task. |
 | **r** | Run swarm (same as Enter when prompt has focus). |
 | **d** | Open Dashboard (tasks, swarm graph, memory, logs). |
+| **p** | Toggle **pause/resume** during a run. When paused, current tasks finish but no new tasks start; status shows "⏸ PAUSED". |
+| **i** | **Inject** a note to the swarm. Opens an overlay; the message is stored as high-priority memory and included in subsequent agent context. |
 | **Esc** | Unfocus input so **r** / **q** work from the main screen; or close Dashboard and go back. |
 | **o** | Focus the output area. |
 | **q** | Quit the app (or go back from Dashboard). |
 
 **Tip:** If a key doesn’t work, focus may be in the prompt input; press **Esc** to move focus out, then **r** or **q**.
+
+### Task detail (Dashboard)
+
+In the **Tasks** panel, use the arrow keys to select a task row and press **Enter** to open a detail overlay with full description, result text, tools used, duration, retry count, and any error.
 
 ## Running a task
 

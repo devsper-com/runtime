@@ -22,6 +22,8 @@ class HivemindTUI(App[None]):
     BINDINGS = [
         Binding("r", "run_swarm", "Run", show=True),
         Binding("d", "dashboard", "Dashboard", show=True),
+        Binding("p", "toggle_pause", "Pause", show=True),
+        Binding("i", "inject_note", "Inject", show=True),
         Binding("escape", "unfocus_input", "Unfocus input", show=True),
         Binding("o", "focus_output", "Output", show=True),
         Binding("q", "quit", "Quit", show=True),
@@ -87,6 +89,9 @@ class HivemindTUI(App[None]):
         self._run_thread: threading.Thread | None = None
         self._last_prompt = ""
         self._loading_timer = None
+        self._current_swarm = None
+        self._paused = False
+        self._default_subtitle = "Distributed AI Swarm Runtime"
 
     def compose(self) -> ComposeResult:
         yield HivemindLayout()
@@ -127,7 +132,9 @@ class HivemindTUI(App[None]):
                 memory_router=memory_router,
                 use_tools=True,
             )
+            self._current_swarm = swarm
             swarm.run(prompt)
+            self._current_swarm = None
             self._last_scheduler = swarm._last_scheduler
             self._last_reasoning_store = getattr(swarm, "_last_reasoning_store", None)
             self.call_from_thread(self._on_swarm_finished)
@@ -356,6 +363,27 @@ class HivemindTUI(App[None]):
                 event_log_path=getattr(self, "_event_log_path", None),
             )
         )
+
+    def action_toggle_pause(self) -> None:
+        """Toggle pause/resume for the current swarm run."""
+        swarm = getattr(self, "_current_swarm", None)
+        if swarm is None:
+            self.notify("No run in progress.", severity="warning")
+            return
+        self._paused = not self._paused
+        if self._paused:
+            swarm.pause()
+            self.sub_title = "[yellow]⏸ PAUSED[/]"
+            self.notify("Paused: current tasks will finish, no new tasks start.", severity="information")
+        else:
+            swarm.resume()
+            self.sub_title = self._default_subtitle
+            self.notify("Resumed.", severity="information")
+
+    def action_inject_note(self) -> None:
+        """Open overlay to inject a note to the swarm (stored as high-priority memory)."""
+        from hivemind.tui.inject_screen import InjectScreen
+        self.push_screen(InjectScreen())
 
     def action_quit(self) -> None:
         self.exit()
