@@ -21,6 +21,12 @@ The first existing project file wins (hivemind.toml before workflow.hivemind.tom
 | `workers` | int | 4 | Max concurrent tasks (worker pool size). |
 | `adaptive_planning` | bool | false | Whether to expand the DAG after task completion. |
 | `max_iterations` | int | 10 | Upper bound on planning/expansion. |
+| `critic_enabled` | bool | true | (v1.7) Run critic after task completion for eligible roles; can request one retry if score &lt; threshold. |
+| `critic_threshold` | float | 0.70 | (v1.7) Score below this may trigger a retry when the critic requests it. |
+| `critic_roles` | list[string] | ["research", "analysis", "code"] | (v1.7) Task roles that are eligible for critique (e.g. research, analysis, code, backend, frontend). |
+| `message_bus_enabled` | bool | true | (v1.7) Per-run message bus so agents can broadcast discoveries and receive shared context. |
+| `prefetch_enabled` | bool | true | (v1.7) Pre-warm memory and tool selection for speculative successor tasks. |
+| `prefetch_max_age_seconds` | float | 30 | (v1.7) Prefetched result older than this is discarded when the task starts. |
 
 ### `[models]`
 

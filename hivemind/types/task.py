@@ -17,3 +17,4 @@ class Task(BaseModel):
     result: str | None = None
     speculative: bool = False
     role: str | None = None  # Optional agent role: research, code, analysis, critic
+    retry_count: int = 0  # v1.7: critic retries

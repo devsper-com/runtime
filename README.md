@@ -144,7 +144,9 @@ Run `hivemind --help` or `hivemind <command> --help` for examples and options.
 - **TOML config** — `hivemind.toml` / `workflow.hivemind.toml`; env > project > user > defaults
 - **Memory & knowledge graph** — Episodic, semantic, research, artifact memory; summarization, namespaces, entity/relationship search
 - **Map-reduce runtime** — `swarm.map_reduce(dataset, map_fn, reduce_fn)` using the worker pool
-- **Workflows** — Define steps in `workflow.hivemind.toml`; run with `hivemind workflow <name>`
+- **Workflows** — Define steps in `workflow.hivemind.toml`; run with `hivemind workflow <name>`; **structured output self-correction** (v1.7) retries with a correction prompt when JSON parsing fails
+- **Critic & agent messaging (v1.7)** — Optional second-pass critic scores results and requests one retry; per-run message bus lets agents share discoveries via `BROADCAST:`
+- **Speculative pre-fetching (v1.7)** — Pre-warm memory and tools for successor tasks while others run; reduces standing-up time
 - **Plugin ecosystem** — Discover tools via entry_points (`hivemind.plugins`)
 - **Provider routing** — OpenAI, Anthropic, Azure, Gemini, **GitHub Models (Copilot)** (`provider:model` or model name)
 - **Automatic model routing** — `planner = "auto"` and `worker = "auto"` for cost/latency/quality-aware selection
@@ -181,6 +183,10 @@ Run `hivemind --help` or `hivemind <command> --help` for examples and options.
 workers = 6
 adaptive_planning = true
 max_iterations = 10
+critic_enabled = true
+critic_roles = ["research", "analysis", "code"]
+message_bus_enabled = true
+prefetch_enabled = true
 
 [models]
 planner = "auto"

@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.6.0] - TBD
+## [1.7.0] - 2026-03-09
+
+### Added
+
+- **Critic role (v1.7)** — Lightweight second-pass reviewer that scores task results (completeness, accuracy, actionability) and can request one retry when score &lt; threshold. Runs on the fast model. New module `hivemind/agents/critic.py` (`CriticAgent`, `CritiqueResult`). Config: `[swarm] critic_enabled`, `critic_threshold`, `critic_roles`. Task model: `retry_count`. RunReport: `tasks_critiqued`, `tasks_retried_by_critic`, `avg_critique_score`. Event: `TASK_CRITIQUED`.
+- **Agent-to-agent messaging (v1.7)** — Per-run pub/sub message bus so agents can share discoveries. New module `hivemind/agents/message_bus.py` (`SwarmMessageBus`, `AgentMessage`). Agents receive "Shared Discoveries" context and can prefix responses with `BROADCAST: <finding>` to publish. Config: `[swarm] message_bus_enabled`. Event: `AGENT_BROADCAST`.
+- **Speculative pre-fetching (v1.7)** — While a task runs, pre-warm memory context and tool selection for likely successor tasks. New module `hivemind/swarm/prefetcher.py` (`TaskPrefetcher`, `PrefetchResult`). Executor triggers prefetch for speculative tasks; agent accepts optional `prefetch_result` and skips memory/tool fetch when present. RunReport: `prefetch_hit_rate`. Config: `[swarm] prefetch_enabled`, `prefetch_max_age_seconds`. Events: `PREFETCH_HIT`, `PREFETCH_MISS`.
+- **Structured output self-correction (v1.7)** — Workflow steps with `output_schema` retry with a correction prompt when JSON parsing fails (strip markdown fences, validate required fields and types). New in `hivemind/workflow/runner.py`: `try_parse_structured`, `ParseResult`, `_format_schema`, `_run_step_with_correction`, `WorkflowStepError`. Event: `TASK_STRUCTURED_OUTPUT_CORRECTED`.
+- **Config:** `[swarm]` v1.7 keys: `critic_enabled`, `critic_threshold`, `critic_roles`, `message_bus_enabled`, `prefetch_enabled`, `prefetch_max_age_seconds`.
+- **Tests:** `tests/test_v17.py` (critic retry/no-retry/max-one, message bus broadcast/exclude-own, prefetch consumed/stale, structured correction strip/error/max-attempts).
+
+### Changed
+
+- Executor accepts optional `critic_agent`, `critic_enabled`, `critic_roles`, `fast_model`, `prefetcher`; runs critic loop after task success for eligible roles and may re-queue one retry.
+- Agent accepts optional `message_bus` and `prefetch_result`; injects shared discoveries and uses pre-warmed context when provided.
+- Swarm creates one `SwarmMessageBus` per run (when `message_bus_enabled`) and optional `TaskPrefetcher` when speculative execution and `prefetch_enabled`; passes them to executor and agent.
+- Workflow steps with `output_schema` use the self-correction loop instead of blind retry; `WorkflowStepError` raised when retries exhausted.
+
+## [1.6.0] - 2026-03-09
 
 ### Added
 
@@ -26,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Executor uses streaming DAG by default; wave-based execution when `streaming_dag=False`.
 - Agent accepts `model_override` and `parallel_tools`; tool loop can run multiple tool calls in parallel when `parallel_tools` is true.
 
-## [1.5.0] - TBD
+## [1.5.0] - 2026-03-09
 
 ### Added
 

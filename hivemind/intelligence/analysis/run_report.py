@@ -54,6 +54,11 @@ class RunReport:
     theoretical_sequential_duration: float | None = None
     actual_duration: float | None = None
     parallelism_efficiency: float | None = None
+    # v1.7
+    tasks_critiqued: int = 0
+    tasks_retried_by_critic: int = 0
+    avg_critique_score: float | None = None
+    prefetch_hit_rate: float | None = None
 
 
 def _find_log_path(events_dir: str | Path, run_id: str) -> str | None:
@@ -189,6 +194,12 @@ def build_report_from_events(run_id: str, events_dir: str | Path) -> RunReport:
     started_ts: str | None = None
     finished_ts: str | None = None
     strategy = ""
+    # v1.7
+    tasks_critiqued = 0
+    tasks_retried_by_critic = 0
+    critique_scores: list[float] = []
+    prefetch_hits = 0
+    prefetch_misses = 0
 
     for e in evs:
         typ = e.type.value if hasattr(e.type, "value") else str(e.type)
@@ -215,6 +226,17 @@ def build_report_from_events(run_id: str, events_dir: str | Path) -> RunReport:
             tools_by_task.setdefault(task_id, []).append(tool)
         elif typ == "task_model_selected" and task_id:
             task_tier[task_id] = payload.get("tier") or "medium"
+        elif typ == "task_critiqued" and task_id:
+            tasks_critiqued += 1
+            score = payload.get("score")
+            if score is not None:
+                critique_scores.append(float(score))
+            if payload.get("retry_requested"):
+                tasks_retried_by_critic += 1
+        elif typ == "prefetch_hit":
+            prefetch_hits += 1
+        elif typ == "prefetch_miss":
+            prefetch_misses += 1
         elif typ == "swarm_finished":
             finished_ts = ts_str
 
@@ -367,4 +389,14 @@ def build_report_from_events(run_id: str, events_dir: str | Path) -> RunReport:
         theoretical_sequential_duration=theoretical_sequential_duration if theoretical_sequential_duration else None,
         actual_duration=actual_duration,
         parallelism_efficiency=parallelism_efficiency,
+        tasks_critiqued=tasks_critiqued,
+        tasks_retried_by_critic=tasks_retried_by_critic,
+        avg_critique_score=(
+            sum(critique_scores) / len(critique_scores) if critique_scores else None
+        ),
+        prefetch_hit_rate=(
+            prefetch_hits / (prefetch_hits + prefetch_misses)
+            if (prefetch_hits + prefetch_misses) > 0
+            else None
+        ),
     )

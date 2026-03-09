@@ -31,8 +31,11 @@ If something goes wrong, **task_failed** can be used; the scheduler may still ma
 
 4. **Agent runtime**  
    - For one task: build prompt (task description + optional memory context + optional tools list).  
+   - **(v1.7) Message bus:** If enabled, the prompt includes "Shared Discoveries" from other agents in the same run; agents can prefix a response with `BROADCAST: <finding>` to publish a finding.  
+   - **(v1.7) Prefetch:** If speculative prefetching is enabled, the executor may pass a pre-warmed `prefetch_result` (memory + tools) so the agent skips fetching them again.  
    - Call LLM; if tools are enabled, parse tool calls, run tools via the tool runner, append results to the conversation, and repeat until the agent returns a final answer.  
    - Set `task.result` and emit `task_completed`.  
+   - **(v1.7) Critic:** For eligible roles, a critic (on the fast model) scores the result and can request one retry; the task is re-queued with a retry prompt and run again.  
    - **Parallel tools (v1.6):** When multiple tool calls appear in one turn, independent tools run in parallel (config `swarm.parallel_tools`; bypass with `HIVEMIND_DISABLE_PARALLEL_TOOLS=1`).
 
 ## Running a Swarm (Code Snippets)

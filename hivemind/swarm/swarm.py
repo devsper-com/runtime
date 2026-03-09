@@ -93,6 +93,8 @@ class Swarm:
             )
             self.cache_enabled = getattr(cfg.swarm, "cache_enabled", False)
             self.parallel_tools = getattr(cfg.swarm, "parallel_tools", True)
+            self.message_bus_enabled = getattr(cfg.swarm, "message_bus_enabled", True)
+            self.prefetch_enabled = getattr(cfg.swarm, "prefetch_enabled", True)
             self._config = cfg
         else:
             self.worker_count = worker_count if worker_count is not None else 4
@@ -105,6 +107,8 @@ class Swarm:
             self.speculative_execution = False
             self.cache_enabled = False
             self.parallel_tools = True
+            self.message_bus_enabled = True
+            self.prefetch_enabled = True
             self._config = None
         self.event_log = event_log or EventLog()
         self.memory_router = memory_router
@@ -149,6 +153,11 @@ class Swarm:
         _persist_dag(scheduler, self.event_log)
 
         from hivemind.reasoning.store import ReasoningStore
+        from hivemind.agents.message_bus import SwarmMessageBus
+
+        message_bus = None
+        if getattr(self, "message_bus_enabled", True):
+            message_bus = SwarmMessageBus(event_log=self.event_log)
 
         reasoning_store = ReasoningStore()
         agent = Agent(
@@ -160,6 +169,7 @@ class Swarm:
             reasoning_store=reasoning_store,
             user_task=user_task,
             parallel_tools=getattr(self, "parallel_tools", True),
+            message_bus=message_bus,
         )
         task_cache = None
         semantic_cache = None
@@ -183,6 +193,47 @@ class Swarm:
 
             complexity_router = TaskComplexityRouter()
             models_config = self._config.models
+
+        critic_agent = None
+        critic_enabled = False
+        critic_roles: list[str] = []
+        fast_model = self.worker_model
+        if self._config is not None:
+            critic_enabled = getattr(self._config.swarm, "critic_enabled", False)
+            critic_roles = list(
+                getattr(self._config.swarm, "critic_roles", [])
+                or ["research", "analysis", "code"]
+            )
+            fast_model = getattr(self._config.models, "fast", None) or self.worker_model
+            if critic_enabled:
+                from hivemind.agents.critic import CriticAgent
+                critic_agent = CriticAgent(event_log=self.event_log)
+
+        prefetcher = None
+        if getattr(self, "speculative_execution", False) and getattr(
+            self, "prefetch_enabled", True
+        ):
+            from hivemind.swarm.prefetcher import TaskPrefetcher
+            from hivemind.tools.selector import get_tools_for_task
+            try:
+                from hivemind.tools.scoring import get_default_score_store
+                score_store = get_default_score_store()
+            except Exception:
+                score_store = None
+            prefetch_max_age = 30.0
+            if self._config is not None:
+                prefetch_max_age = getattr(
+                    self._config.swarm, "prefetch_max_age_seconds", 30.0
+                )
+            prefetcher = TaskPrefetcher(
+                memory_router=self.memory_router,
+                tool_selector=lambda desc, role=None, score_store=None: get_tools_for_task(
+                    desc or "", role=role, score_store=score_store
+                ),
+                score_store=score_store,
+                max_age_seconds=prefetch_max_age,
+            )
+
         executor = Executor(
             scheduler=scheduler,
             agent=agent,
@@ -197,6 +248,11 @@ class Swarm:
             complexity_router=complexity_router,
             models_config=models_config,
             streaming_dag=True,
+            critic_agent=critic_agent,
+            critic_enabled=critic_enabled,
+            critic_roles=critic_roles,
+            fast_model=fast_model,
+            prefetcher=prefetcher,
         )
         executor.run_sync()
 

@@ -9,11 +9,14 @@ from hivemind.types.event import Event, events
 from hivemind.utils.event_logger import EventLog
 from hivemind.utils.models import generate
 
+BROADCAST_PREFIX = re.compile(r"^\s*BROADCAST:\s*(.+?)(?=\n\n|\n[A-Z]|\Z)", re.DOTALL | re.IGNORECASE)
+
 PROMPT_TEMPLATE = """{role_prefix}
 
 Task:
 {task_description}
 {memory_section}
+{message_bus_section}
 
 Produce the best possible output. Output only the requested content; do not describe your role or other projects."""
 
@@ -22,6 +25,7 @@ PROMPT_TEMPLATE_WITH_TOOLS = """{role_prefix} You may use tools.
 Task:
 {task_description}
 {memory_section}
+{message_bus_section}
 
 Output only the requested content; do not describe your role or other projects.
 
@@ -33,6 +37,12 @@ TOOL: <tool_name>
 INPUT: <json object with arguments>
 
 If you do not need a tool, respond with your final answer only (no TOOL: line).
+"""
+
+BROADCAST_INSTRUCTION = """
+If you discover a fact, constraint, or finding that would help other agents working on related tasks, begin your response with:
+BROADCAST: <one sentence finding>
+Your actual response follows on the next line.
 """
 
 TOOL_NAME_PATTERN = re.compile(r"TOOL:\s*(\S+)", re.IGNORECASE)
@@ -135,6 +145,7 @@ class Agent:
         reasoning_store=None,
         user_task: str | None = None,
         parallel_tools: bool = True,
+        message_bus=None,
     ):
         self.model_name = model_name
         self.event_log = event_log or EventLog()
@@ -145,8 +156,14 @@ class Agent:
         self.reasoning_store = reasoning_store
         self.user_task = user_task
         self.parallel_tools = parallel_tools and os.environ.get("HIVEMIND_DISABLE_PARALLEL_TOOLS", "").strip() != "1"
+        self.message_bus = message_bus
 
-    def run(self, task: Task, model_override: str | None = None) -> str:
+    def run(
+        self,
+        task: Task,
+        model_override: str | None = None,
+        prefetch_result=None,
+    ) -> str:
         model = model_override if model_override else self.model_name
         self._emit(events.AGENT_STARTED, {"task_id": task.id})
         self._emit(events.TASK_STARTED, {"task_id": task.id})
@@ -154,9 +171,11 @@ class Agent:
         task.status = TaskStatus.RUNNING
 
         memory_section = ""
-        if self.memory_router and task.description:
+        if prefetch_result and getattr(prefetch_result, "memory_context", None):
+            ctx = prefetch_result.memory_context
+            memory_section = "\n\nRELEVANT MEMORY\n(previous research notes etc.)\n\n" + ctx if ctx else ""
+        elif self.memory_router and task.description:
             try:
-                # Bias memory retrieval by user goal so subtasks don't pull off-topic context
                 query = task.description
                 if self.user_task and self.user_task.strip():
                     query = f"{self.user_task.strip()} {task.description}".strip()
@@ -165,19 +184,40 @@ class Agent:
             except Exception:
                 pass
 
+        message_bus_section = ""
+        broadcast_instruction = ""
+        if self.message_bus:
+            message_bus_section = self.message_bus.get_context_sync(task.id)
+            if message_bus_section:
+                message_bus_section = "\n\n" + message_bus_section
+                broadcast_instruction = BROADCAST_INSTRUCTION
+
         from hivemind.agents.roles import get_role_config
         role_config = get_role_config(getattr(task, "role", None))
-        role_prefix = role_config.prompt_prefix
+        role_prefix = role_config.prompt_prefix + broadcast_instruction if broadcast_instruction else role_config.prompt_prefix
 
         if self.use_tools:
-            text = self._run_with_tools(task, memory_section, role_prefix=role_prefix, model_name=model)
+            tools_list = None
+            if prefetch_result and getattr(prefetch_result, "tools", None):
+                tools_list = prefetch_result.tools
+            text = self._run_with_tools(
+                task,
+                memory_section,
+                role_prefix=role_prefix,
+                model_name=model,
+                tools_list=tools_list,
+                message_bus_section=message_bus_section,
+            )
         else:
             prompt = PROMPT_TEMPLATE.format(
                 role_prefix=role_prefix,
                 task_description=task.description,
                 memory_section=memory_section,
+                message_bus_section=message_bus_section,
             )
             text = generate(model, prompt)
+
+        text = self._strip_broadcast_and_emit(task, text)
 
         task.status = TaskStatus.COMPLETED
         task.result = text
@@ -197,6 +237,18 @@ class Agent:
         self._emit(events.AGENT_FINISHED, {"task_id": task.id})
 
         return text
+
+    def _strip_broadcast_and_emit(self, task: Task, text: str) -> str:
+        """If text starts with BROADCAST:, emit to message_bus and strip; return rest."""
+        if not text or not self.message_bus:
+            return text
+        m = BROADCAST_PREFIX.match(text)
+        if not m:
+            return text
+        finding = m.group(1).strip()
+        self.message_bus.broadcast_sync(task.id, finding, tags=[])
+        rest = text[m.end() :].lstrip()
+        return rest
 
     def _store_result_to_memory(self, task: Task, text: str) -> None:
         from hivemind.memory.memory_store import MemoryStore
@@ -225,6 +277,8 @@ class Agent:
         memory_section: str = "",
         role_prefix: str = "",
         model_name: str | None = None,
+        tools_list: list | None = None,
+        message_bus_section: str = "",
     ) -> str:
         from hivemind.tools.selector import get_tools_for_task
         from hivemind.tools.tool_runner import run_tool
@@ -232,22 +286,26 @@ class Agent:
         model = model_name or self.model_name
         role = getattr(task, "role", None)
         task_type = role or "general"
-        score_store = None
-        try:
-            from hivemind.tools.scoring import get_default_score_store
-            score_store = get_default_score_store()
-        except Exception:
-            pass
-        tools = get_tools_for_task(
-            task.description if task else "",
-            role=role,
-            score_store=score_store,
-        )
+        if tools_list is not None:
+            tools = tools_list
+        else:
+            score_store = None
+            try:
+                from hivemind.tools.scoring import get_default_score_store
+                score_store = get_default_score_store()
+            except Exception:
+                score_store = None
+            tools = get_tools_for_task(
+                task.description if task else "",
+                role=role,
+                score_store=score_store,
+            )
         tools_section = _format_tools_section(tools)
         prompt = PROMPT_TEMPLATE_WITH_TOOLS.format(
             role_prefix=role_prefix,
             task_description=task.description,
             memory_section=memory_section,
+            message_bus_section=message_bus_section,
             tools_section=tools_section,
         )
         conversation = [prompt]

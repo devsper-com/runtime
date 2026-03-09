@@ -40,14 +40,16 @@
 
 - **Role:** Drives execution until the scheduler reports all tasks completed.
 - **Behavior:** In a loop, gets ready tasks, runs each via an **Agent** (with a concurrency limit, e.g. semaphore), then marks tasks completed. Optionally calls the planner to add new tasks (adaptive).
-- **Events:** `executor_started`, then per-task agent/task events, then `executor_finished`.
+- **(v1.7) Critic:** After a task completes, if critic is enabled and the task role is in `critic_roles`, a **CriticAgent** scores the result (completeness, accuracy, actionability). If the score is below threshold and the critic requests a retry, the task is re-queued once with a retry prompt.
+- **(v1.7) Prefetcher:** When speculative execution and prefetch are enabled, the executor triggers background prefetch (memory + tool selection) for speculative tasks; when a task runs, it may receive a pre-warmed `prefetch_result` so the agent skips fetching.
+- **Events:** `executor_started`, then per-task agent/task events, then `executor_finished`; (v1.7) `TASK_CRITIQUED`, `PREFETCH_HIT`, `PREFETCH_MISS`.
 
 ### Agents
 
 - **Role:** Stateless workers that execute a single task by calling an LLM (via the provider router).
-- **Input:** A `Task` (description, optional dependencies context).
-- **Output:** Text result stored on the task; optionally tools are invoked in a loop until the agent returns a final answer.
-- **Events:** `agent_started`, `task_started`, `task_completed`, `agent_finished`, and `tool_called` when tools are used.
+- **Input:** A `Task` (description, optional dependencies context). (v1.7) Optional **message bus** (per-run pub/sub) and **prefetch_result** (pre-warmed memory + tools).
+- **Output:** Text result stored on the task; optionally tools are invoked in a loop until the agent returns a final answer. (v1.7) Agents can start a response with `BROADCAST: <finding>` to publish to the message bus; the finding is stripped before storing the result.
+- **Events:** `agent_started`, `task_started`, `task_completed`, `agent_finished`, and `tool_called` when tools are used; (v1.7) `AGENT_BROADCAST` when an agent broadcasts a finding.
 
 ### Tools
 

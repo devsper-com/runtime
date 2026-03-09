@@ -21,6 +21,12 @@ class events(Enum):
     TOOL_CALLED = "tool_called"
     REASONING_NODE_ADDED = "reasoning_node_added"
     USER_INJECTION = "user_injection"
+    # v1.7
+    TASK_CRITIQUED = "task_critiqued"
+    AGENT_BROADCAST = "agent_broadcast"
+    PREFETCH_HIT = "prefetch_hit"
+    PREFETCH_MISS = "prefetch_miss"
+    TASK_STRUCTURED_OUTPUT_CORRECTED = "task_structured_output_corrected"
 
 class Event(BaseModel):
     timestamp: datetime

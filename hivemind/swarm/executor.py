@@ -6,12 +6,14 @@ Uses asyncio and a worker pool (Semaphore) to run up to worker_count tasks concu
 Supports speculative execution and task cache lookup.
 
 v1.6: Semantic task cache, model complexity routing, streaming DAG unblocking.
+v1.7: Critic loop, speculative prefetching.
 """
 
 import os
 import asyncio
 import threading
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from hivemind.types.task import Task, TaskStatus
 from hivemind.types.event import Event, events
@@ -21,6 +23,10 @@ from hivemind.agents.agent import Agent
 from hivemind.swarm.scheduler import Scheduler
 from hivemind.swarm.planner import Planner
 from hivemind.intelligence.adaptation import create_alternative_subtasks_for_failed
+
+if TYPE_CHECKING:
+    from hivemind.agents.critic import CriticAgent
+    from hivemind.swarm.prefetcher import TaskPrefetcher
 
 
 def _get_tools_for_task(task: Task) -> list:
@@ -56,6 +62,11 @@ class Executor:
         complexity_router: object = None,
         models_config: object = None,
         streaming_dag: bool = True,
+        critic_agent: "CriticAgent | None" = None,
+        critic_enabled: bool = False,
+        critic_roles: list[str] | None = None,
+        fast_model: str = "mock",
+        prefetcher: "TaskPrefetcher | None" = None,
     ) -> None:
         self.scheduler = scheduler
         self.agent = agent
@@ -70,6 +81,11 @@ class Executor:
         self.complexity_router = complexity_router
         self.models_config = models_config or getattr(agent, "model_name", "mock")
         self.streaming_dag = streaming_dag
+        self.critic_agent = critic_agent
+        self.critic_enabled = critic_enabled
+        self.critic_roles = critic_roles or []
+        self.fast_model = fast_model
+        self.prefetcher = prefetcher
 
     def run_sync(self) -> None:
         """Run the execution loop to completion (synchronous entry point)."""
@@ -155,13 +171,33 @@ class Executor:
                     },
                 )
             return task.id
+
+        prefetch_result = None
+        if self.prefetcher:
+            prefetch_result = self.prefetcher.consume(task.id)
+            if prefetch_result is not None:
+                age_seconds = (
+                    datetime.now(timezone.utc) - prefetch_result.computed_at
+                ).total_seconds()
+                self._emit(
+                    events.PREFETCH_HIT,
+                    {"task_id": task.id, "age_seconds": round(age_seconds, 2)},
+                )
+            else:
+                self._emit(
+                    events.PREFETCH_MISS,
+                    {"task_id": task.id, "reason": "stale_or_missing"},
+                )
+
         model_override = None
         if self.complexity_router and self.models_config:
             model_override = self._model_for_task(task)
         try:
             await loop.run_in_executor(
                 None,
-                lambda t=task, m=model_override: self.agent.run(t, model_override=m),
+                lambda t=task, m=model_override, p=prefetch_result: self.agent.run(
+                    t, model_override=m, prefetch_result=p
+                ),
             )
         except Exception as err:
             task.status = TaskStatus.FAILED
@@ -181,7 +217,44 @@ class Executor:
                     if alt:
                         self.scheduler.add_tasks(alt)
             return task.id
-        self._set_cached_result(task, task.result or "")
+
+        result = task.result or ""
+        self._set_cached_result(task, result)
+
+        # v1.7: critic loop — only for non-speculative, eligible roles, not already retried
+        role = getattr(task, "role", None) or ""
+        retry_count = getattr(task, "retry_count", 0)
+        if (
+            not is_speculative
+            and self.critic_enabled
+            and self.critic_agent
+            and role in self.critic_roles
+            and retry_count < 1
+        ):
+            from hivemind.agents.critic import CriticAgent
+
+            critique = await self.critic_agent.critique(
+                task, result, model=self.fast_model
+            )
+            self._emit(
+                events.TASK_CRITIQUED,
+                {
+                    "task_id": task.id,
+                    "score": critique.score,
+                    "issues": critique.issues,
+                    "retry_requested": critique.retry,
+                },
+            )
+            if critique.retry and retry_count < 1:
+                retry_prompt = await self.critic_agent.get_retry_prompt(
+                    task, result, critique
+                )
+                task.description = retry_prompt
+                task.retry_count = retry_count + 1
+                task.result = None
+                task.status = TaskStatus.PENDING
+                return await self._execute_task(task, is_speculative)
+
         if not is_speculative:
             self.scheduler.mark_completed(task.id)
             self.scheduler.confirm_speculative_for(task.id)
@@ -211,6 +284,10 @@ class Executor:
             speculative: list[Task] = []
             if self.speculative_execution:
                 speculative = self.scheduler.get_speculative_tasks()
+                if self.prefetcher:
+                    for t in speculative:
+                        if t.id not in running:
+                            asyncio.create_task(self.prefetcher.prefetch(t))
 
             if self.streaming_dag:
                 for task in ready + speculative:

@@ -11,6 +11,13 @@ class SwarmConfig(BaseModel):
     speculative_execution: bool = False
     cache_enabled: bool = False
     parallel_tools: bool = True  # v1.6: run independent tool calls in parallel within agents
+    # v1.7
+    critic_enabled: bool = True
+    critic_threshold: float = 0.70
+    critic_roles: list[str] = ["research", "analysis", "code"]
+    message_bus_enabled: bool = True
+    prefetch_enabled: bool = True
+    prefetch_max_age_seconds: float = 30.0
 
 
 class CacheConfig(BaseModel):

@@ -5,6 +5,12 @@ cache_enabled = true
 adaptive_planning = true
 adaptive_execution = true
 max_iterations = 10
+critic_enabled = true
+critic_threshold = 0.70
+critic_roles = ["research", "analysis", "code"]
+message_bus_enabled = true
+prefetch_enabled = true
+prefetch_max_age_seconds = 30
 
 [models]
 planner = "github:copilot"
