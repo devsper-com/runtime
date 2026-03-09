@@ -1,0 +1,110 @@
+/**
+ * Hivemind docs – developer-focused, dark-first
+ */
+
+:root {
+  --ifm-font-family-base: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ifm-font-family-monospace: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+}
+
+[data-theme='dark'] {
+  --ifm-background-color: #0f172a;
+  --ifm-background-surface-color: #1e293b;
+  --ifm-color-primary: #34d399;
+  --ifm-color-primary-dark: #2dd4a0;
+  --ifm-color-primary-darker: #10b981;
+  --ifm-color-primary-darkest: #059669;
+  --ifm-color-primary-light: #6ee7b7;
+  --ifm-color-primary-lighter: #a7f3d0;
+  --ifm-color-primary-lightest: #d1fae5;
+  --ifm-navbar-background-color: #0f172a;
+  --ifm-footer-background-color: #0f172a;
+}
+
+/* Hero on home page */
+.hero {
+  padding: 4rem 0 5rem;
+  text-align: center;
+}
+
+.hero__title {
+  font-size: 3rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.hero__subtitle {
+  font-size: 1.25rem;
+  color: var(--ifm-color-emphasis-700);
+  margin-bottom: 0.5rem;
+}
+
+.hero__tagline {
+  font-size: 1.1rem;
+  color: var(--ifm-color-emphasis-600);
+  max-width: 560px;
+  margin: 0 auto 1.5rem;
+  line-height: 1.6;
+}
+
+.hero__install {
+  margin-bottom: 2rem;
+}
+
+.hero__install code {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background: var(--ifm-code-background);
+  border-radius: 6px;
+  font-size: 1rem;
+  margin-right: 1rem;
+}
+
+.hero__cli {
+  color: var(--ifm-color-emphasis-600);
+  font-size: 0.95rem;
+}
+
+.hero__links {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.hero__links .button {
+  margin: 0;
+}
+
+/* Code blocks */
+.prism-code {
+  font-size: 0.9rem;
+  border-radius: 6px;
+}
+
+/* Navbar */
+.navbar {
+  box-shadow: 0 1px 0 var(--ifm-toc-border-color);
+}
+
+.navbar__link {
+  font-weight: 500;
+}
+
+/* Sidebar */
+.menu__link {
+  font-size: 0.9375rem;
+}
+
+.menu__link--active {
+  font-weight: 600;
+}
+
+/* Tables */
+table {
+  font-size: 0.9375rem;
+}
+
+.table-of-contents__link {
+  font-size: 0.875rem;
+}

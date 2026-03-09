@@ -1,10 +1,9 @@
 # Deploy docs to GitHub Pages (hivemind.rithul.dev)
-# - On push to main: deploy "latest" from current main
-# - On release published: deploy versioned docs from tag (e.g. 1.2.0)
+# - On push to main: build Docusaurus and deploy to gh-pages
+# - On release published: add docs version for the release, commit to main, then deploy runs via push
 #
 # Required: Repo Settings → Pages → Build and deployment → Source:
 #   "Deploy from a branch" → Branch: gh-pages → / (root)
-# (This workflow pushes to gh-pages; it does not use the "GitHub Actions" deploy source.)
 
 name: Docs
 
@@ -13,11 +12,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/docs.yml"
-      - "docs/**"
-      - "mkdocs.yml"
-      - "pyproject.toml"
-      - "requirements-docs.txt"
-      - "branding/**"
+      - "website/**"
   release:
     types: [published]
 
@@ -31,7 +26,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-latest:
+  add-version:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Parse version from tag
+        id: version
+        run: |
+          V="${GITHUB_REF#refs/tags/v}"
+          echo "version=$V" >> $GITHUB_OUTPUT
+
+      - name: Install and add docs version
+        run: |
+          cd website
+          npm ci
+          npx docusaurus docs:version ${{ steps.version.outputs.version }}
+
+      - name: Commit versioned docs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add website/versioned_docs website/versioned_sidebars website/versions.json
+          git diff --staged --quiet || (git commit -m "chore(docs): add version ${{ steps.version.outputs.version }}" && git push)
+
+  deploy:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -40,106 +71,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
 
-      - name: Install docs dependencies
-        run: pip install -r requirements-docs.txt
-
-      - name: Get version
-        id: version
+      - name: Install and build
         run: |
-          V=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
-          echo "version=$V" >> $GITHUB_OUTPUT
+          cd website
+          npm ci
+          npm run build
 
-      - name: Deploy latest to gh-pages
-        run: |
-          set -e
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Give mike a local gh-pages synced with remote so push is not rejected (remote may have CNAME from prior run)
-          git fetch origin gh-pages 2>/dev/null || true
-          if git show-ref -q refs/remotes/origin/gh-pages; then
-            git checkout -B gh-pages origin/gh-pages
-            git checkout -
-          fi
-          # Suppress Material's MkDocs 2.0 warning (we pin mkdocs<2)
-          run_filtered() {
-            set +e
-            out=$("$@" 2>&1)
-            s=$?
-            set -e
-            echo "$out" | grep -v -E "MkDocs 2\.0|backward-incompatible|plugin system|theming system|No migration path|Closed contribution|Currently unlicensed|Our full analysis|squidfunk\.github\.io/mkdocs-material/blog" || true
-            return $s
-          }
-          run_filtered mike deploy --push --allow-empty --update-aliases "${{ steps.version.outputs.version }}" latest
-          run_filtered mike set-default --push --allow-empty latest
-
-      - name: Ensure CNAME on gh-pages
-        run: |
-          git clone --branch gh-pages "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages-out
-          cd gh-pages-out
-          echo "hivemind.rithul.dev" > CNAME
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CNAME
-          git diff --staged --quiet || (git commit -m "chore(docs): ensure CNAME for custom domain" && git push)
-
-  deploy-version:
-    if: github.event_name == 'release'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          ref: ${{ github.ref }}
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install docs dependencies
-        run: pip install -r requirements-docs.txt
-
-      - name: Parse version from tag
-        id: version
-        run: |
-          V="${GITHUB_REF#refs/tags/v}"
-          echo "version=$V" >> $GITHUB_OUTPUT
-
-      - name: Deploy versioned docs to gh-pages
-        run: |
-          set -e
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Give mike a local gh-pages synced with remote so push is not rejected
-          git fetch origin gh-pages 2>/dev/null || true
-          if git show-ref -q refs/remotes/origin/gh-pages; then
-            git checkout -B gh-pages origin/gh-pages
-            git checkout -
-          fi
-          # Suppress Material's MkDocs 2.0 warning (we pin mkdocs<2)
-          run_filtered() {
-            set +e
-            out=$("$@" 2>&1)
-            s=$?
-            set -e
-            echo "$out" | grep -v -E "MkDocs 2\.0|backward-incompatible|plugin system|theming system|No migration path|Closed contribution|Currently unlicensed|Our full analysis|squidfunk\.github\.io/mkdocs-material/blog" || true
-            return $s
-          }
-          run_filtered mike deploy --push --allow-empty "${{ steps.version.outputs.version }}"
-          run_filtered mike alias --push --allow-empty "${{ steps.version.outputs.version }}" stable
-
-      - name: Ensure CNAME on gh-pages
-        run: |
-          git clone --branch gh-pages "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages-out
-          cd gh-pages-out
-          echo "hivemind.rithul.dev" > CNAME
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CNAME
-          git diff --staged --quiet || (git commit -m "chore(docs): ensure CNAME for custom domain" && git push)
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: website/build
+          cname: hivemind.rithul.dev

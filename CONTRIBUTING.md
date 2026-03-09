@@ -36,11 +36,11 @@ Run a subset: `uv run python -m pytest tests/test_swarm.py -v`
 
 - Keep PRs focused (one feature or fix when possible).
 - Ensure all tests pass and lint/format checks succeed.
-- Update docs under `docs/` if you change user-facing behavior or add features.
-- For new tools or providers, add a short note in the relevant doc (e.g. [tools.md](docs/tools.md), [providers.md](docs/providers.md)).
+- Update docs in `website/docs/` if you change user-facing behavior or add features (site: [hivemind.rithul.dev](https://hivemind.rithul.dev)).
+- For new tools or providers, add a short note in the relevant doc (e.g. [tools](https://hivemind.rithul.dev/docs/tools), [providers](https://hivemind.rithul.dev/docs/providers)).
 
 ## Adding tools or features
 
-- **New tool:** See [Tools](docs/tools.md) and [Development — Adding new tools](docs/development.md#adding-new-tools). Add the tool under the right category and register it; add tests in `tests/tools/` if appropriate.
-- **New provider:** See [Development — Adding providers](docs/development.md#adding-providers). Implement the provider, wire it in the router, and document config.
-- **New example:** Add a script under `examples/` and document it in [Examples](docs/examples.md). Prefer using the shared `examples._common` and `examples._config` helpers.
+- **New tool:** See [Tools](https://hivemind.rithul.dev/docs/tools) and [Development — Adding new tools](https://hivemind.rithul.dev/docs/development#adding-new-tools). Add the tool under the right category and register it; add tests in `tests/tools/` if appropriate.
+- **New provider:** See [Development — Adding providers](https://hivemind.rithul.dev/docs/development#adding-providers). Implement the provider, wire it in the router, and document config.
+- **New example:** Add a script under `examples/` and document it in [Examples](https://hivemind.rithul.dev/docs/examples). Prefer using the shared `examples._common` and `examples._config` helpers.

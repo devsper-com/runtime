@@ -224,21 +224,23 @@ Outputs under `examples/output/`. Run from project root when using script paths.
 
 ## Documentation
 
+Full docs (with versioning and dark mode): **[hivemind.rithul.dev](https://hivemind.rithul.dev)**. Source lives in `website/docs/` and is built with [Docusaurus](https://docusaurus.io).
+
 | Doc | Description |
 |-----|-------------|
-| [Introduction](docs/introduction.md) | What Hivemind is, problem, core concepts |
-| [Architecture](docs/architecture.md) | Planner, Scheduler, Executor, Agents, Tools, Memory, strategies |
-| [Configuration](docs/configuration.md) | TOML schema, locations, env, **credentials** |
-| [Swarm runtime](docs/swarm_runtime.md) | Task lifecycle, flow, map-reduce |
-| [Tools](docs/tools.md) | Registry, runner, smart selection, plugins |
-| [Memory](docs/memory_system.md) | Types, store, retrieval, knowledge graph |
-| [Providers](docs/providers.md) | Provider routing, Azure, GitHub Models, auto routing |
-| [CLI](docs/cli.md) | All commands, **credentials**, completion |
-| [TUI](docs/tui.md) | Layout, panels, shortcuts |
-| [Examples](docs/examples.md) | Workflows and commands |
-| [Development](docs/development.md) | Structure, adding tools/plugins/workflows |
+| [Introduction](https://hivemind.rithul.dev/docs/introduction) | What Hivemind is, problem, core concepts |
+| [Architecture](https://hivemind.rithul.dev/docs/architecture) | Planner, Scheduler, Executor, Agents, Tools, Memory, strategies |
+| [Configuration](https://hivemind.rithul.dev/docs/configuration) | TOML schema, locations, env, **credentials** |
+| [Swarm runtime](https://hivemind.rithul.dev/docs/swarm_runtime) | Task lifecycle, flow, map-reduce |
+| [Tools](https://hivemind.rithul.dev/docs/tools) | Registry, runner, smart selection, plugins |
+| [Memory](https://hivemind.rithul.dev/docs/memory_system) | Types, store, retrieval, knowledge graph |
+| [Providers](https://hivemind.rithul.dev/docs/providers) | Provider routing, Azure, GitHub Models, auto routing |
+| [CLI](https://hivemind.rithul.dev/docs/cli) | All commands, **credentials**, completion |
+| [TUI](https://hivemind.rithul.dev/docs/tui) | Layout, panels, shortcuts |
+| [Examples](https://hivemind.rithul.dev/docs/examples) | Workflows and commands |
+| [Development](https://hivemind.rithul.dev/docs/development) | Structure, adding tools/plugins/workflows |
 | [Contributing](CONTRIBUTING.md) | Setup, testing, PR guidelines |
-| [FAQ](docs/faq.md) | Common questions |
+| [FAQ](https://hivemind.rithul.dev/docs/faq) | Common questions |
 
 ---
 
