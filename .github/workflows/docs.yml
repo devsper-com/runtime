@@ -8,6 +8,7 @@ on:
   push:
     branches: [main]
     paths:
+      - ".github/workflows/docs.yml"
       - "docs/**"
       - "mkdocs.yml"
       - "pyproject.toml"
