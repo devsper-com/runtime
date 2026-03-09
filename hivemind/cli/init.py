@@ -490,7 +490,6 @@ def run_doctor() -> int:
 
     try:
         from hivemind.knowledge.knowledge_graph import KnowledgeGraph
-        import os
         kg = KnowledgeGraph(store=get_default_store())
         kg.load()
         g = kg.graph
@@ -510,6 +509,33 @@ def run_doctor() -> int:
         ok.append(f"Knowledge graph: {n_nodes} nodes, {n_edges} edges, last updated {last_updated}")
     except Exception as e:
         warnings.append(f"Knowledge graph: {e}")
+
+    try:
+        from hivemind.config import get_config
+        cfg = get_config()
+        nodes_mode = getattr(getattr(cfg, "nodes", None), "mode", "single")
+        if nodes_mode == "distributed":
+            try:
+                import redis
+                r = redis.from_url(getattr(getattr(cfg, "bus", None), "redis_url", "redis://localhost:6379"))
+                r.ping()
+                ok.append("Redis reachable (distributed mode)")
+            except ImportError:
+                issues.append("Distributed mode requires: pip install hivemind-ai[distributed]")
+            except Exception as e:
+                issues.append(f"Redis not reachable: {e}")
+            try:
+                import fastapi
+                import uvicorn
+                ok.append("fastapi + uvicorn installed (RPC)")
+            except ImportError:
+                warnings.append("RPC endpoints need: pip install hivemind-ai[distributed]")
+            if not getattr(getattr(cfg, "nodes", None), "rpc_token", None):
+                warnings.append("nodes.rpc_token not set — RPC endpoints are unauthenticated")
+        else:
+            ok.append("Running in single-node mode — no cluster checks needed")
+    except Exception:
+        pass
 
     _check_plaintext_keys_in_toml(warnings)
 

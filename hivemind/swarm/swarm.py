@@ -27,6 +27,16 @@ from hivemind.swarm.executor import Executor
 from hivemind.agents.agent import Agent
 
 
+def _fake_config():
+    """Minimal config for single-node when no config file loaded."""
+    class N:
+        mode = "single"
+    class C:
+        events_dir = ".hivemind/events"
+        nodes = N()
+    return C()
+
+
 def _persist_dag(scheduler: Scheduler, event_log: EventLog) -> None:
     """Write task DAG to events dir as {run_id}_dag.json for graph export."""
     run_id = getattr(event_log, "run_id", None)
@@ -177,6 +187,81 @@ class Swarm:
         message_bus = None
         if getattr(self, "message_bus_enabled", True):
             message_bus = SwarmMessageBus(event_log=self.event_log)
+
+        nodes_mode = "distributed"  # no config -> use executor path (v1.9 behavior)
+        if self._config is not None:
+            nodes_cfg = getattr(self._config, "nodes", None)
+            nodes_mode = getattr(nodes_cfg, "mode", "single") if nodes_cfg else "single"
+        if nodes_mode == "single" and self._config is not None:
+            def _agent_factory(cfg):
+                rs = ReasoningStore()
+                mb = SwarmMessageBus(event_log=self.event_log) if getattr(self, "message_bus_enabled", True) else None
+                return Agent(
+                    model_name=self.worker_model,
+                    event_log=self.event_log,
+                    memory_router=self.memory_router,
+                    store_result_to_memory=False,
+                    use_tools=self.use_tools,
+                    reasoning_store=rs,
+                    user_task=user_task,
+                    parallel_tools=getattr(self, "parallel_tools", True),
+                    message_bus=mb,
+                )
+            from hivemind.nodes.single import create_single_node
+            single_node = create_single_node(
+                config=self._config or _fake_config(),
+                scheduler=scheduler,
+                event_log=self.event_log,
+                memory_router=self.memory_router,
+                agent_factory=_agent_factory,
+                user_task=user_task,
+                message_bus=message_bus,
+            )
+            async def _run_single():
+                await single_node.start()
+                return await single_node.run_until_finished()
+            results = asyncio.run(_run_single())
+            self._last_scheduler = scheduler
+            self._last_reasoning_store = None
+            if self.store_swarm_memory and self.memory_router and results:
+                self._store_swarm_memory(user_task, scheduler)
+            self._emit(events.SWARM_FINISHED, {"task_count": len(results)})
+            try:
+                from hivemind.intelligence.analysis.run_report import build_report_from_events
+                from hivemind.runtime.run_history import RunHistory
+                log_path = getattr(self.event_log, "log_path", None)
+                if log_path:
+                    events_dir = os.path.dirname(log_path)
+                    run_id = getattr(self.event_log, "run_id", None)
+                    if run_id:
+                        report = build_report_from_events(run_id, events_dir)
+                        RunHistory().record_run(report)
+                        if self._config and getattr(getattr(self._config, "knowledge", None), "auto_extract", False):
+                            from hivemind.knowledge.knowledge_graph import KnowledgeGraph
+                            from hivemind.knowledge.extractor import KnowledgeExtractor
+                            from hivemind.memory.memory_store import get_default_store
+                            kg = KnowledgeGraph(store=get_default_store())
+                            kg.load()
+                            kg.build_from_memory(merge=True)
+                            completed_tasks = self.last_completed_tasks
+                            min_conf = getattr(self._config.knowledge, "min_confidence", 0.60)
+                            extractor = KnowledgeExtractor(min_confidence=min_conf)
+                            try:
+                                asyncio.get_event_loop().run_until_complete(
+                                    extractor.extract_from_run(
+                                        run_id, completed_tasks, kg, event_log=self.event_log
+                                    )
+                                )
+                            except Exception:
+                                loop = asyncio.new_event_loop()
+                                loop.run_until_complete(
+                                    extractor.extract_from_run(
+                                        run_id, completed_tasks, kg, event_log=self.event_log
+                                    )
+                                )
+            except Exception:
+                pass
+            return results
 
         reasoning_store = ReasoningStore()
         agent = Agent(

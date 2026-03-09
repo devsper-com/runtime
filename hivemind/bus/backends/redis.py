@@ -38,6 +38,11 @@ class RedisBus(BusBackend):
             ) from e
         self._running = True
 
+    @property
+    def redis_client(self) -> object:
+        """Redis connection for cluster registry/election/state (v1.10)."""
+        return self._pub
+
     async def stop(self) -> None:
         self._running = False
         if self._listen_task is not None:

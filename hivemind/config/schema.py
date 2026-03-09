@@ -85,6 +85,19 @@ class ProvidersConfig(BaseModel):
     azure: ProviderAzureConfig = Field(default_factory=ProviderAzureConfig)
 
 
+class NodesConfig(BaseModel):
+    """v1.10: distributed node mode and RPC."""
+    mode: Literal["single", "distributed"] = "single"
+    role: Literal["controller", "worker", "hybrid"] = "hybrid"
+    rpc_port: int = 7700
+    rpc_token: str | None = None
+    max_workers_per_node: int = 8
+    node_tags: list[str] = Field(default_factory=list)
+    controller_url: str = "http://localhost:7700"
+    heartbeat_interval_seconds: float = 10.0
+    task_claim_timeout_seconds: int = 120
+
+
 class HivemindConfigModel(BaseModel):
     """Full resolved configuration with Pydantic validation."""
 
@@ -97,6 +110,7 @@ class HivemindConfigModel(BaseModel):
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     bus: BusConfig = Field(default_factory=BusConfig)
+    nodes: NodesConfig = Field(default_factory=NodesConfig)
     events_dir: str = ".hivemind/events"
     data_dir: str = ".hivemind"
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)

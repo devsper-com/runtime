@@ -17,6 +17,7 @@ from hivemind.config.schema import (
     KnowledgeConfig,
     MemoryConfig,
     ModelsConfig,
+    NodesConfig,
     ProviderAzureConfig,
     ProvidersConfig,
     SwarmConfig,
@@ -168,6 +169,17 @@ def _build_merged_raw(
             "max_age_hours": 168.0,
         },
         "bus": {"backend": "memory", "redis_url": "redis://localhost:6379"},
+        "nodes": {
+            "mode": "single",
+            "role": "hybrid",
+            "rpc_port": 7700,
+            "rpc_token": None,
+            "max_workers_per_node": 8,
+            "node_tags": [],
+            "controller_url": "http://localhost:7700",
+            "heartbeat_interval_seconds": 10.0,
+            "task_claim_timeout_seconds": 120,
+        },
         "events_dir": ".hivemind/events",
         "data_dir": ".hivemind",
         "providers": {
@@ -234,6 +246,7 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
     telemetry = TelemetryConfig(**(merged.get("telemetry") or {}))
     cache = CacheConfig(**(merged.get("cache") or {}))
     bus = BusConfig(**(merged.get("bus") or {}))
+    nodes = NodesConfig(**(merged.get("nodes") or {}))
     providers_data = merged.get("providers") or {}
     azure_data = providers_data.get("azure") or {}
     providers = ProvidersConfig(azure=ProviderAzureConfig(**azure_data))
@@ -248,6 +261,7 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
         telemetry=telemetry,
         cache=cache,
         bus=bus,
+        nodes=nodes,
         events_dir=merged.get("events_dir", ".hivemind/events"),
         data_dir=merged.get("data_dir", ".hivemind"),
         providers=providers,

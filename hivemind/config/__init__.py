@@ -12,6 +12,7 @@ from hivemind.config.schema import (
     KnowledgeConfig,
     MemoryConfig,
     ModelsConfig,
+    NodesConfig,
     ProviderAzureConfig,
     ProvidersConfig,
     SwarmConfig,

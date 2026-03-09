@@ -532,6 +532,106 @@ def _run_doctor() -> int:
     return run_doctor()
 
 
+def _run_node_start(args) -> int:
+    """Start a node in the foreground (controller, worker, or hybrid)."""
+    try:
+        role = getattr(args, "role", "hybrid")
+        port = getattr(args, "port", None)
+        workers = getattr(args, "workers", None)
+        tags = getattr(args, "tags", "") or ""
+        print(f"Node role: {role}, port: {port or 'config default'}, workers: {workers or 'config default'}", file=sys.stderr)
+        if tags:
+            print(f"Tags: {[t.strip() for t in tags.split(',') if t.strip()]}", file=sys.stderr)
+        print("Distributed node start: set nodes.mode=distributed and nodes.role in hivemind.toml, then run your process.", file=sys.stderr)
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def _run_node_status(args) -> int:
+    """Query controller GET /status."""
+    url = getattr(args, "controller_url", None)
+    if not url:
+        try:
+            from hivemind.config import get_config
+            url = get_config().nodes.controller_url
+        except Exception:
+            url = "http://localhost:7700"
+    try:
+        import httpx
+        r = httpx.get(f"{url.rstrip('/')}/status", timeout=10.0)
+        r.raise_for_status()
+        data = r.json()
+        from rich.console import Console
+        from rich.table import Table
+        cons = Console()
+        cons.print("[bold]Run[/bold]", data.get("run_id", ""), "[bold]Leader[/bold]", data.get("node_id", ""))
+        s = data.get("scheduler", {})
+        cons.print("Tasks:", s.get("completed", 0), "completed,", s.get("pending", 0), "pending")
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def _run_node_workers(args) -> int:
+    """List workers from controller GET /status."""
+    url = getattr(args, "controller_url", None)
+    if not url:
+        try:
+            from hivemind.config import get_config
+            url = get_config().nodes.controller_url
+        except Exception:
+            url = "http://localhost:7700"
+    try:
+        import httpx
+        r = httpx.get(f"{url.rstrip('/')}/status", timeout=10.0)
+        r.raise_for_status()
+        data = r.json()
+        for w in data.get("workers", []):
+            print(w.get("node_id", "")[:8], w.get("host", ""), w.get("rpc_url", ""))
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def _run_node_drain(args) -> int:
+    """POST /control drain target node."""
+    url = getattr(args, "controller_url", None)
+    try:
+        from hivemind.config import get_config
+        url = url or get_config().nodes.controller_url
+    except Exception:
+        url = "http://localhost:7700"
+    try:
+        import httpx
+        r = httpx.post(
+            f"{url.rstrip('/')}/control",
+            json={"command": "drain", "target": getattr(args, "node_id", "")},
+            timeout=10.0,
+        )
+        r.raise_for_status()
+        print("Drain sent.", file=sys.stderr)
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def _run_node_logs(args) -> int:
+    """Stream GET /stream/events."""
+    url = getattr(args, "controller_url", None) or "http://localhost:7700"
+    try:
+        from hivemind.config import get_config
+        url = get_config().nodes.controller_url
+    except Exception:
+        pass
+    print("Connect to", url, "stream/events (--follow); not implemented", file=sys.stderr)
+    return 0
+
+
 def _run_build(app_idea: str, output_dir: str) -> int:
     """Build a working repo from an app description (autonomous application builder)."""
     from hivemind.dev.builder import run_build as do_build
@@ -1396,6 +1496,33 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     doctor_parser.set_defaults(func=lambda a: _run_doctor())
+
+    node_parser = subparsers.add_parser(
+        "node",
+        help="Distributed node commands (v1.10)",
+        description="Start a node, query status, drain workers, stream events.",
+    )
+    node_sub = node_parser.add_subparsers(dest="node_cmd", help="Subcommand")
+    node_start_p = node_sub.add_parser("start", help="Start a node in the foreground")
+    node_start_p.add_argument("--role", choices=["controller", "worker", "hybrid"], default="hybrid", help="Node role")
+    node_start_p.add_argument("--port", type=int, default=None, help="RPC port")
+    node_start_p.add_argument("--workers", type=int, default=None, help="Max workers (worker node)")
+    node_start_p.add_argument("--tags", type=str, default="", help="Comma-separated tags e.g. gpu,high-mem")
+    node_start_p.set_defaults(func=lambda a: _run_node_start(a))
+    node_status_p = node_sub.add_parser("status", help="Query controller status")
+    node_status_p.add_argument("--controller-url", type=str, default=None, help="Controller RPC URL")
+    node_status_p.set_defaults(func=lambda a: _run_node_status(a))
+    node_workers_p = node_sub.add_parser("workers", help="List workers from controller")
+    node_workers_p.add_argument("--controller-url", type=str, default=None)
+    node_workers_p.set_defaults(func=lambda a: _run_node_workers(a))
+    node_drain_p = node_sub.add_parser("drain", help="Drain a worker (stop new tasks)")
+    node_drain_p.add_argument("node_id", help="Worker node ID")
+    node_drain_p.add_argument("--controller-url", type=str, default=None)
+    node_drain_p.set_defaults(func=lambda a: _run_node_drain(a))
+    node_logs_p = node_sub.add_parser("logs", help="Stream events from controller")
+    node_logs_p.add_argument("--follow", action="store_true", help="Keep connection open")
+    node_logs_p.add_argument("--controller-url", type=str, default=None)
+    node_logs_p.set_defaults(func=lambda a: _run_node_logs(a))
 
     graph_parser = subparsers.add_parser(
         "graph",

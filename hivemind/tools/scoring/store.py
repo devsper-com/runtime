@@ -259,3 +259,9 @@ class ToolScoreStore:
         with self._conn() as c:
             r = c.execute("SELECT COUNT(*) FROM tool_scores").fetchone()
         return r[0] if r else 0
+
+    def get_cached_tool_names(self) -> list[str]:
+        """Tool names with scores (warm cache for distributed routing)."""
+        with self._conn() as c:
+            rows = c.execute("SELECT tool_name FROM tool_scores ORDER BY composite_score DESC").fetchall()
+        return [r[0] for r in rows]
