@@ -1,5 +1,8 @@
-# Publish hivemind-ai to PyPI when a GitHub release is published.
-# Setup: Configure a Trusted Publisher on PyPI for this repo (no API token needed).
+# Legacy: PyPI is now published from release-on-tag.yml (same workflow as the release).
+# This file is kept for reference. Creating a release with GITHUB_TOKEN does not trigger
+# release:published, so this workflow would not run on tag push. Configure PyPI Trusted
+# Publisher with workflow filename release-on-tag.yml instead.
+#
 # See: https://docs.pypi.org/trusted-publishers/adding-a-published-publisher/
 
 name: Publish to PyPI

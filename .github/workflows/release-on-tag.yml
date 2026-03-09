@@ -1,12 +1,11 @@
-# When you push a version tag (e.g. v1.6.0), create a GitHub Release and open a PR for versioned docs.
-# Note: Creating a release with GITHUB_TOKEN does NOT trigger other workflows (e.g. docs on release),
-# so we run the versioned-docs step here in the same workflow.
+# When you push a version tag (e.g. v1.6.0), create a GitHub Release, push versioned docs to main, and publish to PyPI.
+# Note: Creating a release with GITHUB_TOKEN does NOT trigger other workflows, so we run versioned-docs and PyPI here.
 #
 # Usage:
 #   git tag v1.6.0
 #   git push origin v1.6.0
 #
-# If main has already diverged (e.g. from an older workflow): git fetch origin && git checkout main && git pull --rebase origin main
+# PyPI: Add a Trusted Publisher on PyPI with workflow filename release-on-tag.yml (job: pypi-publish).
 
 name: Release on tag
 
@@ -36,7 +35,6 @@ jobs:
       - name: Extract changelog section
         run: |
           V="${{ steps.version.outputs.version }}"
-          # Match "## [1.6.0]" or "## [1.6.0] - TBD" and print until next ##
           awk -v ver="$V" '
             $0 ~ "^## \\[" ver "\\]" { found=1; next }
             found && /^## \[/ { exit }
@@ -54,12 +52,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  add-version-docs:
+  push-version-docs:
     needs: release
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -86,18 +83,34 @@ jobs:
           npm ci
           npx docusaurus docs:version ${{ steps.version.outputs.version }}
 
-      - name: Open PR for versioned docs
-        uses: peter-evans/create-pull-request@v7
+      - name: Push versioned docs to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add website/versioned_docs website/versioned_sidebars website/versions.json
+          git diff --staged --quiet || git commit -m "chore(docs): add version ${{ steps.version.outputs.version }}"
+          git push origin HEAD:main
+
+  pypi-publish:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: "docs/version-${{ steps.version.outputs.version }}"
-          base: main
-          title: "chore(docs): add version ${{ steps.version.outputs.version }}"
-          body: |
-            Versioned docs for **v${{ steps.version.outputs.version }}**. Merge to update the docs site.
-          commit-message: "chore(docs): add version ${{ steps.version.outputs.version }}"
-          add-paths: |
-            website/versioned_docs
-            website/versioned_sidebars
-            website/versions.json
-          delete-branch: true
+          python-version: "3.12"
+
+      - name: Install build
+        run: pip install build
+
+      - name: Build package
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
