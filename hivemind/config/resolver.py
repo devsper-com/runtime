@@ -3,6 +3,7 @@
 import os
 from copy import deepcopy
 
+from hivemind.credentials import get_credential
 from hivemind.config.config_loader import (
     load_project_config,
     load_user_config,
@@ -72,6 +73,29 @@ def _infer_planner_model_from_env() -> str:
     if os.environ.get("GOOGLE_API_KEY"):
         return "gemini-1.5-flash"
     return "mock"
+
+
+def _inject_credentials_from_store() -> None:
+    """Inject provider credentials from credential store if not already in env."""
+    providers_map = [
+        ("openai", "api_key", "OPENAI_API_KEY"),
+        ("anthropic", "api_key", "ANTHROPIC_API_KEY"),
+        ("github", "token", "GITHUB_TOKEN"),
+        ("gemini", "api_key", "GEMINI_API_KEY"),
+        ("gemini", "api_key", "GOOGLE_API_KEY"),  # Gemini provider checks both
+        ("azure", "api_key", "AZURE_OPENAI_API_KEY"),
+        ("azure", "endpoint", "AZURE_OPENAI_ENDPOINT"),
+        ("azure", "deployment", "AZURE_OPENAI_DEPLOYMENT_NAME"),
+        ("azure", "api_version", "AZURE_OPENAI_API_VERSION"),
+        ("azure_anthropic", "api_key", "AZURE_ANTHROPIC_API_KEY"),
+        ("azure_anthropic", "endpoint", "AZURE_ANTHROPIC_ENDPOINT"),
+        ("azure_anthropic", "deployment", "AZURE_ANTHROPIC_DEPLOYMENT_NAME"),
+    ]
+    for provider, key, env_var in providers_map:
+        if not os.environ.get(env_var):
+            val = get_credential(provider, key)
+            if val:
+                os.environ[env_var] = val
 
 
 def _apply_provider_toml_to_env(toml_data: dict) -> None:
@@ -182,6 +206,9 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
 
     _apply_provider_toml_to_env(user_raw)
     _apply_provider_toml_to_env(project_raw)
+
+    # Inject credentials from store if not already set in env
+    _inject_credentials_from_store()
 
     merged = _build_merged_raw(user_raw, project_raw)
     merged = _apply_env_overrides(merged)

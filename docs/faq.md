@@ -25,6 +25,17 @@ See [Swarm Runtime](swarm_runtime.md) and [Architecture](architecture.md) for de
 
 Agents see tools when `Swarm(..., use_tools=True)`. See [Tools](tools.md) for a full example and schema rules.
 
+## How do I store API keys?
+
+Use the **credential store** (OS keychain) so you don’t re-enter keys and never put them in config files:
+
+- **Store:** `hivemind credentials set openai api_key` (prompts for the value).
+- **Import from .env:** `hivemind credentials migrate` (copies from `.env` / TOML into the keyring).
+- **List (no values):** `hivemind credentials list`.
+- **Export for a script:** `eval "$(hivemind credentials export azure)"` or `hivemind credentials export azure >> .env`.
+
+Supported providers: `openai`, `anthropic`, `github`, `gemini`, `azure`, `azure_anthropic`. See [Configuration](configuration.md#credentials-api-keys) and [CLI](cli.md#credentials).
+
 ## How do I use a config file (v1)?
 
 - Put a **`hivemind.toml`** in your project root (or use `~/.config/hivemind/config.toml`). See [Configuration](configuration.md) for the full schema (`[swarm]`, `[models]`, `[memory]`, `[tools]`, `[telemetry]`, `[providers.azure]`).

@@ -13,7 +13,7 @@ You can set **`planner = "auto"`** and **`worker = "auto"`** in `[models]`. The 
 - **Planner** — Prefers higher-quality models for planning and DAG generation.
 - **Worker** — Balances cost, latency, and quality for task execution.
 
-This avoids hard-coding model names while keeping runs predictable. You still need at least one provider configured (e.g. `OPENAI_API_KEY` or `GITHUB_TOKEN`).
+This avoids hard-coding model names while keeping runs predictable. You still need at least one provider configured: set API keys via **environment variables** or the **credential store** (`hivemind credentials set ...` or `hivemind credentials migrate`). See [Configuration](configuration.md#credentials-api-keys).
 
 ## Model Spec Format
 
@@ -61,8 +61,10 @@ Hivemind can use **GitHub Models** (Copilot API) as a provider. Set **`GITHUB_TO
 - **Azure OpenAI:** Set `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, and optionally `AZURE_OPENAI_DEPLOYMENT_NAME` (and `AZURE_OPENAI_API_VERSION` if needed). When these are set, GPT-style model names are served by Azure OpenAI; the deployment name typically matches the model name (e.g. `gpt-4o`, `gpt-5-mini`).
 - **Azure Anthropic (e.g. Azure AI Foundry):** Set `AZURE_ANTHROPIC_ENDPOINT` (or `AZURE_ANTHROPIC_API_KEY`) and `AZURE_ANTHROPIC_DEPLOYMENT_NAME`. When set, Claude-style model names use Azure Anthropic.
 
-Configuration can be in **environment variables** or in TOML:
+**Where to set credentials:**
 
-- **User/project TOML:** `~/.config/hivemind/config.toml` or `.hivemind/config.toml` with sections `[azure_openai]` and `[azure_anthropic]` (with `endpoint`, `api_key`, `deployment_name`, etc.). Values are applied to the environment when not already set, so you can run from any directory without a local `.env`.
+- **Credential store (recommended):** `hivemind credentials set azure api_key`, etc. Keys are stored in the OS keychain and injected into the environment when config is resolved. Use `hivemind credentials export azure` to print env-style lines.
+- **Environment variables:** Set `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, etc., in your shell or `.env`.
+- **TOML (not recommended for secrets):** You can still put non-secret values (e.g. `endpoint`, `deployment`) in `[providers.azure]` in `~/.config/hivemind/config.toml` or project TOML; they are applied to the environment when not already set. Prefer the credential store or env for API keys.
 
-See **Configuration** in the main README and in the development guide for full TOML examples.
+See [Configuration](configuration.md#credentials-api-keys) and [CLI](cli.md#credentials).

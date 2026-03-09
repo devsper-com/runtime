@@ -70,11 +70,7 @@ PROVIDER_REGISTRY: list[tuple[str, str, str | None, list[str], list[str]]] = [
 
 def _provider_choices_for_display() -> list[tuple[str, str]]:
     """Return [(id, display_line), ...] for menu."""
-    out: list[tuple[str, str]] = []
-    for pid, display, env_var, _pl, _wk in PROVIDER_REGISTRY:
-        env_note = f" (set {env_var})" if env_var else ""
-        out.append((pid, f"{display}{env_note}"))
-    return out
+    return [(pid, display) for pid, display, _env, _pl, _wk in PROVIDER_REGISTRY]
 
 
 def _select_option(prompt: str, choices: list[tuple[str, str]], default_index: int = 0) -> str:
@@ -268,6 +264,7 @@ def run_init(interactive: bool = True) -> int:
 
     created_toml = False
     toml_path = cwd / "hivemind.toml"
+    api_keys: dict[str, str] = {}
 
     if toml_path.exists():
         errors.append("hivemind.toml already exists")
@@ -319,6 +316,40 @@ def run_init(interactive: bool = True) -> int:
             console.print(f"[red]✗[/] {e}", style="red")
         return 1
 
+    # Offer to store API keys in credential store after setup
+    env_to_cred = {
+        "GITHUB_TOKEN": ("github", "token"),
+        "OPENAI_API_KEY": ("openai", "api_key"),
+        "ANTHROPIC_API_KEY": ("anthropic", "api_key"),
+        "GOOGLE_API_KEY": ("gemini", "api_key"),
+        "GEMINI_API_KEY": ("gemini", "api_key"),
+        "AZURE_OPENAI_API_KEY": ("azure", "api_key"),
+        "AZURE_OPENAI_ENDPOINT": ("azure", "endpoint"),
+    }
+    has_any_key = any(
+        (api_keys.get(env_var) or os.environ.get(env_var))
+        for env_var in env_to_cred
+    )
+    if interactive and created_toml and has_any_key:
+        try:
+            from rich.prompt import Confirm
+
+            if Confirm.ask("\nWould you like to store your API keys securely now?", default=True):
+                from hivemind.credentials import set_credential
+
+                stored = 0
+                for env_var, (provider, key) in env_to_cred.items():
+                    val = api_keys.get(env_var) or os.environ.get(env_var)
+                    if val and str(val).strip():
+                        set_credential(provider, key, str(val).strip())
+                        stored += 1
+                if stored:
+                    console.print(f"[green]✔[/] Stored {stored} credential(s) securely")
+        except (KeyboardInterrupt, EOFError):
+            pass
+        except Exception:
+            pass
+
     console.print()
     console.print("Next steps:")
     console.print("  1) Set API keys if not already set (or use GitHub device login when choosing GitHub)")
@@ -355,12 +386,41 @@ def _check_env_quiet() -> bool:
     )
 
 
+def _check_plaintext_keys_in_toml(warnings: list[str]) -> None:
+    """Warn (yellow) if API keys appear as plaintext in hivemind.toml."""
+    from hivemind.config.config_loader import project_config_paths
+
+    for p in project_config_paths():
+        if not p.is_file():
+            continue
+        try:
+            raw = p.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        # Grep-style: look for credential-like values (sk-, ghp_, https://)
+        if '= "sk-' in raw or '="sk-' in raw:
+            warnings.append(
+                f"Possible API key (sk-...) found as plaintext in {p}; use 'hivemind credentials set' and remove from TOML"
+            )
+        elif '= "ghp_' in raw or '="ghp_' in raw:
+            warnings.append(
+                f"Possible GitHub token found as plaintext in {p}; use 'hivemind credentials set' and remove from TOML"
+            )
+        elif ('endpoint' in raw or 'api_key' in raw) and ('= "https://' in raw or '="https://' in raw):
+            warnings.append(
+                f"Possible endpoint/secret found as plaintext in {p}; use 'hivemind credentials set' and remove from TOML"
+            )
+        break
+
+
 def run_doctor() -> int:
     """
     Verify environment: GITHUB_TOKEN, OpenAI keys, config file, tool registry.
+    Warn if plaintext keys found in TOML.
     """
     issues: list[str] = []
     ok: list[str] = []
+    warnings: list[str] = []
 
     if os.environ.get("GITHUB_TOKEN"):
         ok.append("GITHUB_TOKEN is set")
@@ -391,6 +451,8 @@ def run_doctor() -> int:
     except Exception as e:
         issues.append(f"Tool registry: {e}")
 
+    _check_plaintext_keys_in_toml(warnings)
+
     from rich.console import Console
 
     console = Console()
@@ -398,4 +460,6 @@ def run_doctor() -> int:
         console.print(f"[green]✔[/] {s}")
     for s in issues:
         console.print(f"[red]✗[/] {s}", style="red")
+    for s in warnings:
+        console.print(f"[yellow]⚠[/] {s}", style="yellow")
     return 0 if not issues else 1

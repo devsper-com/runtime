@@ -19,6 +19,7 @@ from hivemind.tui.performance_view import PerformanceView
 from hivemind.tui.reasoning_graph_view import ReasoningGraphView
 from hivemind.tui.agent_role_view import AgentRoleActivityView
 from hivemind.tui.adaptive_tasks_view import AdaptiveTasksView
+from hivemind.tui.dev_view import DevView
 
 
 class DashboardScreen(Screen[None]):
@@ -73,7 +74,7 @@ class DashboardScreen(Screen[None]):
     # v1.2 panels
     #dashboard-reasoning-row { height: auto; min-height: 6; }
     TaskView, SwarmView, MemoryView, LogsView, ActivityFeedView, KnowledgeGraphView, PerformanceView,
-    ReasoningGraphView, AgentRoleActivityView, AdaptiveTasksView {
+    ReasoningGraphView, AgentRoleActivityView, AdaptiveTasksView, DevView {
         scrollbar-size: 1 1;
         overflow-y: auto;
         height: 1fr;
@@ -94,7 +95,7 @@ class DashboardScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         with Container(id="dashboard-container"):
             yield Static(
-                "  Dashboard — Tasks | Swarm | Memory | Activity | KG | Perf | Reasoning | Roles | Adaptive | Logs  —  Esc to back",
+                "  Dashboard — Tasks | Swarm | Memory | Activity | KG | Perf | Reasoning | Roles | Adaptive | Dev | Logs  —  Esc to back",
                 id="dashboard-header",
             )
             with Horizontal(id="dashboard-top"):
@@ -130,6 +131,10 @@ class DashboardScreen(Screen[None]):
                 with Vertical(classes="d-panel"):
                     yield Static("Adaptive Task Creation", classes="d-panel-title")
                     yield AdaptiveTasksView(id="adaptive-tasks-view")
+            with Horizontal(id="dashboard-dev-row"):
+                with Vertical(classes="d-panel"):
+                    yield Static("Dev — Repository tree | Test results | File changes", classes="d-panel-title")
+                    yield DevView(id="dev-view")
             with Vertical(id="dashboard-logs"):
                 yield Static("Logs", classes="d-panel-title")
                 yield LogsView(id="logs-view")

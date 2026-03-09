@@ -2,6 +2,8 @@
 
 Hivemind uses a **TOML-based configuration** system with Pydantic validation. Priority order: **env** > **project config** > **user config** > **defaults**.
 
+**Do not put API keys or secrets in TOML.** Use the [credential store](#credentials-api-keys) (OS keychain) or environment variables. TOML is for non-secret settings only (models, workers, paths, feature flags).
+
 ## Config locations
 
 1. **Project:** `./hivemind.toml` or `./workflow.hivemind.toml` (in current or parent directory)
@@ -69,6 +71,25 @@ Values are applied to `os.environ` when not already set, so existing provider co
 - `events_dir` — Directory for event log files (e.g. `.hivemind/events`).
 - `data_dir` — Base directory for data (e.g. `.hivemind`); memory store path is derived from this.
 
+## Credentials (API keys)
+
+API keys and secrets are **not** stored in config files. They are managed in one of two ways:
+
+1. **Credential store (recommended)** — OS keychain via the `hivemind credentials` CLI. Stored keys are injected into the environment when config is resolved, so all providers (OpenAI, Anthropic, Azure, GitHub, Gemini) work without code changes.
+2. **Environment variables** — Set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, etc., in your shell or `.env` (loaded by the CLI before commands run).
+
+**CLI commands:**
+
+- `hivemind credentials set <provider> <key>` — Store a value (prompts; uses keyring).
+- `hivemind credentials list` — List stored entries (no values shown).
+- `hivemind credentials migrate` — Copy credentials from `.env` / TOML into the keyring.
+- `hivemind credentials export <provider>` — Print `KEY=value` lines for that provider (e.g. for `eval` or `.env`).
+- `hivemind credentials delete <provider> <key>` — Remove a credential.
+
+**Supported providers:** `openai`, `anthropic`, `github`, `gemini`, `azure`, `azure_anthropic`. Keys vary (e.g. `api_key`, `token`, `endpoint`, `deployment`, `api_version`). See [CLI](cli.md#credentials) for full usage.
+
+**Resolution:** When `resolve_config()` runs (e.g. at the start of `run`, `tui`, or `get_config()`), credentials from the keyring are injected into `os.environ` for any provider/key not already set. So existing code that reads `os.environ["OPENAI_API_KEY"]` (or similar) continues to work.
+
 ## Environment overrides
 
 These override any TOML value:
@@ -78,7 +99,7 @@ These override any TOML value:
 - `HIVEMIND_EVENTS_DIR` — Same as `events_dir`.
 - `HIVEMIND_DATA_DIR` — Same as `data_dir`.
 
-Provider keys (e.g. `OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT_NAME`) are unchanged; see [Providers](providers.md).
+Provider keys (e.g. `OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT_NAME`) can be set in the environment or via the credential store; see [Providers](providers.md).
 
 ## Example: full `hivemind.toml`
 

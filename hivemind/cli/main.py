@@ -1,8 +1,9 @@
 """
-Hivemind CLI: run, tui, research, analyze, memory, init, doctor.
+Hivemind CLI: run, tui, research, analyze, memory, init, doctor, build.
 
 Usage:
     hivemind run "analyze diffusion models"
+    hivemind build "fastapi todo app"
     hivemind init
     hivemind doctor
     hivemind tui
@@ -204,11 +205,37 @@ def _run_init(no_interactive: bool = False) -> int:
     return run_init(interactive=not no_interactive)
 
 
+def _run_credentials(args: object) -> int:
+    """Run credentials subcommand: set, list, delete, migrate."""
+    from hivemind.credentials.cli import run_credentials
+
+    return run_credentials(args)
+
+
 def _run_doctor() -> int:
     """Run doctor subcommand: verify GITHUB_TOKEN, OpenAI, config, tools."""
     from hivemind.cli.init import run_doctor
 
     return run_doctor()
+
+
+def _run_build(app_idea: str, output_dir: str) -> int:
+    """Build a working repo from an app description (autonomous application builder)."""
+    from hivemind.dev.builder import run_build as do_build
+
+    out = output_dir or "./build_output"
+    print(f"Building app: {app_idea!r}", file=sys.stderr)
+    print(f"Output directory: {out}", file=sys.stderr)
+    result = do_build(app_idea, out)
+    if result.get("success"):
+        print(f"Done. Repository at: {result['repo_path']}", file=sys.stderr)
+        print(result["repo_path"])
+        return 0
+    print("Build completed with test failures.", file=sys.stderr)
+    dr = result.get("debug_result")
+    if dr and getattr(dr, "last_stdout", None):
+        print(dr.last_stdout[:1500], file=sys.stderr)
+    return 1
 
 
 def _run_replay(run_id: str, events_dir: str | None) -> int:
@@ -326,17 +353,73 @@ def _run_memory(limit: int) -> int:
     return 0
 
 
+def _run_completion(parser: argparse.ArgumentParser, shell: str) -> int:
+    """Print shell completion script."""
+    try:
+        import shtab
+
+        print(shtab.complete(parser, shell=shell))
+        return 0
+    except ImportError:
+        print("Install shtab: pip install shtab", file=sys.stderr)
+        return 1
+
+
+def _run_upgrade(args: object) -> int:
+    """Run upgrade subcommand: check, changelog, install."""
+    from hivemind.upgrade.cli import run_upgrade
+
+    return run_upgrade(args)
+
+
 def main() -> int:
     if len(sys.argv) == 2 and sys.argv[1].strip() == ".":
         sys.argv = [sys.argv[0]]
 
+    # Non-blocking startup nag if update available (uses cache, ~100ms)
+    try:
+        from hivemind.upgrade.notifier import check_and_notify
+
+        check_and_notify()
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(
         prog="hivemind",
-        description="Distributed AI Swarm Runtime",
+        description="Orchestrate distributed swarms of AI agents that collaboratively solve complex tasks.",
+        epilog="""
+Quick start:
+  hivemind init                    # Set up a new project
+  hivemind run "your task here"    # Run the swarm
+  hivemind tui                     # Launch the terminal UI
+
+Examples:
+  hivemind run "Analyze diffusion models and summarize key papers"
+  hivemind build "fastapi todo app" -o ./myapp
+  hivemind credentials migrate     # Import API keys from .env
+  hivemind doctor                  # Check your setup
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    try:
+        import shtab
+
+        shtab.add_argument_to(parser, ["--print-completion"])
+    except ImportError:
+        pass
     subparsers = parser.add_subparsers(dest="command", help="Command")
 
-    run_parser = subparsers.add_parser("run", help="Run swarm with a task")
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run the swarm on a task",
+        description="Decompose a task into subtasks and execute them with AI workers.",
+        epilog="""
+Examples:
+  hivemind run "Summarize swarm intelligence in one paragraph"
+  hivemind run "Analyze diffusion models" -q
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     run_parser.add_argument(
         "task",
         nargs="?",
@@ -351,11 +434,28 @@ def main() -> int:
     )
     run_parser.set_defaults(func=lambda a: _run_swarm(a.task, a.quiet))
 
-    tui_parser = subparsers.add_parser("tui", help="Launch terminal UI")
+    tui_parser = subparsers.add_parser(
+        "tui",
+        help="Launch terminal UI",
+        description="Interactive dashboard for runs, memory, and analytics.",
+        epilog="""
+Examples:
+  hivemind tui
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     tui_parser.set_defaults(func=lambda a: _run_tui())
 
     research_parser = subparsers.add_parser(
-        "research", help="Run literature review on a directory"
+        "research",
+        help="Run literature review on a directory",
+        description="Run the literature review example on a directory of papers.",
+        epilog="""
+Examples:
+  hivemind research .
+  hivemind research ./papers
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     research_parser.add_argument(
         "path", nargs="?", default=".", help="Directory with papers (PDF/DOCX)"
@@ -363,21 +463,47 @@ def main() -> int:
     research_parser.set_defaults(func=lambda a: _run_research(a.path))
 
     analyze_parser = subparsers.add_parser(
-        "analyze", help="Analyze repository architecture"
+        "analyze",
+        help="Analyze repository architecture",
+        description="Run repository analysis to understand code structure and dependencies.",
+        epilog="""
+Examples:
+  hivemind analyze .
+  hivemind analyze /path/to/repo
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     analyze_parser.add_argument(
         "path", nargs="?", default=".", help="Repository root path"
     )
     analyze_parser.set_defaults(func=lambda a: _run_analyze(a.path))
 
-    memory_parser = subparsers.add_parser("memory", help="List memory entries")
+    memory_parser = subparsers.add_parser(
+        "memory",
+        help="List memory entries",
+        description="List stored memory entries from past swarm runs.",
+        epilog="""
+Examples:
+  hivemind memory
+  hivemind memory -n 50
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     memory_parser.add_argument(
         "--limit", "-n", type=int, default=20, help="Max entries to show"
     )
     memory_parser.set_defaults(func=lambda a: _run_memory(a.limit))
 
     query_parser = subparsers.add_parser(
-        "query", help="Query knowledge graph (entity search)"
+        "query",
+        help="Query knowledge graph",
+        description="Search entities and relationships in the knowledge graph built from memory.",
+        epilog="""
+Examples:
+  hivemind query "diffusion models"
+  hivemind query "machine learning"
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     query_parser.add_argument(
         "query_text",
@@ -387,7 +513,17 @@ def main() -> int:
     )
     query_parser.set_defaults(func=lambda a: _run_query(a.query_text))
 
-    workflow_parser = subparsers.add_parser("workflow", help="Run a workflow by name")
+    workflow_parser = subparsers.add_parser(
+        "workflow",
+        help="Run a workflow by name",
+        description="Execute a predefined workflow from workflow.hivemind.toml.",
+        epilog="""
+Examples:
+  hivemind workflow research_pipeline
+  hivemind workflow my_custom_workflow
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     workflow_parser.add_argument(
         "name",
         help="Workflow name (e.g. research_pipeline)",
@@ -395,7 +531,15 @@ def main() -> int:
     workflow_parser.set_defaults(func=lambda a: _run_workflow_cmd(a.name))
 
     init_parser = subparsers.add_parser(
-        "init", help="Set up a new project (hivemind.toml, example workflow, dataset)"
+        "init",
+        help="Set up a new project",
+        description="Create hivemind.toml, configure providers, and optionally store API keys securely.",
+        epilog="""
+Examples:
+  hivemind init
+  hivemind init -y
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     init_parser.add_argument(
         "--no-interactive",
@@ -406,12 +550,27 @@ def main() -> int:
     init_parser.set_defaults(func=lambda a: _run_init(a.no_interactive))
 
     doctor_parser = subparsers.add_parser(
-        "doctor", help="Verify environment (tokens, config, tool registry)"
+        "doctor",
+        help="Verify environment",
+        description="Check API keys, config files, tool registry, and security (e.g. plaintext keys in TOML).",
+        epilog="""
+Examples:
+  hivemind doctor
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     doctor_parser.set_defaults(func=lambda a: _run_doctor())
 
     graph_parser = subparsers.add_parser(
-        "graph", help="Export task DAG as Mermaid diagram"
+        "graph",
+        help="Export task DAG as Mermaid",
+        description="Export the task dependency graph for a run as a Mermaid diagram.",
+        epilog="""
+Examples:
+  hivemind graph
+  hivemind graph abc123-run-id
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     graph_parser.add_argument(
         "run_id",
@@ -422,12 +581,27 @@ def main() -> int:
     graph_parser.set_defaults(func=lambda a: _run_graph(a.run_id))
 
     analytics_parser = subparsers.add_parser(
-        "analytics", help="Show tool usage analytics"
+        "analytics",
+        help="Show tool usage analytics",
+        description="Display tool usage stats: count, success rate, and latency.",
+        epilog="""
+Examples:
+  hivemind analytics
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     analytics_parser.set_defaults(func=lambda a: _run_analytics())
 
     cache_parser = subparsers.add_parser(
-        "cache", help="Task result cache: stats or clear"
+        "cache",
+        help="Task result cache",
+        description="View or clear the task result cache.",
+        epilog="""
+Examples:
+  hivemind cache stats
+  hivemind cache clear
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     cache_parser.add_argument(
         "subcommand",
@@ -438,9 +612,41 @@ def main() -> int:
     )
     cache_parser.set_defaults(func=lambda a: _run_cache(a.subcommand))
 
+    build_parser = subparsers.add_parser(
+        "build",
+        help="Build an app from a description",
+        description="Autonomous application builder: generate a working repo from an app description.",
+        epilog="""
+Examples:
+  hivemind build "fastapi todo app"
+  hivemind build "CLI tool for CSV analysis" -o ./csv-tool
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    build_parser.add_argument(
+        "app_idea",
+        nargs="?",
+        default="fastapi todo app",
+        help="App description (e.g. 'fastapi todo app')",
+    )
+    build_parser.add_argument(
+        "-o",
+        "--output",
+        default="./build_output",
+        help="Output directory for the generated repo (default: ./build_output)",
+    )
+    build_parser.set_defaults(func=lambda a: _run_build(a.app_idea, a.output))
+
     replay_parser = subparsers.add_parser(
         "replay",
-        help="Reconstruct swarm execution from event log (deterministic replay)",
+        help="Replay a swarm run",
+        description="Reconstruct swarm execution from the event log (deterministic replay).",
+        epilog="""
+Examples:
+  hivemind replay
+  hivemind replay abc123-run-id
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     replay_parser.add_argument(
         "run_id",
@@ -454,6 +660,98 @@ def main() -> int:
         help="Events directory (default: config)",
     )
     replay_parser.set_defaults(func=lambda a: _run_replay(a.run_id, a.events_dir))
+
+    credentials_parser = subparsers.add_parser(
+        "credentials",
+        help="Manage API keys and credentials",
+        description="Store, list, and migrate credentials securely (OS keychain only).",
+        epilog="""
+Examples:
+  hivemind credentials set openai api_key
+  hivemind credentials list
+  hivemind credentials migrate
+  hivemind credentials export azure    # print env KEY=value for sourcing
+  hivemind credentials delete openai api_key
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    credentials_parser.add_argument(
+        "credentials_subcommand",
+        nargs="?",
+        choices=["set", "list", "delete", "migrate", "export"],
+        help="set | list | delete | migrate | export",
+    )
+    credentials_parser.add_argument(
+        "provider",
+        nargs="?",
+        help="Provider (e.g. openai, anthropic)",
+    )
+    credentials_parser.add_argument(
+        "key",
+        nargs="?",
+        help="Key name (e.g. api_key)",
+    )
+    credentials_parser.set_defaults(func=lambda a: _run_credentials(a))
+
+    completion_parser = subparsers.add_parser(
+        "completion",
+        help="Generate shell completion script",
+        description="Print shell completion script for bash or zsh. Add to your shell config to enable tab completion.",
+        epilog="""
+Examples:
+  # Bash - add to ~/.bashrc or ~/.bash_profile
+  eval "$(hivemind completion bash)"
+
+  # Zsh - add to ~/.zshrc
+  eval "$(hivemind completion zsh)"
+
+  # Or install to a file (bash)
+  hivemind completion bash > ~/.local/share/bash-completion/completions/hivemind
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    completion_parser.add_argument(
+        "shell",
+        choices=["bash", "zsh"],
+        help="Shell type",
+    )
+    completion_parser.set_defaults(func=lambda a: _run_completion(parser, a.shell))
+
+    upgrade_parser = subparsers.add_parser(
+        "upgrade",
+        help="Check for updates and upgrade",
+        description="Check for updates and upgrade hivemind-ai from PyPI.",
+        epilog="""
+Examples:
+  hivemind upgrade
+  hivemind upgrade --check
+  hivemind upgrade -y
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    upgrade_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Only check and display if update is available",
+    )
+    upgrade_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompt",
+    )
+    upgrade_parser.add_argument(
+        "--version",
+        metavar="VERSION",
+        default=None,
+        help="Install a specific version (e.g. 1.2.3)",
+    )
+    upgrade_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would happen without installing",
+    )
+    upgrade_parser.set_defaults(func=_run_upgrade)
 
     _load_project_dotenv()
     args = parser.parse_args()

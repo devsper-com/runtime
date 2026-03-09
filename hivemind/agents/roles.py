@@ -12,6 +12,13 @@ CODE_AGENT = "code_agent"
 ANALYSIS_AGENT = "analysis_agent"
 CRITIC_AGENT = "critic_agent"
 
+# Dev / autonomous builder roles
+ARCHITECT_AGENT = "architect_agent"
+BACKEND_AGENT = "backend_agent"
+FRONTEND_AGENT = "frontend_agent"
+TEST_AGENT = "test_agent"
+REVIEW_AGENT = "review_agent"
+
 DEFAULT_ROLE = "general"
 
 
@@ -62,6 +69,37 @@ ROLE_CONFIGS: dict[str, RoleConfig] = {
         prompt_prefix="You are an AI worker in a distributed system.",
         model_hint="analysis",
     ),
+    # Dev / autonomous builder roles
+    ARCHITECT_AGENT: RoleConfig(
+        name=ARCHITECT_AGENT,
+        tool_categories=["code_intelligence", "filesystem"],
+        prompt_prefix="You are an architect. Design system structure, APIs, and component layout. Output clear architecture plans (backend/frontend stack, modules, data flow).",
+        model_hint="planning",
+    ),
+    BACKEND_AGENT: RoleConfig(
+        name=BACKEND_AGENT,
+        tool_categories=["coding", "code_intelligence", "filesystem", "system"],
+        prompt_prefix="You are a backend specialist. Implement APIs, models, and server logic. Prefer FastAPI/Flask patterns and clear interfaces.",
+        model_hint="analysis",
+    ),
+    FRONTEND_AGENT: RoleConfig(
+        name=FRONTEND_AGENT,
+        tool_categories=["coding", "filesystem", "system"],
+        prompt_prefix="You are a frontend specialist. Implement UI components, pages, and client logic. Prefer simple HTML/JS or React patterns.",
+        model_hint="analysis",
+    ),
+    TEST_AGENT: RoleConfig(
+        name=TEST_AGENT,
+        tool_categories=["coding", "code_intelligence", "filesystem", "system"],
+        prompt_prefix="You are a test specialist. Write unit and integration tests. Use pytest for Python; ensure coverage of main flows.",
+        model_hint="analysis",
+    ),
+    REVIEW_AGENT: RoleConfig(
+        name=REVIEW_AGENT,
+        tool_categories=["code_intelligence", "coding", "filesystem"],
+        prompt_prefix="You are a code reviewer. Check correctness, style, and gaps. Suggest concrete fixes. Be concise.",
+        model_hint="analysis",
+    ),
 }
 
 
@@ -110,6 +148,15 @@ CRITIC_KEYWORDS = [
     "check",
     "verify",
     "feedback",
+]
+
+# Dev builder: explicit roles are set by planner; no inference needed for build tasks
+DEV_ROLES = [
+    ARCHITECT_AGENT,
+    BACKEND_AGENT,
+    FRONTEND_AGENT,
+    TEST_AGENT,
+    REVIEW_AGENT,
 ]
 
 

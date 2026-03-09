@@ -1,6 +1,6 @@
 # CLI Reference
 
-The Hivemind CLI is invoked as **`hivemind`** (installed with the `hivemind-ai` package).
+The Hivemind CLI is invoked as **`hivemind`** (installed with the `hivemind-ai` package). Run `hivemind --help` or `hivemind <command> --help` for usage and examples.
 
 ## Commands
 
@@ -207,6 +207,125 @@ hivemind tui
 
 ---
 
+### `hivemind credentials` (set | list | delete | migrate | export)
+
+Manages API keys and secrets using the **OS keychain (keyring)** only. Credentials are never stored in config files.
+
+| Subcommand | Description |
+|------------|-------------|
+| `set <provider> <key>` | Prompt for a value and store it in the keyring (e.g. `hivemind credentials set openai api_key`). |
+| `list` | List stored credentials (provider and key only; values are never shown). |
+| `delete <provider> <key>` | Remove a credential from the keyring. |
+| `migrate` | Read credentials from the current project’s `.env` and TOML and store them in the keyring. Does not remove them from `.env`; you can do that manually afterward. |
+| `export <provider>` | Print the provider’s stored credentials as env-style lines (`KEY=value`), suitable for `eval` or appending to `.env`. |
+
+**Providers:** `openai`, `anthropic`, `github`, `gemini`, `azure`, `azure_anthropic`. Keys vary by provider (e.g. `api_key`, `token`, `endpoint`, `deployment`, `api_version`).
+
+**Examples:**
+
+```bash
+hivemind credentials set openai api_key
+hivemind credentials list
+hivemind credentials migrate
+hivemind credentials export azure
+eval "$(hivemind credentials export azure)"
+hivemind credentials delete openai api_key
+```
+
+Config resolution injects credentials from the keyring into the environment when not already set, so existing provider code works without changes.
+
+---
+
+### `hivemind completion` (bash | zsh)
+
+Prints a shell completion script so you can use tab completion for commands and options.
+
+**Examples:**
+
+```bash
+# Bash: add to ~/.bashrc
+eval "$(hivemind completion bash)"
+
+# Zsh: add to ~/.zshrc
+eval "$(hivemind completion zsh)"
+```
+
+You can also use `hivemind --print-completion bash` (or `zsh`) for the same output.
+
+---
+
+### `hivemind graph` [run_id]
+
+Exports the task dependency graph for a run as a **Mermaid** diagram. If `run_id` is omitted, uses the latest run.
+
+**Examples:**
+
+```bash
+hivemind graph
+hivemind graph abc123-run-id
+```
+
+---
+
+### `hivemind replay` [run_id]
+
+Reconstructs swarm execution from the event log (deterministic replay). With no `run_id`, lists recent run IDs.
+
+**Examples:**
+
+```bash
+hivemind replay
+hivemind replay abc123-run-id
+```
+
+---
+
+### `hivemind cache` (stats | clear)
+
+Shows or clears the task result cache.
+
+**Examples:**
+
+```bash
+hivemind cache stats
+hivemind cache clear
+```
+
+---
+
+### `hivemind analytics`
+
+Prints tool usage statistics (count, success rate, latency).
+
+---
+
+### `hivemind build` ["app description"] [-o output_dir]
+
+Autonomous application builder: generates a working repository from a short app description.
+
+**Examples:**
+
+```bash
+hivemind build "fastapi todo app"
+hivemind build "CLI for CSV analysis" -o ./myapp
+```
+
+---
+
+### `hivemind upgrade` [--check | -y | --version VERSION]
+
+Checks for updates and optionally upgrades the `hivemind-ai` package from PyPI.
+
+**Examples:**
+
+```bash
+hivemind upgrade --check
+hivemind upgrade -y
+hivemind upgrade --version 1.2.0
+```
+
+---
+
 ### Default: no command
 
 If you run **`hivemind`** with no subcommand, it starts the **TUI** (same as `hivemind tui`).
@@ -215,5 +334,5 @@ If you run **`hivemind`** with no subcommand, it starts the **TUI** (same as `hi
 
 ## Global behavior
 
-- **Config:** CLI uses Hivemind config (env > project TOML > user TOML > defaults). Set API keys and model names via env or TOML so `run`, `research`, and `analyze` use the right providers.
+- **Config:** The CLI uses Hivemind config (env > project TOML > user TOML > defaults). **Credentials** are loaded from the OS keyring (or env) and injected when config is resolved; do not put API keys in TOML. Use `hivemind credentials` to store and manage keys.
 - **Project root:** Commands that run example scripts (e.g. `research`, `analyze`) resolve the project root and set `PYTHONPATH` so examples can import `hivemind` and `examples._common` / `examples._config`.
