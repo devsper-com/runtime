@@ -14,7 +14,7 @@ def test_agent_run_emits_lifecycle_events():
 
     with patch("hivemind.agents.agent.generate", return_value="Summary output."):
         agent = Agent(model_name="gpt-4o", event_log=log)
-        result = agent.run(task)
+        result = agent.run_task(task)
 
     print("Result:", result)
     assert task.result == result

@@ -23,7 +23,7 @@ If you use pip: `pip install -e .` and install dev dependencies (pytest, ruff, b
 uv run python -m pytest tests/ -v
 ```
 
-Run a subset: `uv run python -m pytest tests/test_swarm.py -v`
+Run a subset: `uv run python -m pytest tests/test_swarm.py -v`. Version-specific tests: `tests/test_v19.py` (v1.9 serialization, bus, executor, scheduler, checkpointer, health).
 
 ## Code style guidelines
 

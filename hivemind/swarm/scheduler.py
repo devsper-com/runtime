@@ -3,11 +3,14 @@ Scheduler: manage the task DAG and determine which tasks are runnable.
 
 Supports: add_tasks, get_ready_tasks, get_speculative_tasks, mark_completed,
 confirm_speculative_for, discard_speculative_for, is_finished.
+v1.9: Single source of truth — get_task, get_all_tasks, get_results, snapshot, restore.
 """
 
+from datetime import datetime, timezone
 import networkx as nx
 
 from hivemind.types.task import Task, TaskStatus
+from hivemind.types.exceptions import TaskNotFoundError
 from hivemind.swarm.speculation import (
     get_speculative_candidates,
     confirm_speculative,
@@ -16,11 +19,22 @@ from hivemind.swarm.speculation import (
 
 
 class Scheduler:
-    """Manages a DAG of tasks. Tracks dependencies and exposes runnable tasks."""
+    """Manages a DAG of tasks. Tracks dependencies and exposes runnable tasks. Single source of truth for task state."""
 
-    def __init__(self) -> None:
+    def __init__(self, run_id: str = "") -> None:
         self._graph: nx.DiGraph = nx.DiGraph()
         self._tasks: dict[str, Task] = {}
+        self.run_id = run_id
+
+    def get_task(self, task_id: str) -> Task:
+        """Return task by id. Raises TaskNotFoundError if not found."""
+        if task_id not in self._tasks:
+            raise TaskNotFoundError(f"Task not found: {task_id!r}")
+        return self._tasks[task_id]
+
+    def get_all_tasks(self) -> list[Task]:
+        """Return all tasks."""
+        return list(self._tasks.values())
 
     def add_tasks(self, tasks: list[Task]) -> None:
         """Add tasks and build the internal dependency graph."""
@@ -46,15 +60,19 @@ class Scheduler:
                 ready.append(task)
         return ready
 
-    def mark_completed(self, task_id: str) -> None:
-        """Mark a task completed so dependent tasks can become runnable."""
+    def mark_completed(self, task_id: str, result: str = "") -> None:
+        """Mark a task completed and set its result. Dependent tasks can become runnable."""
         if task_id in self._tasks:
-            self._tasks[task_id].status = TaskStatus.COMPLETED
+            t = self._tasks[task_id]
+            t.status = TaskStatus.COMPLETED
+            t.result = result
 
-    def mark_failed(self, task_id: str) -> None:
-        """Mark a task failed (e.g. for adaptation to spawn alternative subtasks)."""
+    def mark_failed(self, task_id: str, error: str = "") -> None:
+        """Mark a task failed and set its error."""
         if task_id in self._tasks:
-            self._tasks[task_id].status = TaskStatus.FAILED
+            t = self._tasks[task_id]
+            t.status = TaskStatus.FAILED
+            t.error = error
 
     def is_finished(self) -> bool:
         """Return True when every task is completed or failed (no pending/running left)."""
@@ -64,12 +82,44 @@ class Scheduler:
         )
 
     def get_results(self) -> dict[str, str]:
-        """Return task_id -> result for all completed tasks."""
+        """Return task_id -> result for completed tasks only."""
         return {
             task_id: (t.result or "")
             for task_id, t in self._tasks.items()
             if t.status == TaskStatus.COMPLETED and t.result is not None
         }
+
+    def snapshot(self) -> dict:
+        """Full serializable state for checkpointing and node sync."""
+        edges = list(self._graph.edges())
+        tasks_data = [t.to_dict() for t in self._tasks.values()]
+        completed_count = sum(1 for t in self._tasks.values() if t.status == TaskStatus.COMPLETED)
+        failed_count = sum(1 for t in self._tasks.values() if t.status == TaskStatus.FAILED)
+        return {
+            "run_id": self.run_id,
+            "tasks": tasks_data,
+            "edges": [[str(u), str(v)] for u, v in edges],
+            "completed_count": completed_count,
+            "failed_count": failed_count,
+            "snapshot_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    @classmethod
+    def restore(cls, snapshot: dict) -> "Scheduler":
+        """Reconstruct Scheduler from snapshot dict."""
+        run_id = snapshot.get("run_id", "")
+        s = cls(run_id=run_id)
+        tasks_data = snapshot.get("tasks", [])
+        for tdata in tasks_data:
+            task = Task.from_dict(tdata)
+            s._tasks[task.id] = task
+            s._graph.add_node(task.id)
+        for edge in snapshot.get("edges", []):
+            if len(edge) >= 2:
+                u, v = str(edge[0]), str(edge[1])
+                if u in s._tasks and v in s._tasks:
+                    s._graph.add_edge(u, v)
+        return s
 
     def get_completed_tasks(self) -> list[Task]:
         """Return all completed tasks (for learning/memory storage)."""

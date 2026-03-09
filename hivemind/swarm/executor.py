@@ -7,6 +7,7 @@ Supports speculative execution and task cache lookup.
 
 v1.6: Semantic task cache, model complexity routing, streaming DAG unblocking.
 v1.7: Critic loop, speculative prefetching.
+v1.9: Stateless — no task state stored in executor; all state in Scheduler. Publishes to bus.
 """
 
 import os
@@ -67,6 +68,8 @@ class Executor:
         critic_roles: list[str] | None = None,
         fast_model: str = "mock",
         prefetcher: "TaskPrefetcher | None" = None,
+        bus: object = None,
+        checkpointer: object = None,
     ) -> None:
         self.scheduler = scheduler
         self.agent = agent
@@ -86,6 +89,8 @@ class Executor:
         self.critic_roles = critic_roles or []
         self.fast_model = fast_model
         self.prefetcher = prefetcher
+        self.bus = bus
+        self.checkpointer = checkpointer
 
     def run_sync(self) -> None:
         """Run the execution loop to completion (synchronous entry point)."""
@@ -151,15 +156,29 @@ class Executor:
         )
         return model
 
+    def _publish_bus(self, topic: str, payload: dict) -> None:
+        """Publish to bus if configured. Fire-and-forget."""
+        if self.bus is None:
+            return
+        try:
+            from hivemind.bus.message import create_bus_message
+            run_id = getattr(self.scheduler, "run_id", "") or ""
+            msg = create_bus_message(topic=topic, payload=payload, run_id=run_id)
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.bus.publish(msg))
+            except RuntimeError:
+                asyncio.run(self.bus.publish(msg))
+        except Exception:
+            pass
+
     async def _execute_task(self, task: Task, is_speculative: bool) -> str:
-        """Run one task (cache lookup, agent run, cache store). Returns task.id."""
+        """Run one task (cache lookup, agent run, cache store). Returns task.id. No state stored on self."""
         loop = asyncio.get_running_loop()
         cached, hit_info = self._get_cached_result(task)
         if cached is not None:
-            task.result = cached
-            task.status = TaskStatus.COMPLETED
             if not is_speculative:
-                self.scheduler.mark_completed(task.id)
+                self.scheduler.mark_completed(task.id, cached)
                 self.scheduler.confirm_speculative_for(task.id)
             if hit_info:
                 self._emit(
@@ -171,6 +190,8 @@ class Executor:
                     },
                 )
             return task.id
+
+        self._publish_bus("task.started", task.to_dict())
 
         prefetch_result = None
         if self.prefetcher:
@@ -195,14 +216,12 @@ class Executor:
         try:
             await loop.run_in_executor(
                 None,
-                lambda t=task, m=model_override, p=prefetch_result: self.agent.run(
+                lambda t=task, m=model_override, p=prefetch_result: self.agent.run_task(
                     t, model_override=m, prefetch_result=p
                 ),
             )
         except Exception as err:
-            task.status = TaskStatus.FAILED
-            task.result = f"Error: {type(err).__name__}: {err}"
-            self.scheduler.mark_failed(task.id)
+            self.scheduler.mark_failed(task.id, str(err))
             if is_speculative:
                 self.scheduler.discard_speculative_for(task.id)
             else:
@@ -210,6 +229,7 @@ class Executor:
                     events.TASK_FAILED,
                     {"task_id": task.id, "error": str(err)},
                 )
+                self._publish_bus("task.failed", {"task_id": task.id, "error": str(err)})
                 if self.adaptive and self.planner:
                     alt = create_alternative_subtasks_for_failed(
                         task, self.planner, self.scheduler
@@ -256,8 +276,19 @@ class Executor:
                 return await self._execute_task(task, is_speculative)
 
         if not is_speculative:
-            self.scheduler.mark_completed(task.id)
+            self.scheduler.mark_completed(task.id, result)
             self.scheduler.confirm_speculative_for(task.id)
+            if self.checkpointer is not None:
+                self.checkpointer.on_task_completed(self.scheduler)
+            self._publish_bus(
+                "task.completed",
+                {
+                    "task_id": task.id,
+                    "result": result,
+                    "tokens_used": None,
+                    "duration_seconds": 0.0,
+                },
+            )
             if self.adaptive and self.planner:
                 new_tasks = self.planner.expand_tasks(task)
                 if new_tasks:

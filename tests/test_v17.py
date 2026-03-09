@@ -205,7 +205,7 @@ def test_prefetch_consumed_on_task_start():
     log = EventLog()
     agent = Agent(model_name="mock", event_log=log, memory_router=memory_router)
     with patch("hivemind.agents.agent.generate", return_value="done"):
-        agent.run(task, prefetch_result=result)
+        agent.run_task(task, prefetch_result=result)
     assert task.result == "done"
     # Only one call (from prefetcher.prefetch); agent must not call memory_router when using prefetch_result
     assert memory_router.get_memory_context.call_count == 1

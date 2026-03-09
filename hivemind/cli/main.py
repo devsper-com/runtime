@@ -944,6 +944,126 @@ def _run_memory_consolidate(dry_run: bool = False, min_cluster_size: int = 3) ->
     return 0
 
 
+def _run_checkpoint_dispatch(args: object) -> int:
+    if getattr(args, "checkpoint_cmd", None) == "restore":
+        return _run_checkpoint_restore(getattr(args, "run_id", ""))
+    return _run_checkpoint_list(args)
+
+
+def _run_checkpoint_list(args: object) -> int:
+    """List all checkpoint files with run_id, task counts, timestamp."""
+    from hivemind.config import get_config
+    from hivemind.swarm.checkpointer import SchedulerCheckpointer
+    import os
+    try:
+        cfg = get_config()
+        events_dir = getattr(cfg, "events_dir", ".hivemind/events") or ".hivemind/events"
+    except Exception:
+        events_dir = ".hivemind/events"
+    ckp = SchedulerCheckpointer(events_dir=events_dir)
+    if not os.path.isdir(events_dir):
+        print("No checkpoint directory found.")
+        return 0
+    found = []
+    for name in os.listdir(events_dir):
+        if name.endswith(".checkpoint.json"):
+            run_id = name.replace(".checkpoint.json", "")
+            path = os.path.join(events_dir, name)
+            try:
+                import json
+                with open(path, "r") as f:
+                    data = json.load(f)
+                completed = data.get("completed_count", 0)
+                failed = data.get("failed_count", 0)
+                snapshot_at = data.get("snapshot_at", "")[:19]
+                found.append((run_id, completed, failed, snapshot_at))
+            except Exception:
+                found.append((run_id, "?", "?", ""))
+    if not found:
+        print("No checkpoint files found.")
+        return 0
+    try:
+        from rich.console import Console
+        from rich.table import Table
+        console = Console()
+        table = Table(title="Checkpoints")
+        table.add_column("Run ID", style="dim")
+        table.add_column("Completed", justify="right")
+        table.add_column("Failed", justify="right")
+        table.add_column("Snapshot at")
+        for run_id, completed, failed, snapshot_at in sorted(found, key=lambda x: -len(x[0])):
+            table.add_row(run_id[:48], str(completed), str(failed), snapshot_at)
+        console.print(table)
+    except ImportError:
+        for run_id, completed, failed, snapshot_at in found:
+            print(f"{run_id}  completed={completed}  failed={failed}  {snapshot_at}")
+    return 0
+
+
+def _run_checkpoint_restore(run_id: str) -> int:
+    """Restore a run from checkpoint and resume execution."""
+    from hivemind.config import get_config
+    from hivemind.swarm.checkpointer import SchedulerCheckpointer
+    from hivemind.types.exceptions import CheckpointNotFoundError
+    if not run_id or not run_id.strip():
+        print("Error: run_id required. Use: hivemind checkpoint restore <run_id>", file=sys.stderr)
+        return 1
+    run_id = run_id.strip()
+    try:
+        cfg = get_config()
+        events_dir = getattr(cfg, "events_dir", ".hivemind/events") or ".hivemind/events"
+    except Exception:
+        events_dir = ".hivemind/events"
+    ckp = SchedulerCheckpointer(events_dir=events_dir)
+    try:
+        scheduler = ckp.restore_or_raise(run_id)
+    except CheckpointNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    print(f"Restored scheduler for run_id={run_id!r}: {len(scheduler.get_all_tasks())} tasks, {scheduler.get_results()} results.")
+    print("Resume execution is not yet implemented (1.10). Use checkpoint list to inspect state.")
+    return 0
+
+
+def _run_health(args: object) -> int:
+    """Run health checks. Exit 0 if healthy, 1 otherwise. Print ✓/✗ per check."""
+    import asyncio
+    from hivemind.config import get_config
+    from hivemind.runtime.health import HealthChecker, HealthReport
+    try:
+        cfg = get_config()
+    except Exception:
+        cfg = None
+    if cfg is None:
+        print("No config loaded; using defaults for health checks.")
+        from hivemind.config.schema import HivemindConfigModel
+        cfg = HivemindConfigModel()
+    checker = HealthChecker()
+    try:
+        report = asyncio.run(checker.check(cfg))
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        report = loop.run_until_complete(checker.check(cfg))
+    try:
+        from rich.console import Console
+        console = Console()
+        for name, ok in report.checks.items():
+            if ok:
+                console.print(f"  [green]✓[/green] {name}")
+            else:
+                console.print(f"  [red]✗[/red] {name}  {report.errors.get(name, '')}")
+        if report.healthy:
+            console.print("[green]healthy[/green]")
+        else:
+            console.print("[red]unhealthy[/red]")
+    except ImportError:
+        for name, ok in report.checks.items():
+            sym = "✓" if ok else "✗"
+            print(f"  {sym} {name}" + (f"  {report.errors.get(name, '')}" if not ok else ""))
+        print("healthy" if report.healthy else "unhealthy")
+    return 0 if report.healthy else 1
+
+
 def _run_completion(parser: argparse.ArgumentParser, shell: str) -> int:
     """Print shell completion script."""
     try:
@@ -1519,6 +1639,26 @@ Examples:
         help="Show what would happen without installing",
     )
     upgrade_parser.set_defaults(func=_run_upgrade)
+
+    checkpoint_parser = subparsers.add_parser(
+        "checkpoint",
+        help="List checkpoints or restore a run",
+        description="List checkpoint files or restore a run from checkpoint and resume.",
+    )
+    checkpoint_sub = checkpoint_parser.add_subparsers(dest="checkpoint_cmd", help="Subcommand")
+    checkpoint_list_p = checkpoint_sub.add_parser("list", help="List all checkpoint files")
+    checkpoint_list_p.set_defaults(func=_run_checkpoint_dispatch)
+    checkpoint_restore_p = checkpoint_sub.add_parser("restore", help="Restore run from checkpoint")
+    checkpoint_restore_p.add_argument("run_id", help="Run ID to restore")
+    checkpoint_restore_p.set_defaults(func=_run_checkpoint_dispatch)
+    checkpoint_parser.set_defaults(checkpoint_cmd="list", func=_run_checkpoint_dispatch)
+
+    health_parser = subparsers.add_parser(
+        "health",
+        help="Health and readiness check",
+        description="Run health checks (bus, memory, tools, KG, checkpoint dir). Exit 0 if healthy, 1 otherwise.",
+    )
+    health_parser.set_defaults(func=_run_health)
 
     _load_project_dotenv()
     args = parser.parse_args()

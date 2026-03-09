@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-03-09
+
+### Added
+
+- **Full task and agent serialization (v1.9)** — `Task`: `to_dict`, `from_dict`, `to_json`, `from_json`, `checksum()`; `Event`: JSON-safe payload validation in `__init__` (`EventSerializationError`), `to_dict`/`from_dict`/`to_json`/`from_json`. `AgentRequest` and `AgentResponse` dataclasses with full serialization; `Agent.run(request) -> AgentResponse` (stateless); backward-compat `Agent.run_task(task, ...)`.
+- **Real message bus (v1.9)** — New `hivemind/bus/`: `BusMessage`, `get_bus(config)`, `InMemoryBus` (wildcard `task.*`), `RedisBus` (optional `redis` package). Topics: `task.ready`, `task.started`, `task.completed`, `task.failed`, `agent.broadcast`, `swarm.control`, `node.heartbeat`, `node.joined`, `node.left`. Config: `[bus] backend`, `redis_url`. `EventLog.append_event` optionally publishes to bus when `EventLog(bus=...)` is set.
+- **Stateless executor (v1.9)** — Executor holds no task state; all state in Scheduler. Receives tasks, builds `AgentRequest`, calls `Agent.run(request)` (via `run_task` for compat), reports via `scheduler.mark_completed(task_id, result)` / `scheduler.mark_failed(task_id, error)`; publishes bus messages for task.started / task.completed / task.failed.
+- **Scheduler as single source of truth (v1.9)** — `get_task(task_id)`, `get_all_tasks()`, `get_results()`, `snapshot()` (run_id, tasks, edges, completed_count, failed_count, snapshot_at), `Scheduler.restore(snapshot)`. `mark_completed(task_id, result)`, `mark_failed(task_id, error)`. Task model: `error` field.
+- **Checkpointer (v1.9)** — `hivemind/swarm/checkpointer.py`: `SchedulerCheckpointer` writes `scheduler.snapshot()` to `{events_dir}/{run_id}.checkpoint.json` every N task completions; atomic write; `restore_latest(run_id)`, `restore_or_raise(run_id)`. Config: `[swarm] checkpoint_interval`, `checkpoint_enabled`.
+- **CLI: `hivemind checkpoint list`** — List checkpoint files with run_id, task counts, timestamp.
+- **CLI: `hivemind checkpoint restore <run_id>`** — Restore scheduler from checkpoint (resume execution in 1.10).
+- **Health and readiness (v1.9)** — `hivemind/runtime/health.py`: `HealthChecker.check(config) -> HealthReport` (bus_reachable, memory_store_readable, tool_scores_readable, knowledge_graph_loadable, checkpoint_dir_writable). **CLI: `hivemind health`** — Prints ✓/✗ per check; exit 0 if healthy, 1 otherwise (Docker/k8s healthcheck).
+- **Exceptions:** `EventSerializationError`, `TaskNotFoundError`, `BusConnectionError`, `CheckpointNotFoundError` in `hivemind/types/exceptions.py`.
+- **Tests:** `tests/test_v19.py` (task/event/AgentRequest/AgentResponse roundtrip, event payload JSON-safe, in-memory bus wildcard/order, executor holds no state, scheduler snapshot/restore, checkpointer write/atomic, health all-pass/partial-fail).
+
+### Changed
+
+- Scheduler stores and updates task result/error via `mark_completed(task_id, result)` and `mark_failed(task_id, error)`.
+- Swarm sets `scheduler.run_id` from event_log; optionally creates bus and checkpointer from config and passes to Executor.
+
 ## [1.8.0] - 2026-03-09
 
 ### Added

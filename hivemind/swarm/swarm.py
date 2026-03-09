@@ -168,6 +168,7 @@ class Swarm:
 
         scheduler = Scheduler()
         scheduler.add_tasks(subtasks)
+        scheduler.run_id = getattr(self.event_log, "run_id", "") or ""
         _persist_dag(scheduler, self.event_log)
 
         from hivemind.reasoning.store import ReasoningStore
@@ -252,6 +253,23 @@ class Swarm:
                 max_age_seconds=prefetch_max_age,
             )
 
+        bus = None
+        checkpointer = None
+        if self._config is not None:
+            try:
+                from hivemind.bus import get_bus
+                bus = get_bus(self._config)
+            except Exception:
+                pass
+            if getattr(getattr(self._config, "swarm", None), "checkpoint_enabled", True):
+                from hivemind.swarm.checkpointer import SchedulerCheckpointer
+                checkpointer = SchedulerCheckpointer(
+                    events_dir=getattr(self._config, "events_dir", ".hivemind/events"),
+                    interval_tasks=getattr(
+                        getattr(self._config, "swarm", None), "checkpoint_interval", 10
+                    ),
+                )
+
         executor = Executor(
             scheduler=scheduler,
             agent=agent,
@@ -271,6 +289,8 @@ class Swarm:
             critic_roles=critic_roles,
             fast_model=fast_model,
             prefetcher=prefetcher,
+            bus=bus,
+            checkpointer=checkpointer,
         )
         executor.run_sync()
 

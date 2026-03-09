@@ -1,6 +1,10 @@
+import json
+from datetime import datetime, timezone
 from enum import Enum
-from pydantic import BaseModel
-from datetime import datetime
+from pydantic import BaseModel, model_validator
+
+from hivemind.types.exceptions import EventSerializationError
+
 
 class events(Enum):
     SWARM_STARTED = "swarm_started"
@@ -36,3 +40,54 @@ class Event(BaseModel):
     timestamp: datetime
     type: events
     payload: dict
+
+    @model_validator(mode="after")
+    def _payload_must_be_json_safe(self) -> "Event":
+        try:
+            json.dumps(self.payload)
+        except TypeError as e:
+            raise EventSerializationError(f"Event payload not JSON-safe: {e}") from e
+        return self
+
+    def to_dict(self) -> dict:
+        ts = self.timestamp
+        if hasattr(ts, "isoformat"):
+            ts_str = ts.isoformat()
+        else:
+            ts_str = str(ts)
+        type_val = self.type.value if hasattr(self.type, "value") else str(self.type)
+        return {
+            "timestamp": ts_str,
+            "type": type_val,
+            "payload": self.payload,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Event":
+        ts = data.get("timestamp", "")
+        if isinstance(ts, str):
+            try:
+                if ts.endswith("Z"):
+                    ts = ts.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(ts)
+            except ValueError:
+                dt = datetime.now(timezone.utc)
+        else:
+            dt = datetime.now(timezone.utc)
+        type_val = data.get("type", "swarm_started")
+        try:
+            event_type = events(type_val) if isinstance(type_val, str) else events.SWARM_STARTED
+        except ValueError:
+            event_type = events.SWARM_STARTED
+        return cls(
+            timestamp=dt,
+            type=event_type,
+            payload=dict(data.get("payload", {})),
+        )
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())
+
+    @classmethod
+    def from_json(cls, raw: str) -> "Event":
+        return cls.from_dict(json.loads(raw))

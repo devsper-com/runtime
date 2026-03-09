@@ -11,6 +11,7 @@ from hivemind.config.config_loader import (
 )
 from hivemind.config.schema import (
     AgentsConfig,
+    BusConfig,
     CacheConfig,
     HivemindConfigModel,
     KnowledgeConfig,
@@ -166,6 +167,7 @@ def _build_merged_raw(
             "similarity_threshold": 0.92,
             "max_age_hours": 168.0,
         },
+        "bus": {"backend": "memory", "redis_url": "redis://localhost:6379"},
         "events_dir": ".hivemind/events",
         "data_dir": ".hivemind",
         "providers": {
@@ -231,6 +233,7 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
     tools = ToolsConfig(**(merged.get("tools") or {}))
     telemetry = TelemetryConfig(**(merged.get("telemetry") or {}))
     cache = CacheConfig(**(merged.get("cache") or {}))
+    bus = BusConfig(**(merged.get("bus") or {}))
     providers_data = merged.get("providers") or {}
     azure_data = providers_data.get("azure") or {}
     providers = ProvidersConfig(azure=ProviderAzureConfig(**azure_data))
@@ -244,6 +247,7 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
         tools=tools,
         telemetry=telemetry,
         cache=cache,
+        bus=bus,
         events_dir=merged.get("events_dir", ".hivemind/events"),
         data_dir=merged.get("data_dir", ".hivemind"),
         providers=providers,

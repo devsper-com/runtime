@@ -1,6 +1,14 @@
 """Pydantic schema for Hivemind configuration."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+
+class BusConfig(BaseModel):
+    """v1.9: message bus backend (memory or redis)."""
+    backend: Literal["memory", "redis"] = "memory"
+    redis_url: str = "redis://localhost:6379"
 
 
 class SwarmConfig(BaseModel):
@@ -18,6 +26,9 @@ class SwarmConfig(BaseModel):
     message_bus_enabled: bool = True
     prefetch_enabled: bool = True
     prefetch_max_age_seconds: float = 30.0
+    # v1.9
+    checkpoint_interval: int = 10
+    checkpoint_enabled: bool = True
 
 
 class CacheConfig(BaseModel):
@@ -85,6 +96,7 @@ class HivemindConfigModel(BaseModel):
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
+    bus: BusConfig = Field(default_factory=BusConfig)
     events_dir: str = ".hivemind/events"
     data_dir: str = ".hivemind"
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)

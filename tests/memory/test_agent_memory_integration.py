@@ -31,7 +31,7 @@ def test_agent_run_without_memory_router_unchanged():
     log = EventLog()
     with patch("hivemind.agents.agent.generate", return_value="Done.") as m:
         agent = Agent(model_name="mock", event_log=log)
-        result = agent.run(task)
+        result = agent.run_task(task)
     assert result == "Done."
     assert m.called
 
@@ -44,7 +44,7 @@ def test_agent_run_with_memory_router_injects_context(temp_store):
     router = MemoryRouter(store=temp_store, index=index, top_k=5)
     with patch("hivemind.agents.agent.generate", return_value="Analysis done.") as m:
         agent = Agent(model_name="mock", event_log=log, memory_router=router)
-        result = agent.run(task)
+        result = agent.run_task(task)
     assert result == "Analysis done."
     call_args = m.call_args[0]
     prompt = call_args[1]
@@ -63,7 +63,7 @@ def test_agent_store_result_to_memory(temp_store):
             memory_router=router,
             store_result_to_memory=True,
         )
-        agent.run(task)
+        agent.run_task(task)
     listed = temp_store.list_memory(limit=10)
     assert len(listed) >= 1
     assert any("4" in r.content for r in listed)

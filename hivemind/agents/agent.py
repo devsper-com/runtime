@@ -2,12 +2,83 @@ import asyncio
 import json
 import os
 import re
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from hivemind.types.task import Task, TaskStatus
 from hivemind.types.event import Event, events
 from hivemind.utils.event_logger import EventLog
 from hivemind.utils.models import generate
+
+
+@dataclass
+class AgentRequest:
+    """Serializable input for Agent.run. All context comes in via this object."""
+    task: Task
+    memory_context: str
+    tools: list[str]  # tool names only
+    model: str
+    system_prompt: str
+    prefetch_used: bool
+
+    def to_dict(self) -> dict:
+        return {
+            "task": self.task.to_dict(),
+            "memory_context": self.memory_context,
+            "tools": list(self.tools),
+            "model": self.model,
+            "system_prompt": self.system_prompt,
+            "prefetch_used": self.prefetch_used,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AgentRequest":
+        return cls(
+            task=Task.from_dict(data["task"]),
+            memory_context=data.get("memory_context", ""),
+            tools=list(data.get("tools", [])),
+            model=data.get("model", "mock"),
+            system_prompt=data.get("system_prompt", ""),
+            prefetch_used=data.get("prefetch_used", False),
+        )
+
+
+@dataclass
+class AgentResponse:
+    """Serializable output from Agent.run."""
+    task_id: str
+    result: str
+    tools_called: list[str]
+    broadcasts: list[str]
+    tokens_used: int | None
+    duration_seconds: float
+    error: str | None
+    success: bool
+
+    def to_dict(self) -> dict:
+        return {
+            "task_id": self.task_id,
+            "result": self.result,
+            "tools_called": list(self.tools_called),
+            "broadcasts": list(self.broadcasts),
+            "tokens_used": self.tokens_used,
+            "duration_seconds": self.duration_seconds,
+            "error": self.error,
+            "success": self.success,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AgentResponse":
+        return cls(
+            task_id=data["task_id"],
+            result=data.get("result", ""),
+            tools_called=list(data.get("tools_called", [])),
+            broadcasts=list(data.get("broadcasts", [])),
+            tokens_used=data.get("tokens_used"),
+            duration_seconds=float(data.get("duration_seconds", 0.0)),
+            error=data.get("error"),
+            success=bool(data.get("success", False)),
+        )
 
 BROADCAST_PREFIX = re.compile(r"^\s*BROADCAST:\s*(.+?)(?=\n\n|\n[A-Z]|\Z)", re.DOTALL | re.IGNORECASE)
 
@@ -58,6 +129,17 @@ def _format_tools_section(tools: list | None = None) -> str:
         lines.append(f"- {t.name}: {t.description}")
         lines.append(f"  input_schema: {json.dumps(t.input_schema)}")
     return "\n".join(lines)
+
+
+def _get_tools_by_names(names: list[str]) -> list:
+    """Resolve tool names to tool objects from registry."""
+    from hivemind.tools.registry import get
+    out = []
+    for n in names:
+        t = get(n)
+        if t is not None:
+            out.append(t)
+    return out
 
 
 def _parse_tool_call(text: str) -> tuple[str | None, dict | None]:
@@ -158,96 +240,155 @@ class Agent:
         self.parallel_tools = parallel_tools and os.environ.get("HIVEMIND_DISABLE_PARALLEL_TOOLS", "").strip() != "1"
         self.message_bus = message_bus
 
-    def run(
+    def run(self, request: AgentRequest) -> AgentResponse:
+        """Stateless run: all context in AgentRequest, all output in AgentResponse."""
+        import time
+        t0 = time.perf_counter()
+        task_id = request.task.id
+        try:
+            self._emit(events.AGENT_STARTED, {"task_id": task_id})
+            self._emit(events.TASK_STARTED, {"task_id": task_id})
+
+            memory_section = ""
+            if request.memory_context:
+                memory_section = "\n\nRELEVANT MEMORY\n(previous research notes etc.)\n\n" + request.memory_context
+
+            if self.use_tools and request.tools:
+                tools_objs = _get_tools_by_names(request.tools)
+                text, tools_called = self._run_with_tools_for_request(
+                    request, memory_section, tools_objs
+                )
+            else:
+                prompt = PROMPT_TEMPLATE.format(
+                    role_prefix=request.system_prompt,
+                    task_description=request.task.description,
+                    memory_section=memory_section,
+                    message_bus_section="",
+                )
+                text = generate(request.model, prompt)
+                tools_called = []
+
+            text, broadcasts = self._strip_broadcast_and_collect(task_id, text)
+
+            if self.store_result_to_memory and text and getattr(self.memory_router, "store", None):
+                self._store_result_to_memory(request.task, text)
+            if self.reasoning_store and text:
+                try:
+                    node = self.reasoning_store.add_node(
+                        agent_id=getattr(request.task, "role", "") or "agent",
+                        task_id=task_id,
+                        content=text[:10000],
+                    )
+                    self._emit(events.REASONING_NODE_ADDED, {"node_id": node.id, "task_id": task_id})
+                except Exception:
+                    pass
+            self._emit(events.TASK_COMPLETED, {"task_id": task_id})
+            self._emit(events.AGENT_FINISHED, {"task_id": task_id})
+
+            duration = time.perf_counter() - t0
+            return AgentResponse(
+                task_id=task_id,
+                result=text,
+                tools_called=tools_called,
+                broadcasts=broadcasts,
+                tokens_used=None,
+                duration_seconds=duration,
+                error=None,
+                success=True,
+            )
+        except Exception as e:
+            duration = time.perf_counter() - t0
+            self._emit(events.TASK_FAILED, {"task_id": task_id, "error": str(e)})
+            return AgentResponse(
+                task_id=task_id,
+                result="",
+                tools_called=[],
+                broadcasts=[],
+                tokens_used=None,
+                duration_seconds=duration,
+                error=str(e),
+                success=False,
+            )
+
+    def run_task(
         self,
         task: Task,
         model_override: str | None = None,
         prefetch_result=None,
     ) -> str:
-        model = model_override if model_override else self.model_name
-        self._emit(events.AGENT_STARTED, {"task_id": task.id})
-        self._emit(events.TASK_STARTED, {"task_id": task.id})
-
-        task.status = TaskStatus.RUNNING
-
+        """Backward-compat: build AgentRequest from task and prefetch, run, mutate task, return result."""
         memory_section = ""
         if prefetch_result and getattr(prefetch_result, "memory_context", None):
             ctx = prefetch_result.memory_context
-            memory_section = "\n\nRELEVANT MEMORY\n(previous research notes etc.)\n\n" + ctx if ctx else ""
+            memory_section = ctx or ""
         elif self.memory_router and task.description:
             try:
                 query = task.description
                 if self.user_task and self.user_task.strip():
                     query = f"{self.user_task.strip()} {task.description}".strip()
-                ctx = self.memory_router.get_memory_context(query)
-                memory_section = "\n\nRELEVANT MEMORY\n(previous research notes etc.)\n\n" + ctx if ctx else ""
+                memory_section = self.memory_router.get_memory_context(query) or ""
             except Exception:
                 pass
-
         message_bus_section = ""
-        broadcast_instruction = ""
         if self.message_bus:
-            message_bus_section = self.message_bus.get_context_sync(task.id)
-            if message_bus_section:
-                message_bus_section = "\n\n" + message_bus_section
-                broadcast_instruction = BROADCAST_INSTRUCTION
-
+            message_bus_section = self.message_bus.get_context_sync(task.id) or ""
+        if message_bus_section:
+            memory_section = (memory_section + "\n\n" + message_bus_section).strip()
         from hivemind.agents.roles import get_role_config
         role_config = get_role_config(getattr(task, "role", None))
-        role_prefix = role_config.prompt_prefix + broadcast_instruction if broadcast_instruction else role_config.prompt_prefix
-
+        broadcast_instruction = BROADCAST_INSTRUCTION if (self.message_bus and message_bus_section) else ""
+        system_prompt = role_config.prompt_prefix + broadcast_instruction if broadcast_instruction else role_config.prompt_prefix
+        tools_names: list[str] = []
         if self.use_tools:
-            tools_list = None
             if prefetch_result and getattr(prefetch_result, "tools", None):
-                tools_list = prefetch_result.tools
-            text = self._run_with_tools(
-                task,
-                memory_section,
-                role_prefix=role_prefix,
-                model_name=model,
-                tools_list=tools_list,
-                message_bus_section=message_bus_section,
-            )
-        else:
-            prompt = PROMPT_TEMPLATE.format(
-                role_prefix=role_prefix,
-                task_description=task.description,
-                memory_section=memory_section,
-                message_bus_section=message_bus_section,
-            )
-            text = generate(model, prompt)
-
-        text = self._strip_broadcast_and_emit(task, text)
-
-        task.status = TaskStatus.COMPLETED
-        task.result = text
-        if self.store_result_to_memory and text and getattr(self.memory_router, "store", None):
-            self._store_result_to_memory(task, text)
-        if self.reasoning_store and text:
-            try:
-                node = self.reasoning_store.add_node(
-                    agent_id=getattr(task, "role", "") or "agent",
-                    task_id=task.id,
-                    content=text[:10000],
+                tools_names = [t.name for t in prefetch_result.tools]
+            else:
+                try:
+                    from hivemind.tools.selector import get_tools_for_task
+                    from hivemind.tools.scoring import get_default_score_store
+                    score_store = get_default_score_store()
+                except Exception:
+                    score_store = None
+                tools = get_tools_for_task(
+                    task.description or "",
+                    role=getattr(task, "role", None),
+                    score_store=score_store,
                 )
-                self._emit(events.REASONING_NODE_ADDED, {"node_id": node.id, "task_id": task.id})
-            except Exception:
-                pass
-        self._emit(events.TASK_COMPLETED, {"task_id": task.id})
-        self._emit(events.AGENT_FINISHED, {"task_id": task.id})
+                tools_names = [t.name for t in tools]
+        model = model_override if model_override else self.model_name
+        request = AgentRequest(
+            task=task,
+            memory_context=memory_section,
+            tools=tools_names,
+            model=model,
+            system_prompt=system_prompt,
+            prefetch_used=prefetch_result is not None,
+        )
+        response = self.run(request)
+        task.status = TaskStatus.COMPLETED if response.success else TaskStatus.FAILED
+        task.result = response.result
+        if response.error:
+            task.error = response.error
+        return response.result
 
-        return text
+    def _strip_broadcast_and_collect(self, task_id: str, text: str) -> tuple[str, list[str]]:
+        """If text starts with BROADCAST:, optionally emit to message_bus, strip; return (rest, list of findings)."""
+        collected: list[str] = []
+        rest = text
+        while rest:
+            m = BROADCAST_PREFIX.match(rest)
+            if not m:
+                break
+            finding = m.group(1).strip()
+            collected.append(finding)
+            if self.message_bus:
+                self.message_bus.broadcast_sync(task_id, finding, tags=[])
+            rest = rest[m.end():].lstrip()
+        return (rest, collected)
 
     def _strip_broadcast_and_emit(self, task: Task, text: str) -> str:
         """If text starts with BROADCAST:, emit to message_bus and strip; return rest."""
-        if not text or not self.message_bus:
-            return text
-        m = BROADCAST_PREFIX.match(text)
-        if not m:
-            return text
-        finding = m.group(1).strip()
-        self.message_bus.broadcast_sync(task.id, finding, tags=[])
-        rest = text[m.end() :].lstrip()
+        rest, _ = self._strip_broadcast_and_collect(task.id, text or "")
         return rest
 
     def _store_result_to_memory(self, task: Task, text: str) -> None:
@@ -270,6 +411,55 @@ class Agent:
         if isinstance(index, MemoryIndex):
             record = index.ensure_embedding(record)
         store.store(record)
+
+    def _run_with_tools_for_request(
+        self,
+        request: AgentRequest,
+        memory_section: str,
+        tools_list: list,
+    ) -> tuple[str, list[str]]:
+        """Run tool loop for a request; return (result_text, list of tool names called)."""
+        from hivemind.tools.tool_runner import run_tool
+
+        task = request.task
+        task_type = getattr(task, "role", None) or "general"
+        tools_section = _format_tools_section(tools_list)
+        prompt = PROMPT_TEMPLATE_WITH_TOOLS.format(
+            role_prefix=request.system_prompt,
+            task_description=task.description,
+            memory_section=memory_section,
+            message_bus_section="",
+            tools_section=tools_section,
+        )
+        conversation = [prompt]
+        tools_called: list[str] = []
+        for _ in range(self.max_tool_iterations):
+            full_prompt = "\n\n".join(conversation)
+            response = generate(request.model, full_prompt)
+            tool_calls = _parse_all_tool_calls(response)
+            if not tool_calls:
+                return (response.strip(), tools_called)
+            for (tool_name, _) in tool_calls:
+                tools_called.append(tool_name)
+            if len(tool_calls) == 1 or not self.parallel_tools:
+                tool_name, tool_args = tool_calls[0]
+                result = run_tool(tool_name, tool_args, task_type=task_type)
+                self._emit(
+                    events.TOOL_CALLED,
+                    {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
+                )
+                conversation.append(f"Response:\n{response}")
+                conversation.append(f"Tool result ({tool_name}):\n{result or ''}")
+                continue
+            results = self._run_tools_parallel_sync(tool_calls, task_type, task)
+            conversation.append(f"Response:\n{response}")
+            for (tool_name, _), result in zip(tool_calls, results):
+                self._emit(
+                    events.TOOL_CALLED,
+                    {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
+                )
+                conversation.append(f"Tool result ({tool_name}):\n{result or ''}")
+        return (conversation[-1].strip() or "Max tool iterations reached.", tools_called)
 
     def _run_with_tools(
         self,

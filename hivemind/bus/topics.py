@@ -1,0 +1,11 @@
+"""Bus topic constants for pub/sub."""
+
+TASK_READY = "task.ready"
+TASK_STARTED = "task.started"
+TASK_COMPLETED = "task.completed"
+TASK_FAILED = "task.failed"
+AGENT_BROADCAST = "agent.broadcast"
+SWARM_CONTROL = "swarm.control"
+NODE_HEARTBEAT = "node.heartbeat"
+NODE_JOINED = "node.joined"
+NODE_LEFT = "node.left"

@@ -33,7 +33,7 @@
 
 - **Role:** Maintains the task DAG and determines which tasks are runnable.
 - **Data structure:** Directed acyclic graph (e.g. NetworkX); nodes are task IDs, edges are dependencies.
-- **API:** `add_tasks`, `get_ready_tasks`, `mark_completed`, `is_finished`, `get_results`, `get_completed_tasks`.
+- **API:** `add_tasks`, `get_ready_tasks`, `mark_completed`, `is_finished`, `get_results`, `get_completed_tasks`. (v1.9) `get_task`, `get_all_tasks`, `snapshot()`, `Scheduler.restore(snapshot)`; single source of truth for task state.
 - **Invariant:** Only tasks whose dependencies are all completed are returned as “ready.”
 
 ### Executor
@@ -43,6 +43,13 @@
 - **(v1.7) Critic:** After a task completes, if critic is enabled and the task role is in `critic_roles`, a **CriticAgent** scores the result (completeness, accuracy, actionability). If the score is below threshold and the critic requests a retry, the task is re-queued once with a retry prompt.
 - **(v1.7) Prefetcher:** When speculative execution and prefetch are enabled, the executor triggers background prefetch (memory + tool selection) for speculative tasks; when a task runs, it may receive a pre-warmed `prefetch_result` so the agent skips fetching.
 - **Events:** `executor_started`, then per-task agent/task events, then `executor_finished`; (v1.7) `TASK_CRITIQUED`, `PREFETCH_HIT`, `PREFETCH_MISS`.
+- **(v1.9) Stateless:** Executor holds no task state; all state lives in the Scheduler. Reports outcomes via `mark_completed(task_id, result)` / `mark_failed(task_id, error)`; optionally publishes to the message bus.
+
+### Message bus and checkpointing (v1.9)
+
+- **Bus:** Real pub/sub backend (`InMemoryBus` or `RedisBus`). Topics: `task.ready`, `task.started`, `task.completed`, `task.failed`, `agent.broadcast`, `swarm.control`, etc. Config: `[bus] backend`, `redis_url`. EventLog can publish to the bus when configured.
+- **Checkpointer:** Writes `scheduler.snapshot()` to `{events_dir}/{run_id}.checkpoint.json` every N task completions (atomic write). CLI: `hivemind checkpoint list`, `hivemind checkpoint restore <run_id>`.
+- **Health:** `hivemind health` runs checks (bus, memory, tools, knowledge graph, checkpoint dir); exit 0/1 for orchestration healthchecks.
 
 ### Agents
 
