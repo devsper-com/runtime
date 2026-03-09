@@ -1,0 +1,4 @@
+# Docs build only (CI). For local: pip install .[docs]
+mkdocs>=1.6.0,<2
+mkdocs-material>=9.5.0
+mike>=1.1.0

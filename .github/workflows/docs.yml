@@ -11,6 +11,7 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "pyproject.toml"
+      - "requirements-docs.txt"
       - "branding/**"
   release:
     types: [published]
@@ -38,7 +39,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install docs dependencies
-        run: pip install ".[docs]"
+        run: pip install -r requirements-docs.txt
 
       - name: Get version
         id: version
@@ -48,10 +49,17 @@ jobs:
 
       - name: Deploy latest to gh-pages
         run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mike deploy --push --update-aliases "${{ steps.version.outputs.version }}" latest
-          mike set-default --push latest
+          # Suppress Material's MkDocs 2.0 warning (we pin mkdocs<2)
+          run_filtered() {
+            out=$("$@" 2>&1); s=$?
+            echo "$out" | grep -v -E "MkDocs 2\.0|backward-incompatible|plugin system|theming system|No migration path|Closed contribution|Currently unlicensed|Our full analysis|squidfunk\.github\.io/mkdocs-material/blog" || true
+            return $s
+          }
+          run_filtered mike deploy --push --update-aliases "${{ steps.version.outputs.version }}" latest
+          run_filtered mike set-default --push latest
 
       - name: Ensure CNAME on gh-pages
         run: |
@@ -78,7 +86,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install docs dependencies
-        run: pip install ".[docs]"
+        run: pip install -r requirements-docs.txt
 
       - name: Parse version from tag
         id: version
@@ -88,10 +96,17 @@ jobs:
 
       - name: Deploy versioned docs to gh-pages
         run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mike deploy --push "${{ steps.version.outputs.version }}"
-          mike alias --push "${{ steps.version.outputs.version }}" stable
+          # Suppress Material's MkDocs 2.0 warning (we pin mkdocs<2)
+          run_filtered() {
+            out=$("$@" 2>&1); s=$?
+            echo "$out" | grep -v -E "MkDocs 2\.0|backward-incompatible|plugin system|theming system|No migration path|Closed contribution|Currently unlicensed|Our full analysis|squidfunk\.github\.io/mkdocs-material/blog" || true
+            return $s
+          }
+          run_filtered mike deploy --push "${{ steps.version.outputs.version }}"
+          run_filtered mike alias --push "${{ steps.version.outputs.version }}" stable
 
       - name: Ensure CNAME on gh-pages
         run: |
