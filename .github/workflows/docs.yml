@@ -1,6 +1,6 @@
 # Deploy docs to GitHub Pages (hivemind.rithul.dev)
 # - On push to main: build Docusaurus and deploy to gh-pages
-# - On release published: add docs version for the release, commit to main, then deploy runs via push
+# - On release published: add docs version and open a PR (docs/version-X). Merge the PR to update main and trigger deploy; no direct push to main, so your branch won’t diverge.
 #
 # Required: Repo Settings → Pages → Build and deployment → Source:
 #   "Deploy from a branch" → Branch: gh-pages → / (root)
@@ -29,6 +29,9 @@ jobs:
   add-version:
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -55,12 +58,22 @@ jobs:
           npm ci
           npx docusaurus docs:version ${{ steps.version.outputs.version }}
 
-      - name: Commit versioned docs
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add website/versioned_docs website/versioned_sidebars website/versions.json
-          git diff --staged --quiet || (git commit -m "chore(docs): add version ${{ steps.version.outputs.version }}" && git push)
+      - name: Open Pull Request for versioned docs
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: "docs/version-${{ steps.version.outputs.version }}"
+          base: main
+          title: "chore(docs): add version ${{ steps.version.outputs.version }}"
+          body: |
+            Versioned docs for release **v${{ steps.version.outputs.version }}**.
+            Merge this to update the docs site. No automatic push to main, so your branch won’t diverge.
+          commit-message: "chore(docs): add version ${{ steps.version.outputs.version }}"
+          add-paths: |
+            website/versioned_docs
+            website/versioned_sidebars
+            website/versions.json
+          delete-branch: true
 
   deploy:
     if: github.event_name == 'push'
