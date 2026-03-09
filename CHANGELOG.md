@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-03-09
+
+### Added
+
+- **Tool Reliability Scoring (v1.3)** — Every tool gets a runtime score from real usage; scores feed into tool selection so unreliable tools are demoted over time.
+- **`hivemind tools`** — List registered tools with reliability scores (table: Tool Name, Category, Score, Label, Success Rate, Avg Latency, Calls, Last Used). Options: `--category <name>`, `--poor` (score &lt; 0.40). Subcommand `reset <tool_name>` or `reset --all` (with confirmation) wipes score history. Rows colored by label (excellent=green, good=default, degraded=yellow, poor=red); tools with &lt;5 calls show "new".
+- **Scoring module** (`hivemind/tools/scoring/`): `ToolScoreStore` (SQLite at `~/.config/hivemind/tool_scores.db`), `ToolScore` dataclass, `record_tool_result`, `get_tool_score`, `get_default_score_store`; `compute_composite_score` and `score_label` in `scorer.py`; `select_tools_scored` (70% similarity + 30% reliability) in `selector.py`; `generate_tools_report` in `report.py`. New tools (&lt;5 calls) get neutral 0.75; `HIVEMIND_DISABLE_TOOL_SCORING=1` bypasses scoring for tests.
+- **`hivemind doctor`** — Tool scoring checks: info line "Tool scoring database: {N} records, {M} tools tracked"; warns if &gt;20% of tools with 10+ calls are poor; suggests `hivemind tools reset <name>` for tools with 0% success and ≥10 calls.
+- **`hivemind analytics`** — Appends tool reliability report (summary, top 3, bottom 3) when scores exist.
+- **Agent** — Uses blended tool selection (similarity × reliability) and passes `task_type` (role or "general") into tool runner for per-context scoring.
+- **Tests** — `tests/test_tool_scoring.py`: composite score (new/reliable/dead), score_label, store record/retrieve/prune/reset, selector prefers reliable, similarity dominates, env bypass.
+
+### Changed
+
+- `run_tool(name, args, task_type=None)` now records each run to the scoring store (success/failure, latency, error_type).
+- `get_tools_for_task(..., score_store=None)` uses `select_tools_scored` when a score store is provided and scoring is not disabled.
+
 ## [1.2.0] - 2026-03-09
 
 ### Added

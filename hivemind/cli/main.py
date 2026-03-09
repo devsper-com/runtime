@@ -312,6 +312,119 @@ def _run_analytics() -> int:
         print(
             f"{s['tool_name']}: count={s['count']} success_rate={s['success_rate']:.1f}% avg_latency_ms={s['avg_latency_ms']}"
         )
+    try:
+        from hivemind.tools.scoring import get_default_score_store
+        from hivemind.tools.scoring.report import generate_tools_report
+        store = get_default_score_store()
+        scores = store.get_all_scores()
+        if scores:
+            print()
+            print(generate_tools_report(scores))
+    except Exception:
+        pass
+    return 0
+
+
+def _run_tools(args: object) -> int:
+    """List tools with reliability scores, or reset score history."""
+    from rich.console import Console
+    from rich.prompt import Confirm
+    from rich.table import Table
+
+    from hivemind.tools.registry import list_tools
+    from hivemind.tools.selector import _tool_category
+    from hivemind.tools.scoring import get_default_score_store
+    from hivemind.tools.scoring.scorer import score_label
+
+    subcommand = getattr(args, "tools_subcommand", None) or "list"
+    category_filter = getattr(args, "category", None)
+    poor_only = getattr(args, "poor", False)
+    reset_all = getattr(args, "reset_all", False)
+    tool_name_reset = getattr(args, "tool_name", None)
+
+    if subcommand == "reset":
+        store = get_default_score_store()
+        if reset_all:
+            if not Confirm.ask("Wipe all tool scores? This cannot be undone."):
+                return 0
+            store.reset(None)
+            print("All tool scores wiped.")
+            return 0
+        if tool_name_reset:
+            store.reset(tool_name_reset)
+            print(f"Score history wiped for: {tool_name_reset}")
+            return 0
+        print("Usage: hivemind tools reset <tool_name> | hivemind tools reset --all", file=sys.stderr)
+        return 1
+
+    # List: all registered tools with scores
+    store = get_default_score_store()
+    scores_by_name = {s.tool_name: s for s in store.get_all_scores()}
+    all_tools = list_tools()
+    if category_filter:
+        allowed = {category_filter.lower().strip()}
+        all_tools = [t for t in all_tools if _tool_category(t) in allowed]
+    rows: list[tuple[str, str, float, str, float, float, int, str, bool]] = []
+    for t in all_tools:
+        s = scores_by_name.get(t.name)
+        if s is None:
+            score_val = 0.75
+            label = "new"
+            success_rate = 0.0
+            avg_lat = 0.0
+            calls = 0
+            last_used = "-"
+            is_new = True
+        else:
+            score_val = s.composite_score
+            label = score_label(s.composite_score)
+            success_rate = s.success_rate
+            avg_lat = s.avg_latency_ms
+            calls = s.total_calls
+            last_used = s.last_updated[:10] if len(s.last_updated) >= 10 else s.last_updated
+            is_new = s.is_new
+        if poor_only and score_val >= 0.40:
+            continue
+        cat = _tool_category(t)
+        rows.append((t.name, cat, score_val, label, success_rate, avg_lat, calls, last_used, is_new))
+
+    rows.sort(key=lambda r: -r[2])
+    table = Table(title="Tool reliability scores")
+    table.add_column("Tool Name", style="bold")
+    table.add_column("Category")
+    table.add_column("Score", justify="right")
+    table.add_column("Label")
+    table.add_column("Success Rate", justify="right")
+    table.add_column("Avg Latency", justify="right")
+    table.add_column("Calls", justify="right")
+    table.add_column("Last Used")
+    for r in rows:
+        name, cat, score_val, label, success_rate, avg_lat, calls, last_used, is_new = r
+        if is_new and label == "new":
+            label_style = "dim"
+        elif label == "excellent":
+            label_style = "green"
+        elif label == "good":
+            label_style = "default"
+        elif label == "degraded":
+            label_style = "yellow"
+        else:
+            label_style = "red"
+        table.add_row(
+            name,
+            cat,
+            f"{score_val:.2f}",
+            f"[{label_style}]{label}[/]",
+            f"{success_rate:.0%}" if not is_new else "-",
+            f"{avg_lat:.0f} ms" if not is_new else "-",
+            str(calls),
+            last_used,
+        )
+    console = Console()
+    if rows:
+        console.print(table)
+    else:
+        console.print("No tools match the filters.")
     return 0
 
 
@@ -591,6 +704,50 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     analytics_parser.set_defaults(func=lambda a: _run_analytics())
+
+    tools_parser = subparsers.add_parser(
+        "tools",
+        help="List tool reliability scores or reset history",
+        description="List registered tools with reliability scores (excellent/good/degraded/poor), or reset score history.",
+        epilog="""
+Examples:
+  hivemind tools
+  hivemind tools --category research
+  hivemind tools --poor
+  hivemind tools reset my_tool
+  hivemind tools reset --all
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    tools_parser.add_argument(
+        "tools_subcommand",
+        nargs="?",
+        default="list",
+        choices=["list", "reset"],
+        help="list (default) | reset",
+    )
+    tools_parser.add_argument(
+        "tool_name",
+        nargs="?",
+        help="Tool name (for reset)",
+    )
+    tools_parser.add_argument(
+        "--category",
+        metavar="NAME",
+        help="Filter by category",
+    )
+    tools_parser.add_argument(
+        "--poor",
+        action="store_true",
+        help="Show only tools with score < 0.40",
+    )
+    tools_parser.add_argument(
+        "--all",
+        dest="reset_all",
+        action="store_true",
+        help="Wipe all scores (with confirmation; use with reset)",
+    )
+    tools_parser.set_defaults(func=_run_tools)
 
     cache_parser = subparsers.add_parser(
         "cache",

@@ -179,7 +179,18 @@ class Agent:
         from hivemind.tools.tool_runner import run_tool
 
         role = getattr(task, "role", None)
-        tools = get_tools_for_task(task.description if task else "", role=role)
+        task_type = role or "general"
+        score_store = None
+        try:
+            from hivemind.tools.scoring import get_default_score_store
+            score_store = get_default_score_store()
+        except Exception:
+            pass
+        tools = get_tools_for_task(
+            task.description if task else "",
+            role=role,
+            score_store=score_store,
+        )
         tools_section = _format_tools_section(tools)
         prompt = PROMPT_TEMPLATE_WITH_TOOLS.format(
             role_prefix=role_prefix,
@@ -194,7 +205,7 @@ class Agent:
             tool_name, tool_args = _parse_tool_call(response)
             if tool_name is None:
                 return response.strip()
-            result = run_tool(tool_name, tool_args)
+            result = run_tool(tool_name, tool_args, task_type=task_type)
             self._emit(
                 events.TOOL_CALLED,
                 {"task_id": task.id, "tool": tool_name, "result_preview": result[:200]},

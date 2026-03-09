@@ -24,7 +24,10 @@ def test_select_tools_for_task_top_k_limits():
 
 
 def test_get_tools_for_task_no_config_returns_all():
-    tools = get_tools_for_task("task", config=None)
+    # When config has no top_k (or top_k=0), we get all tools
+    class NoToolsConfig:
+        tools = None
+    tools = get_tools_for_task("task", config=NoToolsConfig())
     all_tools = list_tools()
     assert len(tools) == len(all_tools)
 

@@ -39,30 +39,47 @@ def _validate_args(args: dict, schema: dict) -> str | None:
     return None
 
 
-def run_tool(name: str, args: dict) -> str:
+def run_tool(
+    name: str,
+    args: dict,
+    task_type: str | None = None,
+) -> str:
     """
     Execute the tool by name with the given arguments.
 
     Validates args against the tool's input_schema, runs the tool, and returns
     its string output. On validation failure or exception, returns a formatted error string.
-    Records usage to tool analytics when available.
+    Records usage to tool analytics and tool scoring when available.
     """
     start = time.perf_counter()
     tool = get(name)
     if tool is None:
         _record_analytics(name, False, start)
+        _record_scoring(name, task_type, False, start, error_type="ToolNotFound")
         return f"Tool not found: {name}"
     err = _validate_args(args, tool.input_schema)
     if err is not None:
         _record_analytics(name, False, start)
+        _record_scoring(name, task_type, False, start, error_type="ValidationError")
         return f"Validation error: {err}"
     try:
         result = tool.run(**args)
+        latency_ms = int((time.monotonic() - start) * 1000)
         success = not (isinstance(result, str) and result.startswith("Tool error:"))
         _record_analytics(name, success, start)
+        _record_scoring(name, task_type, success, start, latency_ms=latency_ms)
         return result
     except Exception as e:
+        latency_ms = int((time.monotonic() - start) * 1000)
         _record_analytics(name, False, start)
+        _record_scoring(
+            name,
+            task_type,
+            False,
+            start,
+            latency_ms=latency_ms,
+            error_type=type(e).__name__,
+        )
         return f"Tool error: {type(e).__name__}: {e}"
 
 
@@ -73,5 +90,32 @@ def _record_analytics(tool_name: str, success: bool, start_time: float) -> None:
 
         latency_ms = (time.perf_counter() - start_time) * 1000
         get_default_analytics().record(tool_name, success, latency_ms)
+    except Exception:
+        pass
+
+
+def _record_scoring(
+    tool_name: str,
+    task_type: str | None,
+    success: bool,
+    start_time: float,
+    latency_ms: int | None = None,
+    error_type: str | None = None,
+) -> None:
+    """Record tool result to scoring store if available."""
+    try:
+        from hivemind.tools.scoring import record_tool_result
+    except Exception:
+        return
+    if latency_ms is None:
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+    try:
+        record_tool_result(
+            tool_name,
+            task_type or "general",
+            success=success,
+            latency_ms=latency_ms,
+            error_type=error_type,
+        )
     except Exception:
         pass

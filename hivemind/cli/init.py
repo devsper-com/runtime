@@ -451,6 +451,29 @@ def run_doctor() -> int:
     except Exception as e:
         issues.append(f"Tool registry: {e}")
 
+    try:
+        from hivemind.tools.scoring import get_default_score_store
+
+        store = get_default_score_store()
+        n_records = store.result_count()
+        n_tools = store.tool_count()
+        ok.append(f"Tool scoring database: {n_records} records, {n_tools} tools tracked")
+        if n_tools > 0:
+            scores = store.get_all_scores()
+            with_10_plus = [s for s in scores if s.total_calls >= 10]
+            poor = [s for s in with_10_plus if s.composite_score < 0.40]
+            if with_10_plus and len(poor) / len(with_10_plus) > 0.20:
+                warnings.append(
+                    f"Over 20% of tools (10+ calls) are in poor state ({len(poor)}/{len(with_10_plus)}). Consider reviewing with 'hivemind tools --poor'."
+                )
+            dead = [s for s in with_10_plus if s.success_rate == 0.0]
+            for s in dead:
+                warnings.append(
+                    f"Tool '{s.tool_name}' has 0% success with {s.total_calls} calls. Consider: hivemind tools reset {s.tool_name}"
+                )
+    except Exception:
+        pass
+
     _check_plaintext_keys_in_toml(warnings)
 
     from rich.console import Console
