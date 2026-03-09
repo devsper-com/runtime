@@ -1,11 +1,13 @@
 # When you push a version tag (e.g. v1.6.0), create a GitHub Release.
 # That triggers:
 #   - .github/workflows/pypi-publish.yml  (publish to PyPI)
-#   - .github/workflows/docs.yml         (add versioned docs and deploy)
+#   - .github/workflows/docs.yml         (open a PR with versioned docs; no push to main, so no diverging branch)
 #
 # Usage:
 #   git tag v1.6.0
 #   git push origin v1.6.0
+#
+# If main has already diverged (e.g. from an older workflow): git fetch origin && git checkout main && git pull --rebase origin main
 
 name: Release on tag
 

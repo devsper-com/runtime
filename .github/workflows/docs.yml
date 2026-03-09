@@ -1,6 +1,6 @@
 # Deploy docs to GitHub Pages (hivemind.rithul.dev)
 # - On push to main: build Docusaurus and deploy to gh-pages
-# - On release published: add docs version and open a PR (docs/version-X). Merge the PR to update main and trigger deploy; no direct push to main, so your branch won’t diverge.
+# - On release published: open a PR with versioned docs (merge it to update main; workflow never pushes to main = no diverging branch).
 #
 # Required: Repo Settings → Pages → Build and deployment → Source:
 #   "Deploy from a branch" → Branch: gh-pages → / (root)
@@ -58,7 +58,7 @@ jobs:
           npm ci
           npx docusaurus docs:version ${{ steps.version.outputs.version }}
 
-      - name: Open Pull Request for versioned docs
+      - name: Open PR for versioned docs (no push to main)
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -66,8 +66,8 @@ jobs:
           base: main
           title: "chore(docs): add version ${{ steps.version.outputs.version }}"
           body: |
-            Versioned docs for release **v${{ steps.version.outputs.version }}**.
-            Merge this to update the docs site. No automatic push to main, so your branch won’t diverge.
+            Versioned docs for **v${{ steps.version.outputs.version }}**. Merge to update the docs site.
+            This workflow never pushes to main, so your branch will not diverge.
           commit-message: "chore(docs): add version ${{ steps.version.outputs.version }}"
           add-paths: |
             website/versioned_docs
