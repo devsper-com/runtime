@@ -1,7 +1,6 @@
-# When you push a version tag (e.g. v1.6.0), create a GitHub Release.
-# That triggers:
-#   - .github/workflows/pypi-publish.yml  (publish to PyPI)
-#   - .github/workflows/docs.yml         (open a PR with versioned docs; no push to main, so no diverging branch)
+# When you push a version tag (e.g. v1.6.0), create a GitHub Release and open a PR for versioned docs.
+# Note: Creating a release with GITHUB_TOKEN does NOT trigger other workflows (e.g. docs on release),
+# so we run the versioned-docs step here in the same workflow.
 #
 # Usage:
 #   git tag v1.6.0
@@ -54,3 +53,51 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  add-version-docs:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Get version from tag
+        id: version
+        run: |
+          V="${GITHUB_REF#refs/tags/v}"
+          echo "version=$V" >> $GITHUB_OUTPUT
+
+      - name: Install and add docs version
+        run: |
+          cd website
+          npm ci
+          npx docusaurus docs:version ${{ steps.version.outputs.version }}
+
+      - name: Open PR for versioned docs
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: "docs/version-${{ steps.version.outputs.version }}"
+          base: main
+          title: "chore(docs): add version ${{ steps.version.outputs.version }}"
+          body: |
+            Versioned docs for **v${{ steps.version.outputs.version }}**. Merge to update the docs site.
+          commit-message: "chore(docs): add version ${{ steps.version.outputs.version }}"
+          add-paths: |
+            website/versioned_docs
+            website/versioned_sidebars
+            website/versions.json
+          delete-branch: true
