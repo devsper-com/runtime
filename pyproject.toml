@@ -7,7 +7,7 @@ packages = ["hivemind"]
 
 [project]
 name = "hivemind-ai"
-version = "2.0.1"
+version = "2.0.2"
 description = "Orchestrate distributed swarms of AI agents that collaboratively solve complex tasks."
 readme = "README.md"
 license = "GPL-3.0-or-later"

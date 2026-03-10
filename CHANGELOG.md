@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.2] — 2026-03-10
+
+### Fixed
+
+- **Release workflow** — Docs version step skips when version already exists; PyPI publish uses `skip-existing` so re-tags or re-runs don't fail.
+
 ## [2.0.1] — 2026-03-10
 
 ### Added
