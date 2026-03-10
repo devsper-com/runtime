@@ -3,9 +3,8 @@ name: Worker build and release
 on:
   push:
     branches: [main]
-    paths: ['worker/**']
-  push:
     tags: ['worker-v*.*.*']
+    paths: ['worker/**']
 
 jobs:
   test:
