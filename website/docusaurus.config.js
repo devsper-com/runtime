@@ -191,9 +191,7 @@ const config = {
     },
   },
 
-  plugins: [
-    require.resolve('@docusaurus/plugin-sitemap'),
-  ],
+  plugins: [],
 };
 
 module.exports = config;
