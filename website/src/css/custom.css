@@ -50,7 +50,10 @@ html {
 }
 
 body {
-  background: var(--hm-bg);
+  background-color: var(--hm-bg);
+  background-image: radial-gradient(ellipse at top, rgba(30, 25, 60, 0.25) 0%, transparent 40%),
+    radial-gradient(ellipse at bottom left, rgba(20, 30, 50, 0.15) 0%, transparent 40%);
+  background-attachment: fixed;
   color: var(--hm-text);
   font-family: var(--hm-font-sans);
 }
@@ -171,7 +174,7 @@ body {
 }
 
 /* Group headers: title case, compact */
-.menu__list-item-category > .menu__list-item-collapsible {
+.menu__list-item-category>.menu__list-item-collapsible {
   font-family: var(--hm-font-mono) !important;
   font-size: 9px !important;
   letter-spacing: 0.06em;
@@ -182,7 +185,7 @@ body {
   margin-top: var(--hm-space-sm);
 }
 
-.menu__list-item-category:first-child > .menu__list-item-collapsible {
+.menu__list-item-category:first-child>.menu__list-item-collapsible {
   margin-top: 0;
   padding-top: 0;
 }
@@ -258,7 +261,7 @@ body {
 }
 
 /* Plain "Overview / Introduction" — slash separator between items */
-.theme-doc-breadcrumbs .breadcrumbs__item + .breadcrumbs__item::before {
+.theme-doc-breadcrumbs .breadcrumbs__item+.breadcrumbs__item::before {
   content: "/";
   color: var(--hm-muted);
   margin-right: 0.35rem;
@@ -377,6 +380,7 @@ body {
   flex-shrink: 0;
   transition: color 0.2s ease;
 }
+
 [class*="docItemContainer"] .markdown ul li a:hover {
   color: var(--hm-accent);
 }
@@ -553,7 +557,7 @@ body {
   flex-direction: column;
   padding: var(--hm-space-xl) var(--hm-space-lg) var(--hm-space-xl) var(--hm-space-lg);
   padding-left: max(var(--hm-space-lg), env(safe-area-inset-left));
-  max-width: 720px;
+  max-width: 1100px;
   margin: 0 auto;
   text-align: left;
   box-sizing: border-box;
@@ -617,7 +621,7 @@ body {
 }
 
 /* No footer on landing */
-.landing-page ~ .footer,
+.landing-page~.footer,
 body:has(.landing-page) .footer {
   display: none;
 }
@@ -659,7 +663,10 @@ body:has(.landing-page) .footer {
 /* ---------------------------------------------------------------------------
    Hover states — opacity only, no color shifts where possible
    --------------------------------------------------------------------------- */
-a, button, .menu__link, .navbar__link {
+a,
+button,
+.menu__link,
+.navbar__link {
   transition: opacity 100ms ease;
 }
 
@@ -706,5 +713,326 @@ a, button, .menu__link, .navbar__link {
 @media (max-width: 996px) {
   .navbar__item:nth-child(2) {
     display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Redesign Custom Elements (Hero, Terminal, Bento Grid)
+   --------------------------------------------------------------------------- */
+
+/* Glowing Update Pill */
+.hero-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hm-space-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 16px;
+  border-radius: 9999px;
+  font-family: var(--hm-font-sans);
+  font-size: 0.8125rem;
+  color: var(--hm-text);
+  text-decoration: none;
+  margin-bottom: var(--hm-space-xl);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.3s ease;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05) inset, 0 4px 12px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-pill::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  animation: pulse-glow 3s infinite;
+}
+
+@keyframes pulse-glow {
+  0% {
+    left: -100%;
+  }
+
+  100% {
+    left: 200%;
+  }
+}
+
+.hero-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--hm-text);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) inset, 0 4px 20px rgba(100, 100, 255, 0.15);
+  transform: translateY(-1px);
+  opacity: 1;
+}
+
+.hero-pill-icon {
+  display: flex;
+  align-items: center;
+  color: #a8b1ff;
+  font-size: 1rem;
+}
+
+/* Animated Terminal Hero */
+.hero-terminal {
+  width: 100%;
+  max-width: 550px;
+  background: #0d0d0d;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  font-family: var(--hm-font-mono);
+}
+
+.hero-terminal-header {
+  height: 32px;
+  background: #161616;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 6px;
+}
+
+.hero-terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #333;
+}
+
+.hero-terminal-dot.red {
+  background: #ff5f56;
+}
+
+.hero-terminal-dot.yellow {
+  background: #ffbd2e;
+}
+
+.hero-terminal-dot.green {
+  background: #27c93f;
+}
+
+.hero-terminal-body {
+  padding: 20px;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: #e2e8f0;
+  min-height: 220px;
+}
+
+.term-line {
+  display: flex;
+  margin-bottom: 6px;
+}
+
+.term-prompt {
+  color: #a6accd;
+  margin-right: 8px;
+  user-select: none;
+}
+
+.term-text {
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.term-success {
+  color: #4ade80;
+  white-space: pre-wrap;
+}
+
+.term-dim {
+  color: #64748b;
+  white-space: pre-wrap;
+}
+
+.term-tree {
+  color: #94a3b8;
+  white-space: pre;
+}
+
+/* Bento Grid */
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  width: 100%;
+  margin-top: var(--hm-space-xl);
+}
+
+.bento-card {
+  background: rgba(25, 25, 25, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-decoration: none !important;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.bento-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.bento-card:hover {
+  background: rgba(30, 30, 30, 0.6);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.bento-card:hover::before {
+  opacity: 1;
+}
+
+.bento-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--hm-text);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
+}
+
+.bento-card:hover .bento-icon {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  transform: scale(1.05);
+}
+
+.bento-title {
+  font-family: var(--hm-font-sans);
+  font-weight: 600;
+  font-size: 1.125rem;
+  color: var(--hm-text);
+  margin: 0;
+}
+
+.bento-desc {
+  font-family: var(--hm-font-sans);
+  font-size: 0.875rem;
+  color: var(--hm-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Polished Code Snippet */
+.hero-code-wrapper {
+  position: relative;
+  display: inline-block;
+  margin-top: var(--hm-space-md);
+  margin-bottom: var(--hm-space-xl);
+}
+
+.hero-code-wrapper::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  bottom: -1px;
+  background: linear-gradient(45deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  z-index: 0;
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+
+.hero-code-wrapper:hover::before {
+  opacity: 1;
+}
+
+.hero-install-premium {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  font-family: var(--hm-font-mono);
+  font-size: 0.875rem;
+  background: #0d0d0d;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 12px 20px;
+  border-radius: 8px;
+  color: var(--hm-text);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  margin-bottom: 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hero-install-premium:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: #111;
+}
+
+.hero-install-premium .copy-icon {
+  color: var(--hm-muted);
+  transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-install-premium:hover .copy-icon {
+  color: var(--hm-text);
+}
+
+.copy-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.landing-split {
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  width: 100%;
+}
+
+@media (min-width: 900px) {
+  .landing-split {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .landing-left {
+    flex: 1.2;
+    padding-right: 48px;
+  }
+
+  .landing-right {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end;
   }
 }

@@ -126,7 +126,7 @@ const config = {
     },
 
     // SEO: default social image and meta
-    image: 'img/logo.svg',
+    image: 'img/banner.png',
     metadata: [
       { name: 'keywords', content: 'hivemind, AI, multi-agent, swarm, distributed AI, LLM, agents, Python, DAG, orchestration' },
       { name: 'twitter:card', content: 'summary_large_image' },
