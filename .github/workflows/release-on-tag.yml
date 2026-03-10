@@ -81,7 +81,12 @@ jobs:
         run: |
           cd website
           npm ci
-          npx docusaurus docs:version ${{ steps.version.outputs.version }}
+          V="${{ steps.version.outputs.version }}"
+          if [ -d "versioned_docs/version-$V" ]; then
+            echo "Docs version $V already exists, skipping."
+          else
+            npx docusaurus docs:version "$V"
+          fi
 
       - name: Push versioned docs to main
         run: |
@@ -114,3 +119,5 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
