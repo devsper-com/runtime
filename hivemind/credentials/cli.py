@@ -24,6 +24,9 @@ KNOWN_CREDENTIALS = {
     "azure_anthropic": ["endpoint", "api_key", "deployment"],
 }
 
+# Keys that must never be shown in list (only "(stored)"); all others can show value
+SENSITIVE_KEYS = {"api_key", "token"}
+
 # (provider, key) -> env var name for export
 PROVIDER_KEY_TO_ENV: dict[tuple[str, str], str] = {
     ("openai", "api_key"): "OPENAI_API_KEY",
@@ -66,20 +69,37 @@ def _run_credentials_export(provider: str) -> int:
     return 0
 
 
-def _run_credentials_set(provider: str, key: str) -> int:
-    """Prompt for value and store credential."""
+def _run_credentials_set(provider: str, key: str, value: str | None = None) -> int:
+    """Store credential. Value can be passed inline, read from stdin, or prompted interactively."""
     if provider not in KNOWN_CREDENTIALS:
         print(f"Unknown provider: {provider}", file=sys.stderr)
         return 1
     if key not in KNOWN_CREDENTIALS[provider]:
         print(f"Unknown key for {provider}: {key}", file=sys.stderr)
         return 1
-    try:
-        value = getpass.getpass(f"Enter value for {provider}/{key}: ")
-    except (KeyboardInterrupt, EOFError):
-        print("\nCancelled.", file=sys.stderr)
-        return 130
-    if not value.strip():
+
+    if value is not None and value.strip():
+        # Inline value from CLI
+        pass
+    elif not sys.stdin.isatty():
+        # Piped input: echo "val" | hivemind credentials set ...
+        try:
+            value = sys.stdin.read().strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nCancelled.", file=sys.stderr)
+            return 130
+    else:
+        # Interactive prompt
+        try:
+            if key in SENSITIVE_KEYS:
+                value = getpass.getpass(f"Enter value for {provider}/{key}: ")
+            else:
+                value = input(f"Enter value for {provider}/{key}: ")
+        except (KeyboardInterrupt, EOFError):
+            print("\nCancelled.", file=sys.stderr)
+            return 130
+
+    if not value or not value.strip():
         print("Empty value, not stored.", file=sys.stderr)
         return 1
     set_credential(provider, key, value.strip())
@@ -88,7 +108,7 @@ def _run_credentials_set(provider: str, key: str) -> int:
 
 
 def _run_credentials_list() -> int:
-    """List credentials as table (provider, key). Never shows values."""
+    """List credentials as table (provider, key, value). Secret keys show '(stored)', others show value."""
     creds = list_credentials()
     if not creds:
         print("No credentials stored.")
@@ -96,8 +116,15 @@ def _run_credentials_list() -> int:
     table = Table(title="Stored credentials")
     table.add_column("Provider", style="cyan")
     table.add_column("Key", style="green")
+    table.add_column("Value", style="dim")
     for c in creds:
-        table.add_row(c["provider"], c["key"])
+        p, k = c["provider"], c["key"]
+        if k in SENSITIVE_KEYS:
+            value = "(stored)"
+        else:
+            val = get_credential(p, k)
+            value = (val[:60] + "…") if val and len(val) > 60 else (val or "")
+        table.add_row(p, k, value)
     console = Console()
     console.print(table)
     return 0
@@ -147,9 +174,10 @@ def run_credentials(args: object) -> int:
 
     if sub == "set":
         if not provider or not key:
-            print("Usage: hivemind credentials set <provider> <key>", file=sys.stderr)
+            print("Usage: hivemind credentials set <provider> <key> [value]", file=sys.stderr)
             return 1
-        return _run_credentials_set(provider, key)
+        value = getattr(args, "value", None)
+        return _run_credentials_set(provider, key, value)
     if sub == "list":
         return _run_credentials_list()
     if sub == "delete":

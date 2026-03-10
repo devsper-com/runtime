@@ -534,9 +534,9 @@ def _run_doctor() -> int:
 
 
 def _run_mcp_list() -> int:
-    """List all registered MCP servers and their tool counts."""
+    """List configured MCP servers and their tool counts (from live discovery)."""
     from hivemind.config import get_config
-    from hivemind.tools.registry import list_tools
+    from hivemind.tools.mcp import discover_mcp_tools
     cfg = get_config()
     servers = getattr(getattr(cfg, "mcp", None), "servers", None) or []
     try:
@@ -547,17 +547,14 @@ def _run_mcp_list() -> int:
         table.add_column("Name", style="cyan")
         table.add_column("Transport", style="dim")
         table.add_column("Tools", justify="right")
-        all_tools = list_tools()
-        mcp_tools = [t for t in all_tools if getattr(t, "category", "") == "mcp"]
-        by_server: dict[str, int] = {}
-        for t in mcp_tools:
-            name = getattr(t, "name", "")
-            if "." in name:
-                srv = name.split(".", 1)[0]
-                by_server[srv] = by_server.get(srv, 0) + 1
         for s in servers:
             sname = getattr(s, "name", "?")
-            table.add_row(sname, getattr(s, "transport", "?"), str(by_server.get(sname, 0)))
+            try:
+                adapters = discover_mcp_tools(s)
+                count = len(adapters)
+            except Exception:
+                count = "—"
+            table.add_row(sname, getattr(s, "transport", "?"), str(count))
         if not servers:
             console.print("No MCP servers configured. Add [[mcp.servers]] to hivemind.toml or use [cyan]hivemind mcp add[/].")
         else:
@@ -1277,6 +1274,124 @@ def _run_checkpoint_restore(run_id: str) -> int:
     return 0
 
 
+def _run_audit_dispatch(args: object) -> int:
+    """Audit: print table, export, or verify."""
+    from hivemind.config import get_config
+    from hivemind.audit.logger import AuditLogger
+    cmd = getattr(args, "audit_cmd", None)
+    run_id = getattr(args, "run_id", None)
+    export_fmt = getattr(args, "export", None)
+    if cmd == "verify":
+        run_id = getattr(args, "run_id", run_id)
+        if not run_id:
+            print("Error: run_id required for verify", file=sys.stderr)
+            return 1
+        cfg = get_config()
+        ok, msg = AuditLogger.verify(run_id, cfg.data_dir)
+        print(msg)
+        return 0 if ok else 1
+    if not run_id:
+        print("Error: run_id required (e.g. hivemind audit events_2025-03-10...)", file=sys.stderr)
+        return 1
+    cfg = get_config()
+    logger = AuditLogger(cfg.data_dir, run_id=run_id)
+    if export_fmt:
+        out = logger.export(run_id, format=export_fmt)
+        print(out)
+        return 0
+    out = logger.export(run_id, format="jsonl")
+    if not out:
+        print(f"No audit log for run_id={run_id}", file=sys.stderr)
+        return 1
+    try:
+        from rich.console import Console
+        from rich.table import Table
+        console = Console()
+        table = Table(title=f"Audit log: {run_id}")
+        table.add_column("timestamp")
+        table.add_column("event_type")
+        table.add_column("task_id")
+        table.add_column("resource")
+        table.add_column("success")
+        for line in out.strip().split("\n"):
+            if not line:
+                continue
+            import json
+            r = json.loads(line)
+            table.add_row(
+                r.get("timestamp", "")[:19],
+                r.get("event_type", ""),
+                r.get("task_id", ""),
+                r.get("resource", ""),
+                str(r.get("success", "")),
+            )
+        console.print(table)
+    except Exception:
+        print(out)
+    return 0
+
+
+def _run_explain(args: object) -> int:
+    """Explain: decision records for run or task."""
+    run_id = getattr(args, "run_id", None)
+    task_id = getattr(args, "task_id", None)
+    if not run_id:
+        print("Error: run_id required", file=sys.stderr)
+        return 1
+    try:
+        from hivemind.explainability.decision_tree import DecisionTreeBuilder
+        from hivemind.config import get_config
+        cfg = get_config()
+        events_dir = cfg.events_dir
+        builder = DecisionTreeBuilder()
+        records = builder.build_from_events(run_id, events_dir)
+        if not records:
+            print(f"No decision records for run_id={run_id}", file=sys.stderr)
+            return 1
+        if task_id:
+            records = [r for r in records if r.task_id == task_id]
+            if not records:
+                print(f"No task {task_id} in run {run_id}", file=sys.stderr)
+                return 1
+        for r in records:
+            print(f"--- {r.task_id} ---")
+            print(f"  strategy: {r.strategy_selected}")
+            print(f"  model: {r.model_selected} ({r.model_tier})")
+            print(f"  tools: {r.tools_selected}")
+            print(f"  confidence: {r.confidence:.0%}")
+            print(f"  rationale: {r.rationale[:300]}..." if len(r.rationale or "") > 300 else f"  rationale: {r.rationale}")
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def _run_simulate(args: object) -> int:
+    """Simulate: dry-run planning, no LLM or tools."""
+    import asyncio
+    task = getattr(args, "task", "")
+    cost_only = getattr(args, "cost_only", False) or getattr(args, "cost", False)
+    if not task:
+        print("Error: task required (e.g. hivemind simulate \"Summarize X\")", file=sys.stderr)
+        return 1
+    try:
+        from hivemind.explainability.simulation import SimulationMode
+        sim = SimulationMode()
+        report = asyncio.run(sim.simulate(task))
+        if cost_only:
+            print(f"Estimated cost: {getattr(report, 'estimated_cost', 'N/A')}")
+            return 0
+        print(f"Tasks: {len(report.task_list)}")
+        for t in report.task_list:
+            print(f"  - {t}")
+        print(f"Estimated cost: {getattr(report, 'estimated_cost', 'N/A')}")
+        print(f"Estimated duration: {getattr(report, 'estimated_duration', 'N/A')}")
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
 def _run_health(args: object) -> int:
     """Run health checks. Exit 0 if healthy, 1 otherwise. Print ✓/✗ per check."""
     import asyncio
@@ -1867,6 +1982,7 @@ Examples:
         epilog="""
 Examples:
   hivemind credentials set openai api_key
+  hivemind credentials set azure endpoint \"https://.../openai/v1\"
   hivemind credentials list
   hivemind credentials migrate
   hivemind credentials export azure    # print env KEY=value for sourcing
@@ -1889,6 +2005,11 @@ Examples:
         "key",
         nargs="?",
         help="Key name (e.g. api_key)",
+    )
+    credentials_parser.add_argument(
+        "value",
+        nargs="?",
+        help="Value (for set only). Omit to be prompted, or pipe: echo 'val' | hivemind credentials set azure endpoint",
     )
     credentials_parser.set_defaults(func=lambda a: _run_credentials(a))
 
@@ -1964,6 +2085,37 @@ Examples:
     checkpoint_restore_p.add_argument("run_id", help="Run ID to restore")
     checkpoint_restore_p.set_defaults(func=_run_checkpoint_dispatch)
     checkpoint_parser.set_defaults(checkpoint_cmd="list", func=_run_checkpoint_dispatch)
+
+    audit_parser = subparsers.add_parser(
+        "audit",
+        help="View or export audit log for a run",
+        description="Print audit log as table, export to CSV/JSONL, or verify chain integrity.",
+    )
+    audit_parser.add_argument("run_id", nargs="?", default=None, help="Run ID (e.g. events_...)")
+    audit_parser.add_argument("--export", choices=["jsonl", "csv", "siem"], default=None, help="Export format")
+    audit_sub = audit_parser.add_subparsers(dest="audit_cmd", help="Subcommand")
+    audit_verify_p = audit_sub.add_parser("verify", help="Verify audit log chain integrity")
+    audit_verify_p.add_argument("run_id", help="Run ID to verify")
+    audit_verify_p.set_defaults(audit_cmd="verify")
+    audit_parser.set_defaults(func=_run_audit_dispatch)
+
+    explain_parser = subparsers.add_parser(
+        "explain",
+        help="Show decision records for a run or task",
+        description="Print decision tree and rationale for agent actions.",
+    )
+    explain_parser.add_argument("run_id", help="Run ID")
+    explain_parser.add_argument("task_id", nargs="?", default=None, help="Optional task ID for single task")
+    explain_parser.set_defaults(func=_run_explain)
+
+    simulate_parser = subparsers.add_parser(
+        "simulate",
+        help="Dry-run planning without LLM or tool execution",
+        description="Run planner and scheduler only; output task list and cost estimate.",
+    )
+    simulate_parser.add_argument("task", help="Root task description")
+    simulate_parser.add_argument("--cost", action="store_true", help="Print cost estimate only")
+    simulate_parser.set_defaults(func=_run_simulate)
 
     health_parser = subparsers.add_parser(
         "health",

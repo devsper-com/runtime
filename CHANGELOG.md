@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] — 2026-03-10
+
+### Added
+
+- **Azure Foundry (v1 API) support** — When `AZURE_OPENAI_ENDPOINT` points to Azure Foundry (URL contains `cognitiveservices.azure.com` or `/openai/v1`), the provider uses the v1 chat-completions API via `ChatOpenAI` with `base_url` instead of the legacy deployment-path API, fixing 404s on Foundry resources.
+- **Credentials `set` inline and stdin** — `hivemind credentials set <provider> <key> [value]` accepts an optional value; if omitted and stdin is not a TTY, reads value from stdin (e.g. `echo "https://..." | hivemind credentials set azure endpoint`).
+
+### Changed
+
+- **Credentials input masking** — Only sensitive keys (`api_key`, `token`) use hidden input; endpoint, deployment, and api_version prompts show typed input.
+- **Azure model spec** — Provider strips `provider:` prefix (e.g. `azure:gpt-5-mini` → `gpt-5-mini`) before sending to the API so deployment name is correct.
+- **.env.example** — Documents correct Azure Foundry endpoint (`.../openai/v1` for chat completions; avoid `.../openai/responses`).
+
+## [2.0.0] — 2026-03-10
+
+### Breaking Changes
+
+- Provider config schema updated: existing provider strings unchanged, new backends require new config sections
+- Agent execution now routed through AgentSandbox by default (disable with `sandbox.enabled = false`)
+- Memory storage now redacts PII by default if `compliance.pii_redaction = true`
+
+### Added
+
+- Abstract LLM router with Ollama, vLLM, and custom OpenAI-compatible endpoint backends
+- Provider fallback chains: automatic failover across backends
+- Agent sandboxing: resource quotas, tool category restrictions, per-role sandbox profiles
+- Audit logging: append-only JSONL with chain integrity verification
+- PII redaction: regex + optional spaCy NER, configurable PII types
+- GDPR/CCPA compliance config section
+- Decision tree and rationale generation for every agent action
+- Simulation mode: dry-run planning without LLM calls or tool execution
+- `hivemind explain`, `hivemind simulate`, `hivemind audit` CLI commands
+- PROVIDER_FALLBACK event type
+
+### Migration from 1.x
+
+See docs/migration/v2.md
+
 ## [1.10.5] - 2026-03-10
 
 ### Added
