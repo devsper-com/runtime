@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/rithulkamesh/hivemind/refs/heads/main/branding/logo.svg" alt="Hivemind" width="120" height="120" />
+  <img src="https://raw.githubusercontent.com/rithulkamesh/hivemind/refs/heads/main/branding/logo_bg.svg" alt="Hivemind" width="120" height="140" />
 </p>
 
 <h1 align="center">Hivemind</h1>

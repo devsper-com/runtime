@@ -70,7 +70,8 @@ class GitHubProvider(BaseProvider):
             "temperature": 0.2,
         }
         data = {}
-        with httpx.Client(timeout=60.0) as client:
+        from hivemind.utils.http import ssl_verify, format_retry_after
+        with httpx.Client(timeout=60.0, verify=ssl_verify()) as client:
             for attempt in range(GITHUB_429_MAX_RETRIES):
                 try:
                     resp = client.post(
@@ -82,21 +83,27 @@ class GitHubProvider(BaseProvider):
                     data = resp.json()
                     break
                 except httpx.HTTPStatusError as e:
+                    retry_hint = format_retry_after(e.response)
                     if e.response.status_code == 429 and attempt < GITHUB_429_MAX_RETRIES - 1:
                         delay = min(
                             GITHUB_429_BASE_DELAY * (2**attempt),
                             GITHUB_429_MAX_DELAY,
                         )
                         log.warning(
-                            "GitHub Models 429 rate limit, retry %s/%s in %.1fs",
+                            "GitHub Models 429 rate limit, retry %s/%s in %.1fs%s",
                             attempt + 1,
                             GITHUB_429_MAX_RETRIES,
                             delay,
+                            retry_hint,
                         )
                         time.sleep(delay)
                     else:
+                        if retry_hint:
+                            raise httpx.HTTPStatusError(
+                                str(e) + retry_hint, request=e.request, response=e.response
+                            ) from e
                         raise
-        choices = data.get("choices") or []
+                choices = data.get("choices") or []
         if not choices:
             return ""
         msg = choices[0].get("message") or {}
@@ -121,7 +128,8 @@ class GitHubProvider(BaseProvider):
             "temperature": 0.2,
             "stream": True,
         }
-        with httpx.Client(timeout=60.0) as client:
+        from hivemind.utils.http import ssl_verify, format_retry_after
+        with httpx.Client(timeout=60.0, verify=ssl_verify()) as client:
             for attempt in range(GITHUB_429_MAX_RETRIES):
                 try:
                     with client.stream(
@@ -150,17 +158,23 @@ class GitHubProvider(BaseProvider):
                                     pass
                     return
                 except httpx.HTTPStatusError as e:
+                    retry_hint = format_retry_after(e.response)
                     if e.response.status_code == 429 and attempt < GITHUB_429_MAX_RETRIES - 1:
                         delay = min(
                             GITHUB_429_BASE_DELAY * (2**attempt),
                             GITHUB_429_MAX_DELAY,
                         )
                         log.warning(
-                            "GitHub Models 429 rate limit (stream), retry %s/%s in %.1fs",
+                            "GitHub Models 429 rate limit (stream), retry %s/%s in %.1fs%s",
                             attempt + 1,
                             GITHUB_429_MAX_RETRIES,
                             delay,
+                            retry_hint,
                         )
                         time.sleep(delay)
                     else:
+                        if retry_hint:
+                            raise httpx.HTTPStatusError(
+                                str(e) + retry_hint, request=e.request, response=e.response
+                            ) from e
                         raise

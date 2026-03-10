@@ -107,6 +107,10 @@ To call a tool, output exactly:
 TOOL: <tool_name>
 INPUT: <json object with arguments>
 
+When the task requires listing files, reading/writing files, or running commands, you MUST use the appropriate tool above (output TOOL: and INPUT:). Do not describe what you would do or say you cannot do it—call the tool and use its result. Use the exact tool name as shown in the list (e.g. filesystem.list_dir for listing a directory).
+
+You are in an automated workflow. Do not ask the user for their OS, environment, or to specify paths—use the task description and call tools with the paths/data given there.
+
 If you do not need a tool, respond with your final answer only (no TOOL: line).
 """
 
@@ -228,6 +232,8 @@ class Agent:
         user_task: str | None = None,
         parallel_tools: bool = True,
         message_bus=None,
+        audit_logger=None,
+        audit_run_id: str = "",
     ):
         self.model_name = model_name
         self.event_log = event_log or EventLog()
@@ -239,6 +245,8 @@ class Agent:
         self.user_task = user_task
         self.parallel_tools = parallel_tools and os.environ.get("HIVEMIND_DISABLE_PARALLEL_TOOLS", "").strip() != "1"
         self.message_bus = message_bus
+        self.audit_logger = audit_logger
+        self.audit_run_id = audit_run_id or ""
 
     def run(self, request: AgentRequest) -> AgentResponse:
         """Stateless run: all context in AgentRequest, all output in AgentResponse."""
@@ -310,13 +318,13 @@ class Agent:
                 success=False,
             )
 
-    def run_task(
+    def build_request(
         self,
         task: Task,
         model_override: str | None = None,
         prefetch_result=None,
-    ) -> str:
-        """Backward-compat: build AgentRequest from task and prefetch, run, mutate task, return result."""
+    ) -> AgentRequest:
+        """Build AgentRequest for this task (for use with sandbox or external runner)."""
         memory_section = ""
         if prefetch_result and getattr(prefetch_result, "memory_context", None):
             ctx = prefetch_result.memory_context
@@ -356,7 +364,7 @@ class Agent:
                 )
                 tools_names = [t.name for t in tools]
         model = model_override if model_override else self.model_name
-        request = AgentRequest(
+        return AgentRequest(
             task=task,
             memory_context=memory_section,
             tools=tools_names,
@@ -364,11 +372,24 @@ class Agent:
             system_prompt=system_prompt,
             prefetch_used=prefetch_result is not None,
         )
-        response = self.run(request)
+
+    def apply_response(self, task: Task, response: AgentResponse) -> None:
+        """Apply AgentResponse to task (status, result, error)."""
         task.status = TaskStatus.COMPLETED if response.success else TaskStatus.FAILED
         task.result = response.result
         if response.error:
             task.error = response.error
+
+    def run_task(
+        self,
+        task: Task,
+        model_override: str | None = None,
+        prefetch_result=None,
+    ) -> str:
+        """Backward-compat: build AgentRequest from task and prefetch, run, mutate task, return result."""
+        request = self.build_request(task, model_override=model_override, prefetch_result=prefetch_result)
+        response = self.run(request)
+        self.apply_response(task, response)
         return response.result
 
     def _strip_broadcast_and_collect(self, task_id: str, text: str) -> tuple[str, list[str]]:
@@ -444,6 +465,7 @@ class Agent:
             if len(tool_calls) == 1 or not self.parallel_tools:
                 tool_name, tool_args = tool_calls[0]
                 result = run_tool(tool_name, tool_args, task_type=task_type)
+                self._emit_tool_called_audit(task.id, tool_name, result)
                 self._emit(
                     events.TOOL_CALLED,
                     {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
@@ -454,6 +476,7 @@ class Agent:
             results = self._run_tools_parallel_sync(tool_calls, task_type, task)
             conversation.append(f"Response:\n{response}")
             for (tool_name, _), result in zip(tool_calls, results):
+                self._emit_tool_called_audit(task.id, tool_name, result)
                 self._emit(
                     events.TOOL_CALLED,
                     {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
@@ -508,6 +531,7 @@ class Agent:
             if len(tool_calls) == 1 or not self.parallel_tools:
                 tool_name, tool_args = tool_calls[0]
                 result = run_tool(tool_name, tool_args, task_type=task_type)
+                self._emit_tool_called_audit(task.id, tool_name, result)
                 self._emit(
                     events.TOOL_CALLED,
                     {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
@@ -518,6 +542,7 @@ class Agent:
             results = self._run_tools_parallel_sync(tool_calls, task_type, task)
             conversation.append(f"Response:\n{response}")
             for (tool_name, _), result in zip(tool_calls, results):
+                self._emit_tool_called_audit(task.id, tool_name, result)
                 self._emit(
                     events.TOOL_CALLED,
                     {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
@@ -552,6 +577,24 @@ class Agent:
             return out
         finally:
             loop.close()
+
+    def _emit_tool_called_audit(self, task_id: str, tool_name: str, result: str) -> None:
+        if not self.audit_logger or not self.audit_run_id:
+            return
+        try:
+            from hivemind.audit.logger import make_audit_record
+            rec = make_audit_record(
+                run_id=self.audit_run_id,
+                task_id=task_id,
+                event_type="TOOL_CALLED",
+                actor=task_id,
+                resource=tool_name,
+                input_text=tool_name,
+                output_text=(result or "")[:2000],
+            )
+            self.audit_logger.log(rec)
+        except Exception:
+            pass
 
     def _emit(self, event_type: events, payload: dict) -> None:
         self.event_log.append_event(

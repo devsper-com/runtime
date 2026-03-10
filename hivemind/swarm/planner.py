@@ -22,14 +22,15 @@ Task:
 {task_description}
 {kg_section}
 
+Each step must be a concrete action that can be done with tools (e.g. list directory, read file, run a command). Do NOT use vague steps like "open a terminal", "navigate to X", or "access the environment"—instead say exactly what to do: "List the contents of /tmp", "Read and summarize file X", etc. Steps will be executed by agents with filesystem and other tools; they do not need to "open" anything.
+
 Return a numbered list.
 
 Example format:
-1. First step
-2. Second step
-3. Third step
-4. Fourth step
-5. Fifth step"""
+1. List the contents of /tmp
+2. Summarize the file listing
+3. ...
+"""
 
 EXPAND_TASKS_PROMPT = """A task just completed in a workflow.
 

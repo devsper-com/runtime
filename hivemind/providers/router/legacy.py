@@ -1,8 +1,8 @@
 """
-Provider router: map model name → provider instance.
+Legacy provider router: map model name → provider instance.
 
 Agent and planner call generate(model, prompt) in utils.models;
-utils.models uses the router to get the right provider.
+utils.models uses the router to get the right provider (or v2 LLMRouter when available).
 
 When AZURE_OPENAI_ENDPOINT is set, GPT models use Azure OpenAI (model name = deployment name).
 When AZURE_ANTHROPIC_ENDPOINT (or AZURE_ANTHROPIC_API_KEY) is set, Claude models use Azure Foundry.

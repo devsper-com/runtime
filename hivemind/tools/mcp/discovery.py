@@ -39,8 +39,11 @@ def discover_mcp_tools(server_config: MCPServerConfig) -> list[MCPToolAdapter]:
 
 
 async def register_mcp_server_async(server_config: MCPServerConfig) -> int:
-    """Call discover_mcp_tools, register each adapter in tool registry. Return count."""
+    """Discover MCP tools and register each adapter in the tool registry. Return count."""
     adapters = await discover_mcp_tools_async(server_config)
+    from hivemind.tools.registry import register
+    for adapter in adapters:
+        register(adapter)
     return len(adapters)
 
 

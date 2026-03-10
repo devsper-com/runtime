@@ -81,8 +81,60 @@ class ProviderAzureConfig(BaseModel):
     api_version: str = ""
 
 
+class ProviderOllamaConfig(BaseModel):
+    """v2.0: Ollama local backend."""
+    enabled: bool = False
+    base_url: str = "http://localhost:11434"
+
+
+class ProviderVLLMConfig(BaseModel):
+    """v2.0: vLLM OpenAI-compatible endpoint."""
+    enabled: bool = False
+    base_url: str = "http://localhost:8000"
+    api_key: str = ""
+
+
+class ProviderCustomConfig(BaseModel):
+    """v2.0: Custom OpenAI-compatible endpoint."""
+    enabled: bool = False
+    base_url: str = ""
+    api_key: str = ""
+    model_prefix_strip: str = ""
+
+
 class ProvidersConfig(BaseModel):
     azure: ProviderAzureConfig = Field(default_factory=ProviderAzureConfig)
+    ollama: ProviderOllamaConfig = Field(default_factory=ProviderOllamaConfig)
+    vllm: ProviderVLLMConfig = Field(default_factory=ProviderVLLMConfig)
+    custom: ProviderCustomConfig = Field(default_factory=ProviderCustomConfig)
+    fallback_order: list[str] = Field(default_factory=lambda: [])
+
+
+class SandboxRoleConfig(BaseModel):
+    """v2.0: per-role sandbox overrides."""
+    role: str = ""
+    max_tool_calls: int | None = None
+    allowed_tool_categories: list[str] | None = None
+    blocked_tool_categories: list[str] = Field(default_factory=list)
+    filesystem_write: bool = False
+
+
+class SandboxConfig(BaseModel):
+    """v2.0: agent sandbox resource quotas."""
+    enabled: bool = True
+    default_max_memory_mb: int = 512
+    default_max_cpu_seconds: int = 60
+    default_max_tool_calls: int = 20
+    roles: list[SandboxRoleConfig] = Field(default_factory=list)
+
+
+class ComplianceConfig(BaseModel):
+    """v2.0: PII redaction and audit."""
+    pii_redaction: bool = True
+    pii_types: list[str] = Field(default_factory=lambda: ["EMAIL", "PHONE", "SSN", "CREDIT_CARD", "API_KEY"])
+    gdpr_mode: bool = False
+    audit_logging: bool = True
+    data_residency: str = "us"
 
 
 class NodesConfig(BaseModel):
@@ -150,6 +202,8 @@ class HivemindConfigModel(BaseModel):
     events_dir: str = ".hivemind/events"
     data_dir: str = ".hivemind"
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
+    sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
+    compliance: ComplianceConfig = Field(default_factory=ComplianceConfig)
 
     # Backward-compat aliases (property-style access from old HivemindConfig)
     @property

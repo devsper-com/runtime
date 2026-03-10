@@ -4,7 +4,7 @@ Tool runner: execute a tool by name with validated arguments and safe error hand
 
 import time
 
-from hivemind.tools.registry import get
+from hivemind.tools.registry import get_with_mcp_fallback
 
 
 def _validate_args(args: dict, schema: dict) -> str | None:
@@ -52,28 +52,29 @@ def run_tool(
     Records usage to tool analytics and tool scoring when available.
     """
     start = time.perf_counter()
-    tool = get(name)
+    tool = get_with_mcp_fallback(name)
     if tool is None:
         _record_analytics(name, False, start)
         _record_scoring(name, task_type, False, start, error_type="ToolNotFound")
         return f"Tool not found: {name}"
+    resolved_name = tool.name
     err = _validate_args(args, tool.input_schema)
     if err is not None:
-        _record_analytics(name, False, start)
-        _record_scoring(name, task_type, False, start, error_type="ValidationError")
+        _record_analytics(resolved_name, False, start)
+        _record_scoring(resolved_name, task_type, False, start, error_type="ValidationError")
         return f"Validation error: {err}"
     try:
         result = tool.run(**args)
         latency_ms = int((time.monotonic() - start) * 1000)
         success = not (isinstance(result, str) and result.startswith("Tool error:"))
-        _record_analytics(name, success, start)
-        _record_scoring(name, task_type, success, start, latency_ms=latency_ms)
+        _record_analytics(resolved_name, success, start)
+        _record_scoring(resolved_name, task_type, success, start, latency_ms=latency_ms)
         return result
     except Exception as e:
         latency_ms = int((time.monotonic() - start) * 1000)
-        _record_analytics(name, False, start)
+        _record_analytics(resolved_name, False, start)
         _record_scoring(
-            name,
+            resolved_name,
             task_type,
             False,
             start,

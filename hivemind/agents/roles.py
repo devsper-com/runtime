@@ -41,19 +41,20 @@ ROLE_CONFIGS: dict[str, RoleConfig] = {
             "documents",
             "knowledge",
             "memory",
+            "mcp",
         ],
         prompt_prefix="You are a research specialist. Focus on literature, citations, methodology, and evidence.",
         model_hint="analysis",
     ),
     CODE_AGENT: RoleConfig(
         name=CODE_AGENT,
-        tool_categories=["coding", "code_intelligence", "filesystem", "system"],
+        tool_categories=["coding", "code_intelligence", "filesystem", "system", "mcp"],
         prompt_prefix="You are a code specialist. Focus on implementation, structure, tests, and refactoring.",
         model_hint="analysis",
     ),
     ANALYSIS_AGENT: RoleConfig(
         name=ANALYSIS_AGENT,
-        tool_categories=["data", "data_science", "math", "experiments", "knowledge"],
+        tool_categories=["data", "data_science", "math", "experiments", "knowledge", "mcp"],
         prompt_prefix="You are an analysis specialist. Focus on data, metrics, statistics, and interpretation.",
         model_hint="analysis",
     ),
@@ -65,7 +66,7 @@ ROLE_CONFIGS: dict[str, RoleConfig] = {
     ),
     DEFAULT_ROLE: RoleConfig(
         name=DEFAULT_ROLE,
-        tool_categories=[],  # empty = no filter, use selector default
+        tool_categories=[],  # empty = no filter; all tools (including mcp) eligible
         prompt_prefix="You are an AI worker in a distributed system.",
         model_hint="analysis",
     ),
@@ -129,6 +130,13 @@ CODE_KEYWORDS = [
     "function",
     "api",
     "lint",
+    "list",
+    "directory",
+    "files",
+    "contents",
+    "path",
+    "read file",
+    "write file",
 ]
 ANALYSIS_KEYWORDS = [
     "analyze",

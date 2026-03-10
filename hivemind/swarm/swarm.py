@@ -293,6 +293,17 @@ class Swarm:
             parallel_tools=getattr(self, "parallel_tools", True),
             message_bus=message_bus,
         )
+        audit_logger = None
+        if self._config and getattr(getattr(self._config, "compliance", None), "audit_logging", False):
+            run_id = getattr(self.event_log, "run_id", "") or ""
+            if run_id:
+                from hivemind.audit.logger import AuditLogger
+                audit_logger = AuditLogger(
+                    getattr(self._config, "data_dir", ".hivemind"),
+                    run_id=run_id,
+                )
+                agent.audit_logger = audit_logger
+                agent.audit_run_id = run_id
         task_cache = None
         semantic_cache = None
         if getattr(self, "cache_enabled", False):
@@ -373,6 +384,8 @@ class Swarm:
                     ),
                 )
 
+        from hivemind.config import get_config
+        sandbox_config = getattr(get_config(), "sandbox", None)
         executor = Executor(
             scheduler=scheduler,
             agent=agent,
@@ -394,6 +407,8 @@ class Swarm:
             prefetcher=prefetcher,
             bus=bus,
             checkpointer=checkpointer,
+            sandbox_config=sandbox_config,
+            audit_logger=audit_logger,
         )
         executor.run_sync()
 

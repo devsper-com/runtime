@@ -35,6 +35,8 @@ class events(Enum):
     PLANNER_KG_CONTEXT_INJECTED = "planner_kg_context_injected"
     KNOWLEDGE_EXTRACTED = "knowledge_extracted"
     MEMORY_CONSOLIDATED = "memory_consolidated"
+    # v2.0
+    PROVIDER_FALLBACK = "provider_fallback"
 
 class Event(BaseModel):
     timestamp: datetime

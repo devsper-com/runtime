@@ -1,10 +1,11 @@
 """
 Model invocation layer: generate(model_name, prompt) -> text.
 
-Uses ProviderRouter to select provider by model name. When model_name is "auto",
-use resolve_model(spec, task_type) first to get a concrete model (e.g. from config).
-Flow: task_type → model_router.select_model() → provider_router → provider.generate()
+Uses v2 LLMRouter when available (from config), else legacy ProviderRouter.
+When model_name is "auto", use resolve_model(spec, task_type) first.
 """
+
+import asyncio
 
 from hivemind.providers.model_router import TaskType, select_model
 from hivemind.providers.router import get_router
@@ -17,7 +18,37 @@ def resolve_model(model_spec: str, task_type: TaskType) -> str:
     return model_spec or "mock"
 
 
+def _run_async(coro):
+    """Run coroutine from sync context (new loop or current)."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, coro)
+        return future.result()
+
+
 def generate(model_name: str, prompt: str, stream: bool = False):
     """Call the model with the given prompt and return text output (or stream iterator if stream=True)."""
+    if not stream:
+        try:
+            from hivemind.providers.router.factory import get_llm_router
+            from hivemind.providers.router.base import LLMRequest
+            router = get_llm_router()
+            if router is not None:
+                req = LLMRequest(
+                    model=model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=4096,
+                    temperature=0.0,
+                    tools=None,
+                    stream=False,
+                )
+                resp = _run_async(router.route(req))
+                return resp.content
+        except Exception:
+            pass
     provider = get_router().get_provider(model_name)
     return provider.generate(model_name, prompt, stream=stream)

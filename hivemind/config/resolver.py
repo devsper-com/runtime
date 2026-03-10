@@ -23,7 +23,13 @@ from hivemind.config.schema import (
     ModelsConfig,
     NodesConfig,
     ProviderAzureConfig,
+    ProviderOllamaConfig,
+    ProviderVLLMConfig,
+    ProviderCustomConfig,
     ProvidersConfig,
+    SandboxConfig,
+    SandboxRoleConfig,
+    ComplianceConfig,
     SwarmConfig,
     TelemetryConfig,
     ToolsConfig,
@@ -249,7 +255,43 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
     )
     providers_data = merged.get("providers") or {}
     azure_data = providers_data.get("azure") or {}
-    providers = ProvidersConfig(azure=ProviderAzureConfig(**azure_data))
+    ollama_data = providers_data.get("ollama") or {}
+    vllm_data = providers_data.get("vllm") or {}
+    custom_data = providers_data.get("custom") or {}
+    fallback_block = providers_data.get("fallback_order") or {}
+    fallback_order = (
+        fallback_block.get("order")
+        if isinstance(fallback_block, dict)
+        else fallback_block
+    )
+    if not isinstance(fallback_order, list):
+        fallback_order = []
+    providers = ProvidersConfig(
+        azure=ProviderAzureConfig(**azure_data),
+        ollama=ProviderOllamaConfig(**(ollama_data if isinstance(ollama_data, dict) else {})),
+        vllm=ProviderVLLMConfig(**(vllm_data if isinstance(vllm_data, dict) else {})),
+        custom=ProviderCustomConfig(**(custom_data if isinstance(custom_data, dict) else {})),
+        fallback_order=fallback_order,
+    )
+    sandbox_data = merged.get("sandbox") or {}
+    sandbox_roles = sandbox_data.get("roles") if isinstance(sandbox_data, dict) else []
+    if not isinstance(sandbox_roles, list):
+        sandbox_roles = []
+    sandbox = SandboxConfig(
+        enabled=bool(sandbox_data.get("enabled", True)) if isinstance(sandbox_data, dict) else True,
+        default_max_memory_mb=int(sandbox_data.get("default_max_memory_mb", 512)) if isinstance(sandbox_data, dict) else 512,
+        default_max_cpu_seconds=int(sandbox_data.get("default_max_cpu_seconds", 60)) if isinstance(sandbox_data, dict) else 60,
+        default_max_tool_calls=int(sandbox_data.get("default_max_tool_calls", 20)) if isinstance(sandbox_data, dict) else 20,
+        roles=[SandboxRoleConfig(**(r if isinstance(r, dict) else {})) for r in sandbox_roles],
+    )
+    compliance_data = merged.get("compliance") or {}
+    compliance = ComplianceConfig(
+        pii_redaction=bool(compliance_data.get("pii_redaction", True)) if isinstance(compliance_data, dict) else True,
+        pii_types=compliance_data.get("pii_types", ["EMAIL", "PHONE", "SSN", "CREDIT_CARD", "API_KEY"]) if isinstance(compliance_data, dict) else ["EMAIL", "PHONE", "SSN", "CREDIT_CARD", "API_KEY"],
+        gdpr_mode=bool(compliance_data.get("gdpr_mode", False)) if isinstance(compliance_data, dict) else False,
+        audit_logging=bool(compliance_data.get("audit_logging", True)) if isinstance(compliance_data, dict) else True,
+        data_residency=str(compliance_data.get("data_residency", "us")) if isinstance(compliance_data, dict) else "us",
+    )
 
     return HivemindConfigModel(
         swarm=swarm,
@@ -267,4 +309,6 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
         events_dir=merged.get("events_dir", ".hivemind/events"),
         data_dir=merged.get("data_dir", ".hivemind"),
         providers=providers,
+        sandbox=sandbox,
+        compliance=compliance,
     )

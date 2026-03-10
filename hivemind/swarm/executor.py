@@ -70,6 +70,8 @@ class Executor:
         prefetcher: "TaskPrefetcher | None" = None,
         bus: object = None,
         checkpointer: object = None,
+        sandbox_config: object = None,
+        audit_logger: object = None,
     ) -> None:
         self.scheduler = scheduler
         self.agent = agent
@@ -91,6 +93,8 @@ class Executor:
         self.prefetcher = prefetcher
         self.bus = bus
         self.checkpointer = checkpointer
+        self.sandbox_config = sandbox_config
+        self.audit_logger = audit_logger
 
     def run_sync(self) -> None:
         """Run the execution loop to completion (synchronous entry point)."""
@@ -192,6 +196,22 @@ class Executor:
             return task.id
 
         self._publish_bus("task.started", task.to_dict())
+        if self.audit_logger is not None and self.scheduler is not None:
+            try:
+                from hivemind.audit.logger import make_audit_record
+                run_id = getattr(self.scheduler, "run_id", "") or ""
+                rec = make_audit_record(
+                    run_id=run_id,
+                    task_id=task.id,
+                    event_type="TASK_STARTED",
+                    actor=run_id,
+                    resource=getattr(task, "role", "") or "agent",
+                    input_text=task.description or "",
+                    output_text="",
+                )
+                self.audit_logger.log(rec)
+            except Exception:
+                pass
 
         prefetch_result = None
         if self.prefetcher:
@@ -214,13 +234,47 @@ class Executor:
         if self.complexity_router and self.models_config:
             model_override = self._model_for_task(task)
         try:
-            await loop.run_in_executor(
-                None,
-                lambda t=task, m=model_override, p=prefetch_result: self.agent.run_task(
-                    t, model_override=m, prefetch_result=p
-                ),
+            use_sandbox = (
+                self.sandbox_config is not None
+                and getattr(self.sandbox_config, "enabled", False)
             )
+            if use_sandbox:
+                from hivemind.sandbox.sandbox import AgentSandbox, get_quota_for_role
+                request = self.agent.build_request(
+                    task, model_override=model_override, prefetch_result=prefetch_result
+                )
+                quota = get_quota_for_role(self.sandbox_config, getattr(task, "role", None))
+                sandbox = AgentSandbox(self.agent)
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: sandbox.run(request, quota),
+                )
+                self.agent.apply_response(task, response)
+            else:
+                await loop.run_in_executor(
+                    None,
+                    lambda t=task, m=model_override, p=prefetch_result: self.agent.run_task(
+                        t, model_override=m, prefetch_result=p
+                    ),
+                )
         except Exception as err:
+            if self.audit_logger is not None and self.scheduler is not None:
+                try:
+                    from hivemind.audit.logger import make_audit_record
+                    run_id = getattr(self.scheduler, "run_id", "") or ""
+                    rec = make_audit_record(
+                        run_id=run_id,
+                        task_id=task.id,
+                        event_type="TASK_FAILED",
+                        actor=run_id,
+                        resource="",
+                        input_text=task.description or "",
+                        output_text=str(err),
+                        success=False,
+                    )
+                    self.audit_logger.log(rec)
+                except Exception:
+                    pass
             self.scheduler.mark_failed(task.id, str(err))
             if is_speculative:
                 self.scheduler.discard_speculative_for(task.id)
@@ -280,6 +334,24 @@ class Executor:
             self.scheduler.confirm_speculative_for(task.id)
             if self.checkpointer is not None:
                 self.checkpointer.on_task_completed(self.scheduler)
+            if self.audit_logger is not None and self.scheduler is not None:
+                try:
+                    from hivemind.audit.logger import make_audit_record
+                    run_id = getattr(self.scheduler, "run_id", "") or ""
+                    rec = make_audit_record(
+                        run_id=run_id,
+                        task_id=task.id,
+                        event_type="TASK_COMPLETED",
+                        actor=run_id,
+                        resource=getattr(task, "role", "") or "agent",
+                        input_text=task.description or "",
+                        output_text=(result or "")[:5000],
+                        duration_ms=int((task.result and 0) or 0),
+                        success=True,
+                    )
+                    self.audit_logger.log(rec)
+                except Exception:
+                    pass
             self._publish_bus(
                 "task.completed",
                 {

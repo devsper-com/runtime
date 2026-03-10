@@ -62,7 +62,23 @@ class MemoryStore:
                 pass
 
     def store(self, record: MemoryRecord) -> str:
-        """Store a memory record. Returns record id."""
+        """Store a memory record. Returns record id. Redacts PII if compliance.pii_redaction enabled."""
+        content = record.content
+        try:
+            from hivemind.config import get_config
+            cfg = get_config()
+            if getattr(getattr(cfg, "compliance", None), "pii_redaction", False):
+                from hivemind.compliance.pii import PIIRedactor
+                redactor = PIIRedactor(
+                    pii_types=getattr(cfg.compliance, "pii_types", None),
+                    gdpr_mode=getattr(cfg.compliance, "gdpr_mode", False),
+                )
+                res = redactor.redact(content or "")
+                content = res.redacted_text
+        except Exception:
+            pass
+        if content != record.content:
+            record = record.model_copy(update={"content": content})
         row = record.to_store_row()
         emb = row.get("embedding")
         embedding_json = json.dumps(emb) if emb is not None else None
