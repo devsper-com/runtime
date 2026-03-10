@@ -1,7 +1,29 @@
 ---
 sidebar_position: 0
 title: Overview
+description: Hivemind documentation — Distributed AI Swarm Runtime. Orchestrate multi-agent systems with a DAG-based swarm execution model. Get started, configure, and run with the CLI and SDK.
+keywords:
+  - hivemind
+  - documentation
+  - AI swarm
+  - multi-agent
+  - distributed AI
+  - getting started
 ---
+
+import ThemedImage from '@theme/ThemedImage';
+
+<div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+  <ThemedImage
+    alt="Hivemind"
+    sources={{
+      light: '/img/logo.svg',
+      dark: '/img/logo_dark.svg',
+    }}
+    width={120}
+    height={140}
+  />
+</div>
 
 # Hivemind
 

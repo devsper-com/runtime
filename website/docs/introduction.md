@@ -1,3 +1,14 @@
+---
+title: Introduction
+description: What is Hivemind? A distributed AI swarm runtime that coordinates multi-agent systems with a DAG-based swarm execution model, parallelism, and shared memory.
+keywords:
+  - what is hivemind
+  - swarm runtime
+  - multi-agent AI
+  - DAG
+  - planner scheduler executor
+---
+
 # Introduction
 
 ## What is Hivemind?

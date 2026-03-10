@@ -9,6 +9,11 @@ const config = {
   projectName: 'hivemind',
   trailingSlash: false,
   onBrokenLinks: 'warn',
+
+  // SEO: default meta description (used for search snippets and og:description)
+  description:
+    'Hivemind is a distributed AI swarm runtime. Orchestrate multi-agent systems with a swarm execution model: tasks become a DAG, then run in parallel. pip install hivemind-ai',
+
   markdown: {
     hooks: {
       onBrokenMarkdownLinks: 'warn',
@@ -37,6 +42,33 @@ const config = {
         rel: 'stylesheet',
         href: 'https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap',
       },
+    },
+    // JSON-LD for SEO (Organization + SoftwareApplication)
+    {
+      tagName: 'script',
+      attributes: { type: 'application/ld+json' },
+      innerHTML: JSON.stringify({
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'Organization',
+            name: 'Hivemind',
+            url: 'https://hivemind.rithul.dev',
+            logo: 'https://hivemind.rithul.dev/img/logo.svg',
+            description: 'Distributed AI Swarm Runtime',
+          },
+          {
+            '@type': 'SoftwareApplication',
+            name: 'Hivemind',
+            applicationCategory: 'DeveloperApplication',
+            operatingSystem: 'Windows, macOS, Linux',
+            description:
+              'Orchestrate multi-agent AI systems with a swarm execution model. Tasks become a DAG and run in parallel. Install: pip install hivemind-ai',
+            url: 'https://hivemind.rithul.dev',
+            downloadUrl: 'https://pypi.org/project/hivemind-ai/',
+          },
+        ],
+      }),
     },
   ],
 
@@ -70,12 +102,33 @@ const config = {
       defaultMode: 'dark',
       respectPrefersColorScheme: false,
     },
+
+    // Announcement bar (banner) – edit content as needed
+    announcementBar: {
+      id: 'announcement',
+      content: 'Documentation for the Hivemind distributed AI swarm runtime. <a href="/docs/introduction">Get started</a>',
+      backgroundColor: '#0f172a',
+      textColor: '#e2e8f0',
+      isCloseable: true,
+    },
+
+    // SEO: default social image and meta
+    image: 'img/logo.svg',
+    metadata: [
+      { name: 'keywords', content: 'hivemind, AI, multi-agent, swarm, distributed AI, LLM, agents, Python, DAG, orchestration' },
+      { name: 'twitter:card', content: 'summary_large_image' },
+      { name: 'twitter:site', content: '@rithulkamesh' },
+      { property: 'og:type', content: 'website' },
+      { property: 'og:locale', content: 'en_US' },
+    ],
+
     navbar: {
       title: 'Hivemind',
       hideOnScroll: true,
       logo: {
         alt: 'Hivemind',
         src: 'img/logo.svg',
+        srcDark: 'img/logo_dark.svg',
       },
       items: [
         {
@@ -125,7 +178,9 @@ const config = {
     },
   },
 
-  plugins: [],
+  plugins: [
+    require.resolve('@docusaurus/plugin-sitemap'),
+  ],
 };
 
 module.exports = config;
