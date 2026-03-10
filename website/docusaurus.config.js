@@ -10,10 +10,6 @@ const config = {
   trailingSlash: false,
   onBrokenLinks: 'warn',
 
-  // SEO: default meta description (used for search snippets and og:description)
-  description:
-    'Hivemind is a distributed AI swarm runtime. Orchestrate multi-agent systems with a swarm execution model: tasks become a DAG, then run in parallel. pip install hivemind-ai',
-
   markdown: {
     hooks: {
       onBrokenMarkdownLinks: 'warn',
@@ -41,6 +37,23 @@ const config = {
       attributes: {
         rel: 'stylesheet',
         href: 'https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap',
+      },
+    },
+    // SEO: default meta description and og:description (Docusaurus 3 does not allow root "description")
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'description',
+        content:
+          'Hivemind is a distributed AI swarm runtime. Orchestrate multi-agent systems with a swarm execution model: tasks become a DAG, then run in parallel. pip install hivemind-ai',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        property: 'og:description',
+        content:
+          'Hivemind is a distributed AI swarm runtime. Orchestrate multi-agent systems with a swarm execution model: tasks become a DAG, then run in parallel. pip install hivemind-ai',
       },
     },
     // JSON-LD for SEO (Organization + SoftwareApplication)
