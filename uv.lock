@@ -845,7 +845,7 @@ wheels = [
 
 [[package]]
 name = "hivemind-ai"
-version = "1.10.0"
+version = "1.10.5"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -864,6 +864,12 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+a2a = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "sse-starlette" },
+    { name = "uvicorn" },
+]
 data = [
     { name = "pandas" },
     { name = "scikit-learn" },
@@ -886,6 +892,10 @@ document = [
 embeddings = [
     { name = "sentence-transformers" },
 ]
+mcp = [
+    { name = "anyio" },
+    { name = "httpx" },
+]
 research = [
     { name = "duckduckgo-search" },
 ]
@@ -900,11 +910,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", marker = "extra == 'mcp'", specifier = ">=4.0" },
     { name = "docproc", marker = "extra == 'document'", specifier = ">=2.0.0" },
     { name = "duckduckgo-search", marker = "extra == 'research'", specifier = ">=6.0.0" },
+    { name = "fastapi", marker = "extra == 'a2a'", specifier = ">=0.110" },
     { name = "fastapi", marker = "extra == 'distributed'", specifier = ">=0.110.0" },
     { name = "hiredis", marker = "extra == 'distributed'", specifier = ">=2.3.0" },
     { name = "httpx", specifier = ">=0.27.0" },
+    { name = "httpx", marker = "extra == 'a2a'", specifier = ">=0.27" },
+    { name = "httpx", marker = "extra == 'mcp'", specifier = ">=0.27" },
     { name = "keyring", specifier = ">=24.0" },
     { name = "langchain", specifier = ">=1.2.10" },
     { name = "langchain-anthropic", specifier = ">=1.3.4" },
@@ -924,10 +938,12 @@ requires-dist = [
     { name = "scikit-learn", marker = "extra == 'data'", specifier = ">=1.3.0" },
     { name = "sentence-transformers", marker = "extra == 'embeddings'", specifier = ">=3.0.0" },
     { name = "shtab", specifier = ">=1.6.0" },
+    { name = "sse-starlette", marker = "extra == 'a2a'", specifier = ">=2.0" },
     { name = "textual", specifier = ">=0.50.0" },
+    { name = "uvicorn", marker = "extra == 'a2a'", specifier = ">=0.29" },
     { name = "uvicorn", marker = "extra == 'distributed'", specifier = ">=0.29.0" },
 ]
-provides-extras = ["data", "document", "research", "embeddings", "distributed", "worker", "docs"]
+provides-extras = ["data", "document", "research", "embeddings", "mcp", "a2a", "distributed", "worker", "docs"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3308,6 +3324,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/87/a6771e1546d97e7e041b6ae58d80074f81b7d5121207425c964ddf5cfdbd/sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc", size = 20372, upload-time = "2024-02-25T23:20:04.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2", size = 10235, upload-time = "2024-02-25T23:20:01.196Z" },
+]
+
+[[package]]
+name = "sse-starlette"
+version = "3.3.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "starlette" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5a/9f/c3695c2d2d4ef70072c3a06992850498b01c6bc9be531950813716b426fa/sse_starlette-3.3.2.tar.gz", hash = "sha256:678fca55a1945c734d8472a6cad186a55ab02840b4f6786f5ee8770970579dcd", size = 32326, upload-time = "2026-02-28T11:24:34.36Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/61/28/8cb142d3fe80c4a2d8af54ca0b003f47ce0ba920974e7990fa6e016402d1/sse_starlette-3.3.2-py3-none-any.whl", hash = "sha256:5c3ea3dad425c601236726af2f27689b74494643f57017cafcb6f8c9acfbb862", size = 14270, upload-time = "2026-02-28T11:24:32.984Z" },
 ]
 
 [[package]]

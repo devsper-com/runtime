@@ -11,10 +11,14 @@ from hivemind.config.config_loader import (
 )
 from hivemind.config.schema import (
     AgentsConfig,
+    A2AConfig,
+    A2AAgentConfig,
     BusConfig,
     CacheConfig,
     HivemindConfigModel,
     KnowledgeConfig,
+    MCPConfig,
+    MCPServerConfig,
     MemoryConfig,
     ModelsConfig,
     NodesConfig,
@@ -160,6 +164,8 @@ def _build_merged_raw(
         },
         "events_dir": ".hivemind/events",
         "data_dir": ".hivemind",
+        "mcp": {"servers": []},
+        "a2a": {"agents": [], "serve": False, "serve_port": 8080},
         "providers": {
             "azure": {
                 "endpoint": "",
@@ -225,6 +231,22 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
     cache = CacheConfig(**(merged.get("cache") or {}))
     bus = BusConfig(**(merged.get("bus") or {}))
     nodes = NodesConfig(**(merged.get("nodes") or {}))
+    # MCP: [[mcp.servers]] -> list of MCPServerConfig
+    mcp_data = merged.get("mcp") or {}
+    mcp_servers = mcp_data.get("servers") if isinstance(mcp_data, dict) else []
+    if not isinstance(mcp_servers, list):
+        mcp_servers = []
+    mcp = MCPConfig(servers=[MCPServerConfig(**s) for s in mcp_servers if isinstance(s, dict)])
+    # A2A: [[a2a.agents]] and [a2a] serve/serve_port
+    a2a_data = merged.get("a2a") or {}
+    a2a_agents = a2a_data.get("agents") if isinstance(a2a_data, dict) else []
+    if not isinstance(a2a_agents, list):
+        a2a_agents = []
+    a2a = A2AConfig(
+        agents=[A2AAgentConfig(**a) for a in a2a_agents if isinstance(a, dict)],
+        serve=bool(a2a_data.get("serve", False)) if isinstance(a2a_data, dict) else False,
+        serve_port=int(a2a_data.get("serve_port", 8080)) if isinstance(a2a_data, dict) else 8080,
+    )
     providers_data = merged.get("providers") or {}
     azure_data = providers_data.get("azure") or {}
     providers = ProvidersConfig(azure=ProviderAzureConfig(**azure_data))
@@ -240,6 +262,8 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
         cache=cache,
         bus=bus,
         nodes=nodes,
+        mcp=mcp,
+        a2a=a2a,
         events_dir=merged.get("events_dir", ".hivemind/events"),
         data_dir=merged.get("data_dir", ".hivemind"),
         providers=providers,

@@ -15,3 +15,7 @@ class BusConnectionError(Exception):
 
 class CheckpointNotFoundError(Exception):
     """Raised when a checkpoint file for a run_id is not found."""
+
+
+class MCPToolError(Exception):
+    """Raised when an MCP tools/call returns an error or invalid response."""

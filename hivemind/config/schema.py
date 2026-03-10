@@ -102,6 +102,36 @@ class NodesConfig(BaseModel):
     task_execution_timeout_seconds: int = 90  # worker: fail task if agent.run exceeds this (0 = no limit)
 
 
+class MCPServerConfig(BaseModel):
+    """v1.10.5: MCP server connection config."""
+    name: str = ""
+    transport: Literal["stdio", "http", "sse"] = "stdio"
+    command: list[str] | None = None  # stdio: e.g. ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    url: str | None = None  # http/sse: e.g. "http://localhost:3000"
+    env: dict[str, str] = Field(default_factory=dict)
+    timeout_seconds: int = 30
+    auto_reconnect: bool = True
+
+
+class MCPConfig(BaseModel):
+    """v1.10.5: MCP servers from [[mcp.servers]]."""
+    servers: list[MCPServerConfig] = Field(default_factory=list)
+
+
+class A2AAgentConfig(BaseModel):
+    """v1.10.5: External A2A agent config."""
+    name: str = ""
+    url: str = ""
+    auto_discover: bool = True  # fetch AgentCard on startup, register skills as tools
+
+
+class A2AConfig(BaseModel):
+    """v1.10.5: A2A agents and optional server exposure."""
+    agents: list[A2AAgentConfig] = Field(default_factory=list)
+    serve: bool = False  # expose this hivemind instance as A2A server
+    serve_port: int = 8080
+
+
 class HivemindConfigModel(BaseModel):
     """Full resolved configuration with Pydantic validation."""
 
@@ -115,6 +145,8 @@ class HivemindConfigModel(BaseModel):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     bus: BusConfig = Field(default_factory=BusConfig)
     nodes: NodesConfig = Field(default_factory=NodesConfig)
+    mcp: MCPConfig = Field(default_factory=MCPConfig)
+    a2a: A2AConfig = Field(default_factory=A2AConfig)
     events_dir: str = ".hivemind/events"
     data_dir: str = ".hivemind"
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)

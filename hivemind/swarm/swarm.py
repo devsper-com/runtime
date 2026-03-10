@@ -107,6 +107,24 @@ class Swarm:
             self.message_bus_enabled = getattr(cfg.swarm, "message_bus_enabled", True)
             self.prefetch_enabled = getattr(cfg.swarm, "prefetch_enabled", True)
             self._config = cfg
+            # v1.10.5: register MCP server tools from config
+            mcp_servers = getattr(getattr(cfg, "mcp", None), "servers", None) or []
+            for server_config in mcp_servers:
+                try:
+                    from hivemind.tools.mcp import register_mcp_server
+                    register_mcp_server(server_config)
+                except Exception:
+                    pass  # don't fail Swarm init if MCP server unreachable
+            # v1.10.5: register A2A agent tools from config (auto_discover)
+            a2a_agents = getattr(getattr(cfg, "a2a", None), "agents", None) or []
+            for agent_config in a2a_agents:
+                if not getattr(agent_config, "auto_discover", True):
+                    continue
+                try:
+                    from hivemind.agents.a2a.discovery import register_a2a_agent
+                    register_a2a_agent(agent_config)
+                except Exception:
+                    pass
         else:
             self.worker_count = worker_count if worker_count is not None else 4
             worker_raw = worker_model if worker_model is not None else "mock"

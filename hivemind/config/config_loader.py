@@ -100,4 +100,9 @@ def normalize_toml_to_flat(data: dict) -> dict:
         result["nodes"] = data["nodes"]
     if "providers" in data and isinstance(data["providers"], dict):
         result["providers"] = data["providers"]
+    # v1.10.5: MCP and A2A
+    if "mcp" in data and isinstance(data["mcp"], dict):
+        result["mcp"] = data["mcp"]
+    if "a2a" in data and isinstance(data["a2a"], dict):
+        result["a2a"] = data["a2a"]
     return result

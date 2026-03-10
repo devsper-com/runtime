@@ -510,6 +510,36 @@ def run_doctor() -> int:
     except Exception as e:
         warnings.append(f"Knowledge graph: {e}")
 
+    # v1.10.5: MCP and A2A
+    try:
+        from hivemind.config import get_config
+        cfg = get_config()
+        mcp_servers = getattr(getattr(cfg, "mcp", None), "servers", None) or []
+        for s in mcp_servers:
+            sname = getattr(s, "name", "?")
+            try:
+                from hivemind.tools.mcp import discover_mcp_tools
+                adapters = discover_mcp_tools(s)
+                ok.append(f"MCP server '{sname}': {len(adapters)} tools")
+            except Exception as e:
+                warnings.append(f"MCP server '{sname}': {e}")
+        a2a_agents = getattr(getattr(cfg, "a2a", None), "agents", None) or []
+        for a in a2a_agents:
+            aname = getattr(a, "name", "?")
+            url = getattr(a, "url", "")
+            if not url:
+                continue
+            try:
+                from hivemind.agents.a2a.client import A2AClient
+                import asyncio
+                client = A2AClient()
+                card = asyncio.run(client.get_agent_card(url))
+                ok.append(f"A2A agent '{aname or card.name}': {len(card.skills)} skills")
+            except Exception as e:
+                warnings.append(f"A2A agent '{aname}': {e}")
+    except Exception:
+        pass
+
     try:
         from hivemind.config import get_config
         cfg = get_config()

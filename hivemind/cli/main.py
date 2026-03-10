@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -530,6 +531,157 @@ def _run_doctor() -> int:
     from hivemind.cli.init import run_doctor
 
     return run_doctor()
+
+
+def _run_mcp_list() -> int:
+    """List all registered MCP servers and their tool counts."""
+    from hivemind.config import get_config
+    from hivemind.tools.registry import list_tools
+    cfg = get_config()
+    servers = getattr(getattr(cfg, "mcp", None), "servers", None) or []
+    try:
+        from rich.console import Console
+        from rich.table import Table
+        console = Console()
+        table = Table(title="MCP servers")
+        table.add_column("Name", style="cyan")
+        table.add_column("Transport", style="dim")
+        table.add_column("Tools", justify="right")
+        all_tools = list_tools()
+        mcp_tools = [t for t in all_tools if getattr(t, "category", "") == "mcp"]
+        by_server: dict[str, int] = {}
+        for t in mcp_tools:
+            name = getattr(t, "name", "")
+            if "." in name:
+                srv = name.split(".", 1)[0]
+                by_server[srv] = by_server.get(srv, 0) + 1
+        for s in servers:
+            sname = getattr(s, "name", "?")
+            table.add_row(sname, getattr(s, "transport", "?"), str(by_server.get(sname, 0)))
+        if not servers:
+            console.print("No MCP servers configured. Add [[mcp.servers]] to hivemind.toml or use [cyan]hivemind mcp add[/].")
+        else:
+            console.print(table)
+    except ImportError:
+        for s in servers:
+            print(getattr(s, "name", "?"), getattr(s, "transport", "?"))
+    return 0
+
+
+def _run_mcp_test(server_name: str) -> int:
+    """Connect to server, list tools, print names and descriptions. Exit 1 if connection fails."""
+    from hivemind.config import get_config
+    cfg = get_config()
+    servers = getattr(getattr(cfg, "mcp", None), "servers", None) or []
+    server = next((s for s in servers if getattr(s, "name", "") == server_name), None)
+    if not server:
+        print(f"Error: MCP server '{server_name}' not found in config.", file=sys.stderr)
+        return 1
+    try:
+        from hivemind.tools.mcp import discover_mcp_tools
+        adapters = discover_mcp_tools(server)
+        print(f"Connected to '{server_name}'. Tools: {len(adapters)}")
+        for a in adapters:
+            print(f"  - {getattr(a, '_mcp_tool_name', a.name)}: {(a.description or '')[:80]}")
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def _run_mcp_add() -> int:
+    """Interactive: prompt for transport, command/url, name; append to hivemind.toml [mcp.servers]."""
+    from pathlib import Path
+    from hivemind.config.config_loader import project_config_paths
+    config_path = None
+    for p in project_config_paths():
+        if p.is_file():
+            config_path = p
+            break
+    if not config_path:
+        print("Error: No hivemind.toml found. Run [cyan]hivemind init[/] first.", file=sys.stderr)
+        return 1
+    try:
+        name = input("Server name (e.g. filesystem): ").strip() or "mcp-server"
+        transport = input("Transport (stdio|http|sse) [stdio]: ").strip().lower() or "stdio"
+        if transport == "stdio":
+            cmd_str = input("Command (space-separated, e.g. npx -y @modelcontextprotocol/server-filesystem /tmp): ").strip()
+            command = cmd_str.split() if cmd_str else []
+            url = None
+        else:
+            command = None
+            url = input("URL (e.g. http://localhost:3000): ").strip() or None
+        toml = config_path.read_text()
+        # Append [[mcp.servers]] entry
+        entry = f'\n[[mcp.servers]]\nname = "{name}"\ntransport = "{transport}"\n'
+        if command:
+            entry += f'command = {json.dumps(command)}\n'
+        if url:
+            entry += f'url = "{url}"\n'
+        if "\n[mcp]" not in toml and "[[mcp.servers]]" not in toml:
+            toml = toml.rstrip() + "\n\n[mcp]\n" + entry.lstrip()
+        else:
+            toml = toml.rstrip() + "\n" + entry
+        config_path.write_text(toml)
+        print(f"Added MCP server '{name}' to {config_path}.")
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def _run_a2a_serve(port: int | None) -> int:
+    """Start A2A server, print AgentCard URL."""
+    from hivemind.config import get_config
+    from hivemind.agents.a2a.server import run_a2a_server
+    cfg = get_config()
+    p = port if port is not None else getattr(getattr(cfg, "a2a", None), "serve_port", 8080)
+    swarm_name = getattr(getattr(cfg, "swarm", None), "name", None) or "hivemind"
+    print(f"A2A server starting at http://localhost:{p}", file=sys.stderr)
+    print(f"AgentCard: http://localhost:{p}/.well-known/agent.json", file=sys.stderr)
+    run_a2a_server(host="0.0.0.0", port=p, swarm_name=swarm_name or "")
+    return 0
+
+
+def _run_a2a_discover(url: str) -> int:
+    """Fetch AgentCard, print skills, optionally add to config."""
+    try:
+        from hivemind.agents.a2a.client import A2AClient
+        client = A2AClient()
+        import asyncio
+        card = asyncio.run(client.get_agent_card(url))
+        print(f"Name: {card.name}")
+        print(f"Description: {card.description}")
+        print(f"Skills: {len(card.skills)}")
+        for s in card.skills:
+            desc = (s.description or "")[:60]
+            if len(s.description or "") > 60:
+                desc += "..."
+            print(f"  - {s.id}: {s.name} — {desc}")
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def _run_a2a_call(url: str, task: str) -> int:
+    """Send task to external A2A agent, stream output."""
+    try:
+        from hivemind.agents.a2a.client import A2AClient
+        from hivemind.agents.a2a.types import A2ATaskRequest
+        import asyncio
+        import uuid
+        client = A2AClient()
+        request = A2ATaskRequest(id=str(uuid.uuid4()), message={"text": task}, session_id=None)
+        async def _stream():
+            async for chunk in client.stream_task(url, request):
+                print(chunk, end="", flush=True)
+        asyncio.run(_stream())
+        print()
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
 
 def _run_node_start(args) -> int:
@@ -1496,6 +1648,39 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     doctor_parser.set_defaults(func=lambda a: _run_doctor())
+
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help="MCP server commands (list, test, add)",
+        description="List configured MCP servers, test connection, or add a server interactively.",
+    )
+    mcp_sub = mcp_parser.add_subparsers(dest="mcp_cmd", help="Subcommand")
+    mcp_list_p = mcp_sub.add_parser("list", help="List MCP servers and tool counts")
+    mcp_list_p.set_defaults(func=lambda a: _run_mcp_list())
+    mcp_test_p = mcp_sub.add_parser("test", help="Test connection to an MCP server")
+    mcp_test_p.add_argument("server_name", help="Server name from config")
+    mcp_test_p.set_defaults(func=lambda a: _run_mcp_test(a.server_name))
+    mcp_add_p = mcp_sub.add_parser("add", help="Interactively add an MCP server to hivemind.toml")
+    mcp_add_p.set_defaults(func=lambda a: _run_mcp_add())
+    mcp_parser.set_defaults(mcp_cmd="list", func=lambda a: _run_mcp_list())
+
+    a2a_parser = subparsers.add_parser(
+        "a2a",
+        help="A2A agent commands (serve, discover, call)",
+        description="Run A2A server, discover external agents, or call an agent with a task.",
+    )
+    a2a_sub = a2a_parser.add_subparsers(dest="a2a_cmd", help="Subcommand")
+    a2a_serve_p = a2a_sub.add_parser("serve", help="Start A2A server")
+    a2a_serve_p.add_argument("--port", type=int, default=None, help="Port (default: config or 8080)")
+    a2a_serve_p.set_defaults(func=lambda a: _run_a2a_serve(getattr(a, "port", None)))
+    a2a_discover_p = a2a_sub.add_parser("discover", help="Fetch AgentCard from URL, print skills")
+    a2a_discover_p.add_argument("url", help="Agent URL (e.g. http://localhost:8080)")
+    a2a_discover_p.set_defaults(func=lambda a: _run_a2a_discover(a.url))
+    a2a_call_p = a2a_sub.add_parser("call", help="Send task to external A2A agent, stream output")
+    a2a_call_p.add_argument("url", help="Agent URL")
+    a2a_call_p.add_argument("task", help="Task text to send")
+    a2a_call_p.set_defaults(func=lambda a: _run_a2a_call(a.url, a.task))
+    a2a_parser.set_defaults(a2a_cmd=None, func=lambda a: a2a_parser.print_help() or 0)
 
     node_parser = subparsers.add_parser(
         "node",

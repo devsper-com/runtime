@@ -8,8 +8,10 @@ and legacy .hivemind/config.toml.
 
 from hivemind.config.resolver import resolve_config
 from hivemind.config.schema import (
+    A2AConfig,
     HivemindConfigModel,
     KnowledgeConfig,
+    MCPConfig,
     MemoryConfig,
     ModelsConfig,
     NodesConfig,
@@ -34,10 +36,12 @@ def get_config(config_path: str | None = None) -> HivemindConfigModel:
 
 
 __all__ = [
+    "A2AConfig",
     "get_config",
     "HivemindConfig",
     "HivemindConfigModel",
     "KnowledgeConfig",
+    "MCPConfig",
     "MemoryConfig",
     "ModelsConfig",
     "ProviderAzureConfig",

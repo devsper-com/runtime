@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.5] - 2026-03-10
+
+### Added
+
+- MCP (Model Context Protocol) client supporting stdio, HTTP, and SSE transports
+- MCPToolAdapter: MCP server tools appear in hivemind tool registry automatically
+- MCP server config via `[[mcp.servers]]` in hivemind.toml
+- A2A (Agent-to-Agent) client for calling external A2A-compliant agents as tools
+- A2AServer: exposes hivemind as an A2A endpoint with AgentCard and task endpoints
+- A2AAgentTool: external A2A agent skills registered as local tools
+- `hivemind mcp list|test|add` CLI commands
+- `hivemind a2a serve|discover|call` CLI commands
+- Protocol version constants in `hivemind/protocols/`
+
+### Changed
+
+- Tool category "mcp" and "a2a" added to scoring and selection pipeline
+
 ## [1.10.0] - 2026-03-10
 
 ### Added
