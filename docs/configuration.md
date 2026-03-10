@@ -72,6 +72,30 @@ When `top_k` > 0, the **smart tool selector** embeds the task and each tool, the
 
 Values are applied to `os.environ` when not already set, so existing provider code works without code changes.
 
+### `[bus]` (v1.9+)
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `backend` | string | `"memory"` | `"memory"` (in-process) or `"redis"` (distributed). |
+| `redis_url` | string | `"redis://localhost:6379"` | Redis URL when `backend = "redis"`. |
+
+### `[nodes]` (v1.10)
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `mode` | string | `"single"` | `"single"` (one process, no Redis) or `"distributed"` (controller/workers + Redis). |
+| `role` | string | `"hybrid"` | `"controller"`, `"worker"`, or `"hybrid"` (controller + worker in one process). |
+| `run_id` | string | (none) | Shared run ID for distributed demo; optional. |
+| `rpc_port` | int | 7700 | HTTP port for RPC (health, status, snapshot, control). |
+| `rpc_token` | string | (none) | Optional token for `/snapshot` and `/control` (header `X-Hivemind-Token`). |
+| `max_workers_per_node` | int | 8 | Max concurrent tasks per worker node. |
+| `node_tags` | list[string] | [] | Capability tags (e.g. `["gpu", "high-mem"]`) for routing. |
+| `controller_url` | string | `"http://localhost:7700"` | Controller RPC URL (used by workers and CLI `node status`). |
+| `heartbeat_interval_seconds` | float | 10 | How often nodes send heartbeats. |
+| `task_claim_timeout_seconds` | int | 120 | After this, unclaimed dispatched tasks are re-queued. |
+
+See [Distributed mode](distributed.md) for multi-node setup.
+
 ### Top-level (legacy / overrides)
 
 - `events_dir` — Directory for event log files (e.g. `.hivemind/events`).
@@ -131,6 +155,9 @@ top_k = 12
 [telemetry]
 enabled = true
 save_events = true
+
+[bus]
+backend = "memory"
 
 [providers.azure]
 endpoint = "https://your-resource.openai.azure.com/"

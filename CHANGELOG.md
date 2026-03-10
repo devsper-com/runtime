@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-03-10
+
+### Added
+
+- **Full distribution system (v1.10)** — Production-grade distributed execution across multiple machines or processes: cluster membership, task-aware routing, controller HA via shared state, backpressure-aware dispatch, and partial failure recovery. Single-node mode (default) remains zero-config and behaviorally identical to v1.9.
+- **New module `hivemind/cluster/`** — `NodeInfo`, `NodeRole`, `ClusterState`; `ClusterRegistry` (Redis hash: register, heartbeat, deregister, get_workers/get_controllers); `LeaderElector` (Redis SET NX + TTL: campaign, refresh, watch); `StateBackend` ABC with `RedisStateBackend` and `FilesystemStateBackend`; `TaskRouter` (memory/tool/load affinity, version check); `InMemoryRegistry` and `LocalLeaderElector` for single-node.
+- **Controller node** — `hivemind/nodes/controller.py`: dispatch loop, checkpoint loop, worker timeout monitor, task claim grant/reject, snapshot on completion; leader election via `elector.watch()`; subscribes to TASK_COMPLETED/FAILED/CLAIMED, NODE_HEARTBEAT/JOINED, SWARM_STATUS_REQUEST.
+- **Worker node** — `hivemind/nodes/worker.py`: claim/grant flow for TASK_READY, execute via `agent.run(request)`, heartbeat (active_tasks, cached_tools, completed_task_ids); subscribes to TASK_READY, TASK_CLAIM_GRANTED/REJECTED, SWARM_SNAPSHOT, SWARM_CONTROL (pause/resume/drain).
+- **Single-node mode** — `hivemind/nodes/single.py`: `SingleNode` and `create_single_node()` use InMemoryBus, FilesystemStateBackend, in-memory registry/elector; one process runs controller + worker; no Redis. Swarm uses single-node path when `config.nodes.mode == "single"`.
+- **RPC layer** — `hivemind/nodes/rpc.py`: FastAPI app with `/health`, `/status`, `/tasks`, `/snapshot` (token-auth), `/control`, `/stream/events`; optional `X-Hivemind-Token` for snapshot/control.
+- **New bus topics** — `task.claimed`, `task.claim_granted`, `task.claim_rejected`, `node.became_leader`, `node.lost_leadership`, `swarm.snapshot`, `swarm.status_request`, `swarm.status_response`.
+- **Config `[nodes]`** — `mode` (single | distributed), `role` (controller | worker | hybrid), `run_id` (optional, for distributed demo), `rpc_port`, `rpc_token`, `max_workers_per_node`, `node_tags`, `controller_url`, `heartbeat_interval_seconds`, `task_claim_timeout_seconds`. Config loader now merges `[bus]` and `[nodes]` from TOML.
+- **CLI: `hivemind node`** — `node start [--role] [--port] [--workers] [--tags]`, `node status [--controller-url]`, `node workers [--controller-url]`, `node drain <node_id>`, `node logs [--follow]`.
+- **Doctor** — When `nodes.mode == distributed`: checks Redis reachable, fastapi/uvicorn installed, warns if `rpc_token` unset; when single: "Running in single-node mode — no cluster checks needed."
+- **Optional dependency group `[distributed]`** — `redis>=5.0.0`, `fastapi>=0.110.0`, `uvicorn>=0.29.0`, `hiredis>=2.3.0`. Install with `pip install 'hivemind-ai[distributed]'` or `uv sync --extra distributed`.
+- **Docker Compose** — `docker-compose.yml` in project root: Redis 7 Alpine on port 6379 with healthcheck and volume.
+- **Example: distributed on one machine** — `examples/distributed/`: `controller.toml`, `worker.toml`, `run_controller.py` (plan + start controller + wait for completion), `run_worker.py` (register, run until Ctrl+C), `README.md`, `run_demo.sh`. Start Redis, then workers, then controller; shared `run_id` for cluster.
+- **Tool score store** — `get_cached_tool_names()` on `ToolScoreStore` for worker heartbeat and router tool affinity.
+- **Tests** — `tests/test_v110.py`: single-node no Redis, single-node results shape, NodeInfo roundtrip, InMemoryRegistry, LocalLeaderElector, FilesystemStateBackend, task routing (low load, version incompatible).
+- **Rust-based worker node (hivemind-worker)** — High-performance distributed worker: controller/worker logic in Rust; task claim protocol, leader election, heartbeat, RPC (axum: /health, /status, /tasks, /control, /stream/events); subprocess and PyO3 execution bridges to Python agents; Docker image at ghcr.io (linux/amd64, linux/arm64); SBOM and cosign signing.
+- **Bus schema version** — `hivemind/bus/schema_version.py`: `BUS_SCHEMA_VERSION = "1.10"`; Rust worker includes in every BusMessage; Python warns on mismatch.
+- **run_agent entry point** — `python -m hivemind.agents.run_agent`: stdin AgentRequest JSON, stdout AgentResponse JSON for Rust subprocess executor.
+- **Task round-trip test** — `tests/test_cross_boundary_serialization.py`: 20 Task fixtures across Python/Rust boundary.
+- **Credential injection for Rust worker subprocess** — `hivemind.credentials.inject_into_env()`: loads API keys from keychain into `os.environ`; called at startup of `run_agent.py` so the subprocess sees `GITHUB_TOKEN` etc. without exporting env vars.
+- **Rust worker env vars** — `HIVEMIND_WORKER_MODEL` (default `mock`; set to `github:gpt-4o` etc. for real LLM), `HIVEMIND_RPC_PORT=0` for any free port (multiple workers on one host), `HIVEMIND_PYTHON_BIN` for venv Python.
+- **GitHub provider 429 retry** — Exponential backoff (1s, 2s, 4s, max 32s) for rate-limited requests; up to 3 retries before failing.
+- **GitHub provider content extraction** — Handles OpenAI-style `content` as array of `{type: "text", text: "..."}` parts.
+
+### Changed
+
+- Worker node concurrency, heartbeating, and bus I/O can run in Rust (hivemind-worker binary); Python worker remains supported.
+- Controller records task in `_pending_claims` **before** publishing TASK_READY so that when the worker replies immediately with TASK_CLAIMED, the controller finds the entry and grants the claim (fixes single-node hang).
+- Single-node `run_until_finished()` yields briefly before polling so the event loop runs leader election and dispatch; `LocalLeaderElector.watch()` uses a 0.5s refresh interval for single-node.
+- `RedisBus` exposes `redis_client` for cluster registry, election, and state backend.
+- **Doctor:** Fixed `UnboundLocalError` for `os` when `[knowledge]` block is present (removed redundant `import os` inside `run_doctor()`).
+- **Snapshot restore** — Controller only restores snapshot when task IDs match the current plan; discards stale snapshots from prior runs (e.g. new prompt) so new jobs run correctly.
+- **Controller empty result** — When `TASK_COMPLETED` has empty result but `error` set, stores `(Error: ...)` so user sees the failure (e.g. 429, missing token).
+- **run_agent** — `agent.run()` is sync; removed incorrect `asyncio.run(agent.run(request))` that raised "coroutine was expected".
+- **Example controller** — `task_claim_timeout_seconds = 180` for slow LLM responses; progress message notes LLM latency.
+- **Rust worker** — Logs `worker_model` at startup; logs `result_len` and warns on empty result with error.
+
+### Migration
+
+- **Single-node users:** No changes required.
+- **Distributed users:** Optionally replace Python worker processes with the `hivemind-worker` Rust binary or Docker image for better performance. See `worker/README.md` and `docs/distributed.md`.
+
 ## [1.9.0] - 2026-03-09
 
 ### Added

@@ -29,6 +29,8 @@ from hivemind.memory.memory_index import MemoryIndex
 def get_worker_model() -> str:
     if os.environ.get("HIVEMIND_WORKER_MODEL"):
         return os.environ["HIVEMIND_WORKER_MODEL"]
+    if os.environ.get("GITHUB_TOKEN"):
+        return "github:gpt-4o"
     if os.environ.get("OPENAI_API_KEY"):
         return "gpt-4o-mini"
     if os.environ.get("ANTHROPIC_API_KEY"):

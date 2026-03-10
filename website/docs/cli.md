@@ -45,6 +45,14 @@ hivemind doctor
 
 ---
 
+### `hivemind node` (v1.10, distributed)
+
+Commands for distributed mode: start a node, query controller status, list workers, drain a worker, stream events.
+
+**Subcommands:** `node start [--role] [--port] [--workers] [--tags]`, `node status [--controller-url]`, `node workers [--controller-url]`, `node drain <node_id>`, `node logs [--follow]`. See [Distributed mode](/docs/distributed).
+
+---
+
 ### `hivemind run "task description"`
 
 Runs the swarm with the given task. The swarm plans subtasks, runs them with agents (with tools and memory if configured), and prints results.

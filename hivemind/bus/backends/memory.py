@@ -45,6 +45,7 @@ class InMemoryBus(BusBackend):
         self,
         topic: str,
         handler: Callable[[BusMessage], Awaitable[None]],
+        run_id: str | None = None,
     ) -> None:
         if topic not in self._handlers:
             self._handlers[topic] = []

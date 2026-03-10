@@ -30,6 +30,7 @@ class TaskRouter:
     def __init__(self, controller_version: str = "1.9.0") -> None:
         self._controller_version = controller_version
         self._ctrl_major, self._ctrl_minor = _parse_version(controller_version)
+        self._round_robin_index: int = 0  # spread tasks when scores tie
 
     def route(
         self,
@@ -37,17 +38,23 @@ class TaskRouter:
         workers: list[NodeInfo],
         worker_stats: dict[str, dict],
     ) -> NodeInfo | None:
-        """Score all workers; return highest-scored; None if none available or version incompatible."""
+        """Score all workers; return highest-scored; when scores tie, round-robin so tasks spread."""
         if not workers:
             return None
-        best: tuple[float, NodeInfo] = (-1.0, workers[0])
-        for w in workers:
-            if not self._version_compatible(w):
-                continue
-            score = self._score(task, w, worker_stats.get(w.node_id, {}))
-            if score > best[0]:
-                best = (score, w)
-        return best[1] if best[0] >= 0 else None
+        eligible = [w for w in workers if self._version_compatible(w)]
+        if not eligible:
+            return None
+        scored = [(self._score(task, w, worker_stats.get(w.node_id, {})), w) for w in eligible]
+        best_score = max(s[0] for s in scored)
+        if best_score < 0:
+            return None
+        # Treat scores within 1e-6 as tied so we round-robin and spread (avoids one worker getting all + 429)
+        eps = 1e-6
+        tied = [w for s, w in scored if abs(s - best_score) <= eps]
+        # Round-robin among tied workers so multiple tasks go to different workers
+        idx = self._round_robin_index % len(tied)
+        self._round_robin_index += 1
+        return tied[idx]
 
     def _version_compatible(self, worker: NodeInfo) -> bool:
         maj, min_ = _parse_version(worker.version)

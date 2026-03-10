@@ -49,3 +49,6 @@ Thumbs.db
 tmp
 
 node_modules
+
+# Rust (worker crate)
+worker/target/

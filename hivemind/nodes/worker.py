@@ -172,11 +172,11 @@ class WorkerNode:
 
     async def start(self) -> None:
         await self.registry.register(self.node_info)
-        await self.bus.subscribe(TASK_READY, self._on_task_ready)
-        await self.bus.subscribe(TASK_CLAIM_GRANTED, self._on_claim_granted)
-        await self.bus.subscribe(TASK_CLAIM_REJECTED, self._on_claim_rejected)
-        await self.bus.subscribe(SWARM_SNAPSHOT, self._on_snapshot)
-        await self.bus.subscribe(SWARM_CONTROL, self._on_control)
+        await self.bus.subscribe(TASK_READY, self._on_task_ready, run_id=self._run_id)
+        await self.bus.subscribe(TASK_CLAIM_GRANTED, self._on_claim_granted, run_id=self._run_id)
+        await self.bus.subscribe(TASK_CLAIM_REJECTED, self._on_claim_rejected, run_id=self._run_id)
+        await self.bus.subscribe(SWARM_SNAPSHOT, self._on_snapshot, run_id=self._run_id)
+        await self.bus.subscribe(SWARM_CONTROL, self._on_control, run_id=self._run_id)
         asyncio.create_task(self.heartbeat_loop())
         await self.bus.publish(
             create_bus_message(
@@ -200,6 +200,8 @@ class WorkerNode:
             task = Task.from_dict(payload)
         except Exception:
             return
+        task_id_short = (task.id or "?")[:12]
+        log.info("Worker %s received TASK_READY for %s", self.node_id[:8], task_id_short)
         self._pending_grants[task.id] = asyncio.Event()
         await self.bus.publish(
             create_bus_message(
@@ -209,15 +211,21 @@ class WorkerNode:
                 run_id=self._run_id,
             )
         )
+        grant_wait = 15.0
+        nodes_cfg = getattr(self.config, "nodes", None)
+        if nodes_cfg:
+            grant_wait = getattr(nodes_cfg, "claim_grant_wait_seconds", 15.0)
         try:
-            await asyncio.wait_for(self._pending_grants[task.id].wait(), timeout=2.0)
+            await asyncio.wait_for(self._pending_grants[task.id].wait(), timeout=grant_wait)
         except asyncio.TimeoutError:
+            log.warning("Worker %s did not receive TASK_CLAIM_GRANTED for %s within %.0fs", self.node_id[:8], task_id_short, grant_wait)
             self._pending_grants.pop(task.id, None)
             return
         if task.id not in self._pending_grants:
             return
         self._pending_grants.pop(task.id, None)
         self._active_tasks += 1
+        log.info("Worker %s executing task %s", self.node_id[:8], task_id_short)
         asyncio.create_task(self._execute_task(task))
 
     async def _on_claim_granted(self, msg: object) -> None:
@@ -239,6 +247,7 @@ class WorkerNode:
     async def _execute_task(self, task: Task) -> None:
         self._current_tasks[task.id] = task
         start = time.monotonic()
+        task_id_short = (task.id or "?")[:12]
         try:
             prefetch = self.prefetcher.consume(task.id) if self.prefetcher else None
             request = _build_agent_request(
@@ -260,13 +269,24 @@ class WorkerNode:
                     system_prompt=request.system_prompt,
                     prefetch_used=request.prefetch_used,
                 )
-            response = await asyncio.to_thread(agent.run, request)
+            exec_timeout = 90
+            nodes_cfg = getattr(self.config, "nodes", None)
+            if nodes_cfg:
+                exec_timeout = getattr(nodes_cfg, "task_execution_timeout_seconds", 90)
+            if exec_timeout > 0:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(agent.run, request),
+                    timeout=float(exec_timeout),
+                )
+            else:
+                response = await asyncio.to_thread(agent.run, request)
             self._task_durations.append(time.monotonic() - start)
             if len(self._task_durations) > 10:
                 self._task_durations.pop(0)
             self._last_completed_ids.append(task.id)
             if len(self._last_completed_ids) > 50:
                 self._last_completed_ids.pop(0)
+            log.info("Worker %s completed task %s (%.1fs)", self.node_id[:8], task_id_short, time.monotonic() - start)
             await self.bus.publish(
                 create_bus_message(
                     topic=TASK_COMPLETED,
@@ -275,7 +295,24 @@ class WorkerNode:
                     run_id=self._run_id,
                 )
             )
+        except asyncio.TimeoutError:
+            err_msg = f"Execution timeout after {exec_timeout}s"
+            log.warning("Worker %s failed task %s: %s", self.node_id[:8], task_id_short, err_msg)
+            await self.bus.publish(
+                create_bus_message(
+                    topic=TASK_FAILED,
+                    payload={
+                        "task_id": task.id,
+                        "error": err_msg,
+                        "error_type": "TimeoutError",
+                        "worker_id": self.node_id,
+                    },
+                    sender_id=self.node_id,
+                    run_id=self._run_id,
+                )
+            )
         except Exception as e:
+            log.warning("Worker %s failed task %s: %s", self.node_id[:8], task_id_short, e)
             await self.bus.publish(
                 create_bus_message(
                     topic=TASK_FAILED,

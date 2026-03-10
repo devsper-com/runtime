@@ -148,7 +148,7 @@ Run `hivemind --help` or `hivemind <command> --help` for examples and options.
 - **Critic & agent messaging (v1.7)** — Optional second-pass critic scores results and requests one retry; per-run message bus lets agents share discoveries via `BROADCAST:`
 - **Speculative pre-fetching (v1.7)** — Pre-warm memory and tools for successor tasks while others run; reduces standing-up time
 - **Plugin ecosystem** — Discover tools via entry_points (`hivemind.plugins`)
-- **Provider routing** — OpenAI, Anthropic, Azure, Gemini, **GitHub Models (Copilot)** (`provider:model` or model name)
+- **Provider routing** — OpenAI, Anthropic, Azure, Gemini, **GitHub Models (Copilot)** (`provider:model` or model name); **429 retry with backoff** for GitHub rate limits
 - **Automatic model routing** — `planner = "auto"` and `worker = "auto"` for cost/latency/quality-aware selection
 - **EventLog, replay, telemetry** — Structured events for debugging and metrics
 
@@ -214,10 +214,26 @@ Env overrides: `HIVEMIND_WORKER_MODEL`, `HIVEMIND_PLANNER_MODEL`, `HIVEMIND_EVEN
 
 ---
 
+## Distributed mode (v1.10)
+
+Run a **controller** and **workers** across processes or machines. Workers can be Python or **Rust** (`hivemind-worker` binary) for higher throughput.
+
+```bash
+# Redis + workers + controller (see examples/distributed/README.md)
+docker compose up -d
+uv run python examples/distributed/run_worker.py   # or Rust: HIVEMIND_WORKER_MODEL=github:gpt-4o ./worker/target/release/hivemind-worker
+uv run python examples/distributed/run_controller.py "Your task" --parallel
+```
+
+Rust workers: set `HIVEMIND_WORKER_MODEL=github:gpt-4o` (or your model), `HIVEMIND_PYTHON_BIN=.venv/bin/python`, `HIVEMIND_RPC_PORT=0` for multiple workers on one host. Credentials load from keychain in the subprocess.
+
+---
+
 ## Examples
 
 | Workflow | Command |
 |----------|---------|
+| Distributed (v1.10) | `uv run python examples/distributed/run_controller.py "Task" --parallel` |
 | Literature review | `hivemind research papers/` or `uv run python examples/research/literature_review.py [dir]` |
 | Repository analysis | `hivemind analyze .` or `uv run python examples/coding/analyze_repository.py [path]` |
 | Dataset analysis | `uv run python examples/data_science/dataset_analysis.py [path-to.csv]` |

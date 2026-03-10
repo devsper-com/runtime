@@ -1,12 +1,21 @@
 """GitHub Models provider (GitHub Models API at models.github.ai)."""
 
 import json
+import logging
 import os
+import time
 from typing import Iterator
 
 import httpx
 
 from hivemind.providers.base import BaseProvider
+
+log = logging.getLogger(__name__)
+
+# Retry 429 (rate limit): max attempts, base delay in seconds, max delay cap
+GITHUB_429_MAX_RETRIES = 3
+GITHUB_429_BASE_DELAY = 1.0
+GITHUB_429_MAX_DELAY = 32.0
 
 # GitHub Models API (replaces deprecated models.inference.ai.azure.com)
 # Docs: https://docs.github.com/en/rest/models/inference
@@ -60,20 +69,50 @@ class GitHubProvider(BaseProvider):
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
         }
+        data = {}
         with httpx.Client(timeout=60.0) as client:
-            resp = client.post(
-                GITHUB_MODELS_CHAT_URL,
-                headers=self._headers(),
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            for attempt in range(GITHUB_429_MAX_RETRIES):
+                try:
+                    resp = client.post(
+                        GITHUB_MODELS_CHAT_URL,
+                        headers=self._headers(),
+                        json=payload,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    break
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429 and attempt < GITHUB_429_MAX_RETRIES - 1:
+                        delay = min(
+                            GITHUB_429_BASE_DELAY * (2**attempt),
+                            GITHUB_429_MAX_DELAY,
+                        )
+                        log.warning(
+                            "GitHub Models 429 rate limit, retry %s/%s in %.1fs",
+                            attempt + 1,
+                            GITHUB_429_MAX_RETRIES,
+                            delay,
+                        )
+                        time.sleep(delay)
+                    else:
+                        raise
         choices = data.get("choices") or []
         if not choices:
             return ""
         msg = choices[0].get("message") or {}
         content = msg.get("content")
-        return content if isinstance(content, str) else str(content or "")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            # OpenAI-style content parts: [{"type": "text", "text": "..."}]
+            parts = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    t = part.get("text")
+                    if isinstance(t, str):
+                        parts.append(t)
+            return "\n".join(parts) if parts else ""
+        return str(content or "") if content is not None else ""
 
     def _generate_stream(self, model: str, prompt: str) -> Iterator[str]:
         payload = {
@@ -83,27 +122,45 @@ class GitHubProvider(BaseProvider):
             "stream": True,
         }
         with httpx.Client(timeout=60.0) as client:
-            with client.stream(
-                "POST",
-                GITHUB_MODELS_CHAT_URL,
-                headers=self._headers(),
-                json=payload,
-            ) as resp:
-                resp.raise_for_status()
-                for line in resp.iter_lines():
-                    if not line or not line.strip():
-                        continue
-                    if line.startswith("data: "):
-                        chunk = line[6:].strip()
-                        if chunk == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(chunk)
-                            choices = data.get("choices") or []
-                            if choices:
-                                delta = choices[0].get("delta") or {}
-                                part = delta.get("content")
-                                if part:
-                                    yield part
-                        except Exception:
-                            pass
+            for attempt in range(GITHUB_429_MAX_RETRIES):
+                try:
+                    with client.stream(
+                        "POST",
+                        GITHUB_MODELS_CHAT_URL,
+                        headers=self._headers(),
+                        json=payload,
+                    ) as resp:
+                        resp.raise_for_status()
+                        for line in resp.iter_lines():
+                            if not line or not line.strip():
+                                continue
+                            if line.startswith("data: "):
+                                chunk = line[6:].strip()
+                                if chunk == "[DONE]":
+                                    return
+                                try:
+                                    data = json.loads(chunk)
+                                    choices = data.get("choices") or []
+                                    if choices:
+                                        delta = choices[0].get("delta") or {}
+                                        part = delta.get("content")
+                                        if part:
+                                            yield part
+                                except Exception:
+                                    pass
+                    return
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429 and attempt < GITHUB_429_MAX_RETRIES - 1:
+                        delay = min(
+                            GITHUB_429_BASE_DELAY * (2**attempt),
+                            GITHUB_429_MAX_DELAY,
+                        )
+                        log.warning(
+                            "GitHub Models 429 rate limit (stream), retry %s/%s in %.1fs",
+                            attempt + 1,
+                            GITHUB_429_MAX_RETRIES,
+                            delay,
+                        )
+                        time.sleep(delay)
+                    else:
+                        raise

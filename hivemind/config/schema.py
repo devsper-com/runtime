@@ -89,6 +89,7 @@ class NodesConfig(BaseModel):
     """v1.10: distributed node mode and RPC."""
     mode: Literal["single", "distributed"] = "single"
     role: Literal["controller", "worker", "hybrid"] = "hybrid"
+    run_id: str | None = None  # shared run_id for distributed demo; None = generate (controller) or env (worker)
     rpc_port: int = 7700
     rpc_token: str | None = None
     max_workers_per_node: int = 8
@@ -96,6 +97,9 @@ class NodesConfig(BaseModel):
     controller_url: str = "http://localhost:7700"
     heartbeat_interval_seconds: float = 10.0
     task_claim_timeout_seconds: int = 120
+    deregister_stale_workers: bool = False  # if False, workers are never removed from registry (only in-memory stats cleared)
+    claim_grant_wait_seconds: float = 15.0  # worker: max wait for TASK_CLAIM_GRANTED after claiming
+    task_execution_timeout_seconds: int = 90  # worker: fail task if agent.run exceeds this (0 = no limit)
 
 
 class HivemindConfigModel(BaseModel):

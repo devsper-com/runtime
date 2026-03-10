@@ -1,11 +1,14 @@
 """Redis pub/sub bus backend."""
 
 import asyncio
+import logging
 from typing import Awaitable, Callable
 
 from hivemind.bus.message import BusMessage
 from hivemind.bus.backends.base import BusBackend
 from hivemind.types.exceptions import BusConnectionError
+
+log = logging.getLogger(__name__)
 
 
 class RedisBus(BusBackend):
@@ -72,22 +75,31 @@ class RedisBus(BusBackend):
             self._sub = None
         self._handlers.clear()
 
+    def _channel(self, topic: str, run_id: str | None = None) -> str:
+        """Redis channel: topic:run_id when run_id is set, else topic (all runs)."""
+        if run_id and run_id.strip():
+            return f"{topic}:{run_id}"
+        return topic
+
     async def publish(self, message: BusMessage) -> None:
         if self._pub is None:
             raise BusConnectionError("Redis bus not started. Call start() first.")
-        await self._pub.publish(message.topic, message.to_json())
+        channel = self._channel(message.topic, getattr(message, "run_id", None))
+        await self._pub.publish(channel, message.to_json())
 
     async def subscribe(
         self,
         topic: str,
         handler: Callable[[BusMessage], Awaitable[None]],
+        run_id: str | None = None,
     ) -> None:
         if self._pubsub is None:
             raise BusConnectionError("Redis bus not started. Call start() first.")
-        if topic not in self._handlers:
-            self._handlers[topic] = []
-            await self._pubsub.subscribe(topic)
-        self._handlers[topic].append(handler)
+        channel = self._channel(topic, run_id)
+        if channel not in self._handlers:
+            self._handlers[channel] = []
+            await self._pubsub.subscribe(channel)
+        self._handlers[channel].append(handler)
         if self._listen_task is None or self._listen_task.done():
             self._listen_task = asyncio.create_task(self._listen())
 
@@ -108,7 +120,17 @@ class RedisBus(BusBackend):
                         try:
                             msg = BusMessage.from_json(payload)
                             for h in self._handlers.get(channel, []):
-                                await h(msg)
+                                task = asyncio.create_task(h(msg))
+
+                                def _done(t):
+                                    try:
+                                        t.result()
+                                    except asyncio.CancelledError:
+                                        pass
+                                    except Exception as e:
+                                        log.warning("Bus handler failed: %s", e, exc_info=True)
+
+                                task.add_done_callback(_done)
                         except Exception:
                             pass
             except asyncio.CancelledError:
@@ -117,7 +139,8 @@ class RedisBus(BusBackend):
                 if self._running:
                     await asyncio.sleep(0.5)
 
-    async def unsubscribe(self, topic: str) -> None:
-        if self._pubsub is not None and topic in self._handlers:
-            await self._pubsub.unsubscribe(topic)
-        self._handlers.pop(topic, None)
+    async def unsubscribe(self, topic: str, run_id: str | None = None) -> None:
+        channel = self._channel(topic, run_id)
+        if self._pubsub is not None and channel in self._handlers:
+            await self._pubsub.unsubscribe(channel)
+        self._handlers.pop(channel, None)

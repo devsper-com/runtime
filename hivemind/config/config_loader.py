@@ -94,6 +94,10 @@ def normalize_toml_to_flat(data: dict) -> dict:
         result["telemetry"] = data["telemetry"]
     if "cache" in data and isinstance(data["cache"], dict):
         result["cache"] = data["cache"]
+    if "bus" in data and isinstance(data["bus"], dict):
+        result["bus"] = data["bus"]
+    if "nodes" in data and isinstance(data["nodes"], dict):
+        result["nodes"] = data["nodes"]
     if "providers" in data and isinstance(data["providers"], dict):
         result["providers"] = data["providers"]
     return result

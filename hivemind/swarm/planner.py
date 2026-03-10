@@ -64,6 +64,7 @@ class Planner:
         knowledge_graph=None,
         guide_planning: bool = False,
         min_confidence: float = 0.30,
+        parallel: bool = False,
     ):
         self.model_name = model_name
         self.event_log = event_log or EventLog()
@@ -72,6 +73,7 @@ class Planner:
         self.knowledge_graph = knowledge_graph
         self.guide_planning = guide_planning
         self.min_confidence = min_confidence
+        self.parallel = parallel
 
     def plan(self, task: Task) -> list[Task]:
         """Break task into subtasks (strategy DAG or LLM). Emit planner lifecycle events."""
@@ -83,6 +85,8 @@ class Planner:
                 for st in subtasks:
                     if getattr(st, "role", None) is None:
                         st.role = infer_role_from_description(st.description or "")
+                    if self.parallel:
+                        st.dependencies = []
                     self._emit(events.TASK_CREATED, {"task_id": st.id, "description": st.description})
                 self._emit(events.PLANNER_FINISHED, {"task_id": task.id, "subtask_count": len(subtasks)})
                 return subtasks
@@ -111,7 +115,7 @@ class Planner:
         for i, description in enumerate(steps, start=1):
             task_id = _short_id()
             task_ids.append(task_id)
-            deps = [task_ids[i - 2]] if i > 1 else []
+            deps = [] if self.parallel else ([task_ids[i - 2]] if i > 1 else [])
             role = infer_role_from_description(description.strip())
             subtask = Task(id=task_id, description=description.strip(), dependencies=deps, role=role)
             subtasks.append(subtask)

@@ -58,7 +58,7 @@ class AgentResponse:
     def to_dict(self) -> dict:
         return {
             "task_id": self.task_id,
-            "result": self.result,
+            "result": self.result if self.result is not None else "",
             "tools_called": list(self.tools_called),
             "broadcasts": list(self.broadcasts),
             "tokens_used": self.tokens_used,

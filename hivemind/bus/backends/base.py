@@ -17,8 +17,9 @@ class BusBackend(ABC):
         self,
         topic: str,
         handler: Callable[[BusMessage], Awaitable[None]],
+        run_id: str | None = None,
     ) -> None:
-        """Subscribe to a topic (supports wildcards like task.*)."""
+        """Subscribe to a topic (supports wildcards like task.*). run_id scopes channel when set (Redis)."""
         ...
 
     @abstractmethod

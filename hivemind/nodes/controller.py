@@ -113,15 +113,16 @@ class ControllerNode:
         self._worker_stats: dict[str, dict] = {}
         self._leader_tasks: list[asyncio.Task] = []
         self._started_at = time.monotonic()
+        self._last_no_workers_log: float = 0.0
 
     async def start(self) -> None:
         await self.registry.register(self.node_info)
-        await self.bus.subscribe(TASK_COMPLETED, self._on_task_completed)
-        await self.bus.subscribe(TASK_FAILED, self._on_task_failed)
-        await self.bus.subscribe(TASK_CLAIMED, self._on_task_claimed)
-        await self.bus.subscribe(NODE_HEARTBEAT, self._on_heartbeat)
-        await self.bus.subscribe(NODE_JOINED, self._on_node_joined)
-        await self.bus.subscribe(SWARM_STATUS_REQUEST, self._on_status_request)
+        await self.bus.subscribe(TASK_COMPLETED, self._on_task_completed, run_id=self.run_id)
+        await self.bus.subscribe(TASK_FAILED, self._on_task_failed, run_id=self.run_id)
+        await self.bus.subscribe(TASK_CLAIMED, self._on_task_claimed, run_id=self.run_id)
+        await self.bus.subscribe(NODE_HEARTBEAT, self._on_heartbeat, run_id=self.run_id)
+        await self.bus.subscribe(NODE_JOINED, self._on_node_joined, run_id=self.run_id)
+        await self.bus.subscribe(SWARM_STATUS_REQUEST, self._on_status_request, run_id=self.run_id)
         asyncio.create_task(self._registry_heartbeat_loop())
         asyncio.create_task(
             self.elector.watch(
@@ -148,13 +149,21 @@ class ControllerNode:
 
     async def _become_leader(self) -> None:
         self._is_leader = True
+        current_ids = {t.id for t in self.scheduler.get_all_tasks()}
         snapshot = await self.state_backend.load_snapshot(self.run_id)
         if snapshot:
-            self.scheduler = Scheduler.restore(snapshot)
-            log.info(
-                "Restored scheduler from snapshot: %s tasks already done",
-                snapshot.get("completed_count", 0),
-            )
+            snapshot_ids = {
+                t.get("id") for t in snapshot.get("tasks", []) if t.get("id")
+            }
+            if snapshot_ids == current_ids:
+                self.scheduler = Scheduler.restore(snapshot)
+                log.info(
+                    "Restored scheduler from snapshot: %s tasks already done",
+                    snapshot.get("completed_count", 0),
+                )
+            else:
+                # Stale snapshot from a different run (e.g. new prompt); discard it
+                await self.state_backend.delete_snapshot(self.run_id)
         self._leader_tasks = [
             asyncio.create_task(self.dispatch_loop()),
             asyncio.create_task(self.checkpoint_loop()),
@@ -193,11 +202,21 @@ class ControllerNode:
         nodes_cfg = getattr(self.config, "nodes", None)
         if nodes_cfg:
             timeout_sec = getattr(nodes_cfg, "task_claim_timeout_seconds", 120)
+        _waited_for_workers = False
         while not self.scheduler.is_finished():
             if not self._is_leader:
                 break
             ready = self.scheduler.get_ready_tasks()
             workers = await self.registry.get_workers()
+            # Give workers time to register before first dispatch so we spread across all (avoid 429)
+            if ready and not _waited_for_workers:
+                if len(workers) < 2:
+                    for _ in range(10):
+                        await asyncio.sleep(0.25)
+                        workers = await self.registry.get_workers()
+                        if len(workers) >= 2:
+                            break
+                _waited_for_workers = True
             now_ts = time.monotonic()
             for task in ready:
                 if task.id in self._pending_claims:
@@ -208,6 +227,9 @@ class ControllerNode:
                     continue
                 worker = self.router.route(task, workers, self._worker_stats)
                 if worker is None:
+                    if not workers and (now_ts - self._last_no_workers_log) >= 10.0:
+                        log.warning("No workers in registry; start workers first (run_worker.py).")
+                        self._last_no_workers_log = now_ts
                     continue
                 # Add before publish so _on_task_claimed sees the entry when worker replies immediately
                 self._pending_claims[task.id] = {
@@ -215,6 +237,7 @@ class ControllerNode:
                     "target_worker": worker.node_id,
                     "claimed": False,
                 }
+                log.info("Dispatched task %s to worker %s", task.id[:8], worker.node_id[:8])
                 await self.bus.publish(
                     create_bus_message(
                         topic=TASK_READY,
@@ -256,6 +279,7 @@ class ControllerNode:
             return
         pending["claimed"] = True
         pending["worker_id"] = worker_id
+        log.info("Worker %s claimed task %s", worker_id[:8], task_id[:8])
         await self.bus.publish(
             create_bus_message(
                 topic=TASK_CLAIM_GRANTED,
@@ -270,9 +294,25 @@ class ControllerNode:
         sender_id = getattr(msg, "sender_id", "")
         try:
             response = AgentResponse.from_dict(payload)
-        except Exception:
+        except Exception as e:
+            log.warning("TASK_COMPLETED parse failed: %s (payload keys: %s)", e, list(payload.keys()) if isinstance(payload, dict) else type(payload))
             return
-        self.scheduler.mark_completed(response.task_id, response.result)
+        result_text = (response.result or "").strip()
+        if not result_text and getattr(response, "error", None):
+            result_text = f"(Error: {response.error})"
+            log.warning(
+                "TASK_COMPLETED empty result for task_id=%s from %s: %s",
+                response.task_id[:12] if response.task_id else "",
+                sender_id[:8] if sender_id else "",
+                response.error[:80] if response.error else "",
+            )
+        elif not result_text:
+            log.warning(
+                "TASK_COMPLETED empty result for task_id=%s from %s (set HIVEMIND_WORKER_MODEL on Rust workers to match controller worker model, e.g. github:gpt-4o)",
+                response.task_id[:12] if response.task_id else "",
+                sender_id[:8] if sender_id else "",
+            )
+        self.scheduler.mark_completed(response.task_id, result_text or (response.result or ""))
         self._pending_claims.pop(response.task_id, None)
         if sender_id and sender_id not in self._worker_stats:
             self._worker_stats[sender_id] = {}
@@ -353,10 +393,12 @@ class ControllerNode:
                 for task_id in lost_tasks:
                     del self._pending_claims[task_id]
                 del self._worker_stats[worker_id]
-                try:
-                    await self.registry.deregister(worker_id)
-                except Exception:
-                    pass
+                nodes_cfg = getattr(self.config, "nodes", None)
+                if nodes_cfg and getattr(nodes_cfg, "deregister_stale_workers", False):
+                    try:
+                        await self.registry.deregister(worker_id)
+                    except Exception:
+                        pass
                 await self.bus.publish(
                     create_bus_message(
                         topic=NODE_LEFT,

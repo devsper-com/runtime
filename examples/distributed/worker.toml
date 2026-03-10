@@ -1,0 +1,20 @@
+# Worker node for distributed mode (v1.10).
+# Use with: uv run python examples/distributed/run_worker.py
+# Run one or more workers; same run_id as controller (run_id = "distributed-demo").
+
+# Workers stay in registry (controller does not deregister on heartbeat timeout)
+[nodes]
+mode = "distributed"
+role = "worker"
+run_id = "distributed-demo"
+rpc_port = 7701
+max_workers_per_node = 4
+node_tags = ["default"]
+
+[bus]
+backend = "redis"
+redis_url = "redis://localhost:6379"
+
+# GitHub provider: set GITHUB_TOKEN in env or use hivemind credentials set github token
+[models]
+worker = "github:gpt-4o"

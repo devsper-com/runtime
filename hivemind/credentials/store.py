@@ -1,8 +1,25 @@
 """Credential store: OS keychain (keyring) only."""
 
+import os
 import logging
 
 logger = logging.getLogger(__name__)
+
+# (provider, key) -> env var name; used to inject keychain into env for providers (e.g. run_agent subprocess).
+_PROVIDER_KEY_TO_ENV: list[tuple[str, str, str]] = [
+    ("openai", "api_key", "OPENAI_API_KEY"),
+    ("anthropic", "api_key", "ANTHROPIC_API_KEY"),
+    ("github", "token", "GITHUB_TOKEN"),
+    ("gemini", "api_key", "GEMINI_API_KEY"),
+    ("gemini", "api_key", "GOOGLE_API_KEY"),
+    ("azure", "api_key", "AZURE_OPENAI_API_KEY"),
+    ("azure", "endpoint", "AZURE_OPENAI_ENDPOINT"),
+    ("azure", "deployment", "AZURE_OPENAI_DEPLOYMENT_NAME"),
+    ("azure", "api_version", "AZURE_OPENAI_API_VERSION"),
+    ("azure_anthropic", "api_key", "AZURE_ANTHROPIC_API_KEY"),
+    ("azure_anthropic", "endpoint", "AZURE_ANTHROPIC_ENDPOINT"),
+    ("azure_anthropic", "deployment", "AZURE_ANTHROPIC_DEPLOYMENT_NAME"),
+]
 
 SERVICE_NAME = "hivemind"
 
@@ -113,3 +130,13 @@ def delete_credential(provider: str, key: str) -> None:
 def list_credentials() -> list[dict]:
     """List stored credentials (provider, key, source). Never returns values."""
     return _get_store().list_all()
+
+
+def inject_into_env() -> None:
+    """Set os.environ from keychain for each provider key that is not already set.
+    Call this at process startup (e.g. run_agent subprocess) so providers see credentials."""
+    for provider, key, env_var in _PROVIDER_KEY_TO_ENV:
+        if not os.environ.get(env_var):
+            val = get_credential(provider, key)
+            if val:
+                os.environ[env_var] = val

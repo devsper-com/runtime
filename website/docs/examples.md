@@ -2,6 +2,19 @@
 
 Example workflows are under **`examples/`**. Run them from the **project root** so paths and `PYTHONPATH` resolve correctly. Outputs go to **`examples/output/`** unless overridden.
 
+## Distributed mode (v1.10, multi-node on one machine)
+
+**Goal:** Run a controller and one or more workers using Redis (e.g. for testing v1.10 or scaling).
+
+**Prerequisites:** Redis (e.g. `docker compose up -d`), optional deps: `uv sync --extra distributed`.
+
+1. Start workers: `uv run python examples/distributed/run_worker.py` — or use the **Rust worker** (`HIVEMIND_WORKER_MODEL=github:gpt-4o`, `HIVEMIND_PYTHON_BIN=.venv/bin/python`, `HIVEMIND_RPC_PORT=0`) for higher throughput.
+2. Submit a job: `uv run python examples/distributed/run_controller.py "Summarize swarm intelligence in one sentence."` — use `--parallel` to spread tasks across workers.
+
+Configs: `examples/distributed/controller.toml`, `examples/distributed/worker.toml`. See [Distributed mode](/docs/distributed).
+
+---
+
 ## Research pipeline (literature review)
 
 **Goal:** Turn a directory of papers (PDF/DOCX) into a structured literature review (e.g. topic extraction, citation graph, swarm synthesis).

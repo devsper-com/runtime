@@ -12,5 +12,6 @@ Orchestrate multi-agent systems with a swarm execution model: tasks → DAG → 
 - [**Configuration**](configuration.md) — TOML config, env vars, and schema
 - [**CLI**](cli.md) — Commands, credentials, and workflows
 - [**Examples**](examples.md) — Example usage and patterns
+- [**Distributed mode**](distributed.md) — Multi-node (controller + workers) with Redis (v1.10)
 
 Install from PyPI: **`pip install hivemind-ai`** · CLI: **`hivemind`**

@@ -45,6 +45,30 @@ hivemind doctor
 
 ---
 
+### `hivemind node` (v1.10, distributed)
+
+Commands for distributed mode: start a node, query controller status, list workers, drain a worker, stream events.
+
+**Subcommands:**
+
+- **`hivemind node start [--role controller|worker|hybrid] [--port N] [--workers N] [--tags tag1,tag2]`** — Start a node in the foreground. Role and settings are typically set in TOML (`[nodes] mode = "distributed"`, `role`, `rpc_port`, etc.). Prints guidance if config is not set.
+- **`hivemind node status [--controller-url URL]`** — GET controller `/status`; prints run ID, leader, task counts, workers. Default URL from config `nodes.controller_url`.
+- **`hivemind node workers [--controller-url URL]`** — List workers from controller status (node ID, host, RPC URL).
+- **`hivemind node drain <node_id> [--controller-url URL]`** — POST `/control` with `command: drain`, `target: <node_id>` so that worker stops accepting new tasks (finish in-flight then idle).
+- **`hivemind node logs [--follow] [--controller-url URL]`** — Stream events from controller SSE endpoint.
+
+**Examples:**
+
+```bash
+hivemind node status
+hivemind node workers --controller-url http://my-controller:7700
+hivemind node drain abc12345
+```
+
+Requires controller and workers to be running with RPC enabled. See [Distributed mode](distributed.md).
+
+---
+
 ### `hivemind run "task description"`
 
 Runs the swarm with the given task. The swarm plans subtasks, runs them with agents (with tools and memory if configured), and prints results.
