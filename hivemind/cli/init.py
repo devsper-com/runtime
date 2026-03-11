@@ -421,6 +421,8 @@ def run_doctor() -> int:
     issues: list[str] = []
     ok: list[str] = []
     warnings: list[str] = []
+    mcp_ok: list[str] = []
+    mcp_warnings: list[str] = []
 
     if os.environ.get("GITHUB_TOKEN"):
         ok.append("GITHUB_TOKEN is set")
@@ -520,9 +522,11 @@ def run_doctor() -> int:
             try:
                 from hivemind.tools.mcp import discover_mcp_tools
                 adapters = discover_mcp_tools(s)
-                ok.append(f"MCP server '{sname}': {len(adapters)} tools")
+                mcp_ok.append(f"  {sname}: {len(adapters)} tools")
             except Exception as e:
-                warnings.append(f"MCP server '{sname}': {e}")
+                mcp_warnings.append(f"  {sname}: {e}")
+        if not mcp_servers:
+            mcp_ok.append("  (none configured — add [[mcp.servers]] to hivemind.toml)")
         a2a_agents = getattr(getattr(cfg, "a2a", None), "agents", None) or []
         for a in a2a_agents:
             aname = getattr(a, "name", "?")
@@ -596,13 +600,38 @@ def run_doctor() -> int:
     except Exception as e:
         warnings.append(f"Run history: {e}")
 
-    from rich.console import Console
-
-    console = Console()
-    for s in ok:
-        console.print(f"[green]✔[/] {s}")
-    for s in issues:
-        console.print(f"[red]✗[/] {s}", style="red")
-    for s in warnings:
-        console.print(f"[yellow]⚠[/] {s}", style="yellow")
+    try:
+        from hivemind.cli.ui import console, HivemindHeader, SectionHeader
+        import hivemind
+        ver = getattr(hivemind, "__version__", "?")
+        console.print(HivemindHeader(version=ver))
+        console.print(SectionHeader("Health check"))
+        for s in ok:
+            console.print(f"  [hive.success]✓[/]  {s}")
+        for s in issues:
+            console.print(f"  [hive.error]✗[/]  {s}")
+        for s in warnings:
+            console.print(f"  [hive.warning]⚠[/]  {s}")
+        console.print(SectionHeader("MCP Servers"))
+        for s in mcp_ok:
+            console.print(f"  [hive.success]✓[/]  {s}")
+        for s in mcp_warnings:
+            console.print(f"  [hive.warning]⚠[/]  {s}")
+        if warnings or issues:
+            console.print()
+            console.print(f"  [hive.muted]{len(warnings)} warnings  ·  {len(issues)} errors[/]")
+    except ImportError:
+        from rich.console import Console
+        c = Console()
+        for s in ok:
+            c.print(f"[green]✔[/] {s}")
+        for s in issues:
+            c.print(f"[red]✗[/] {s}", style="red")
+        for s in warnings:
+            c.print(f"[yellow]⚠[/] {s}", style="yellow")
+        c.print("\nMCP Servers:")
+        for s in mcp_ok:
+            c.print(f"  [green]✔[/] {s}")
+        for s in mcp_warnings:
+            c.print(f"  [yellow]⚠[/] {s}", style="yellow")
     return 0 if not issues else 1

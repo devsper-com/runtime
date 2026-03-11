@@ -105,4 +105,17 @@ def normalize_toml_to_flat(data: dict) -> dict:
         result["mcp"] = data["mcp"]
     if "a2a" in data and isinstance(data["a2a"], dict):
         result["a2a"] = data["a2a"]
+    # v2.1: hitl and [[hitl.policies]]
+    if "hitl" in data and isinstance(data["hitl"], dict):
+        result["hitl"] = dict(data["hitl"])
+        policies = data["hitl"].get("policies")
+        if isinstance(policies, list):
+            result["hitl"]["policies"] = []
+            for p in policies:
+                if isinstance(p, dict):
+                    pol = dict(p)
+                    triggers = p.get("triggers")
+                    if isinstance(triggers, list):
+                        pol["triggers"] = [t if isinstance(t, dict) else {"type": "confidence_below", "threshold": 0.5} for t in triggers]
+                    result["hitl"]["policies"].append(pol)
     return result

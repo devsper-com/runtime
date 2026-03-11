@@ -46,19 +46,25 @@ def _run_example(script_path: Path, *args: str) -> int:
     return subprocess.run(cmd, cwd=str(root), env=env).returncode
 
 
-def _run_swarm(task: str, quiet: bool = False) -> int:
-    """Run swarm with the given task string. If not quiet, show live progress on stderr."""
+def _run_swarm(args: object) -> int:
+    """Run swarm. Uses live view unless --quiet, --plain, or non-TTY."""
     from hivemind.config import get_config
     from hivemind.utils.event_logger import EventLog
     from hivemind.swarm.swarm import Swarm
     from hivemind.memory.memory_router import MemoryRouter
     from hivemind.memory.memory_store import get_default_store
     from hivemind.memory.memory_index import MemoryIndex
-    from hivemind.cli.run_progress import read_run_status
+
+    task = getattr(args, "task", "Summarize swarm intelligence in one paragraph.")
+    quiet = getattr(args, "quiet", False)
+    summary_only = getattr(args, "summary", False)
+    json_output = getattr(args, "json_output", False)
+    plain = getattr(args, "plain", False) or not sys.stdout.isatty()
+    use_live_view = not quiet and not plain and sys.stdout.isatty()
 
     cfg = get_config()
     event_log = EventLog(events_folder_path=cfg.events_dir)
-    log_path = event_log.log_path
+    log_path = getattr(event_log, "log_path", None)
     memory_router = MemoryRouter(
         store=get_default_store(),
         index=MemoryIndex(get_default_store()),
@@ -74,34 +80,259 @@ def _run_swarm(task: str, quiet: bool = False) -> int:
         use_tools=True,
     )
     results_holder: list[dict] = []
+    run_id = getattr(event_log, "run_id", "") or ""
+
+    hitl_resolver = None
+    if getattr(getattr(cfg, "hitl", None), "enabled", False) and sys.stdout.isatty() and not plain:
+        from hivemind.hitl.approval import ApprovalStore
+        _store = ApprovalStore(getattr(cfg, "data_dir", ".hivemind"))
+
+        def _prompt_resolver(approval, policy):  # sync, runs in thread
+            try:
+                from hivemind.cli.ui import console
+                task_desc = (getattr(approval.task, "description", "") or "")[:60]
+                console.print()
+                console.print("[hive.warning]Approval required[/]")
+                console.print(f"  Task: {task_desc}...")
+                console.print(f"  Trigger: {getattr(approval.trigger, 'type', '?')}")
+                preview = (approval.proposed_result or "")[:200]
+                if preview:
+                    console.print(f"  Result preview: {preview}...")
+                from rich.prompt import Prompt
+                choice = Prompt.ask("Approve this result? [y/n]", choices=["y", "n"], default="y")
+                approved = choice.lower() == "y"
+                _store.resolve(approval.request_id, approved, "")
+                return approved
+            except Exception:
+                return False
+
+        hitl_resolver = _prompt_resolver
 
     def _run() -> None:
-        results_holder.append(swarm.run(task))
+        results_holder.append(swarm.run(task, hitl_resolver=hitl_resolver))
 
     thread = threading.Thread(target=_run, daemon=False)
     thread.start()
 
-    if not quiet:
-        last_status = ""
-        while thread.is_alive():
-            status, running = read_run_status(log_path, worker_count=workers)
-            line = status
-            if len(running) > 1:
-                line += f"  (parallel: {len(running)} tasks)"
-            if line != last_status:
-                print("\r  " + line.ljust(70), end="", file=sys.stderr, flush=True)
-                last_status = line
-            time.sleep(0.3)
-        print(file=sys.stderr, flush=True)
+    if use_live_view:
+        try:
+            from hivemind.cli.ui import run_live_view, print_run_summary
+            state = run_live_view(
+                log_path=log_path,
+                run_id=run_id,
+                worker_count=workers,
+                stop_check=lambda: not thread.is_alive(),
+            )
+            thread.join()
+            results = results_holder[0] if results_holder else {}
+            if json_output:
+                import json
+                out = {"run_id": state.run_id_short, "tasks": len(state.tasks), "results": results}
+                print(json.dumps(out))
+            else:
+                print_run_summary(state, results, summary_only=summary_only)
+        except Exception:
+            thread.join()
+            results = results_holder[0] if results_holder else {}
+            from hivemind.cli.ui import console
+            for task_id, result in results.items():
+                console.print(f"--- {task_id} ---")
+                console.print((result or "")[:2000])
+                if (result or "") and len(result) > 2000:
+                    console.print("...")
+    else:
+        if not quiet:
+            from hivemind.cli.run_progress import read_run_status
+            last_status = ""
+            while thread.is_alive():
+                status, running = read_run_status(log_path, worker_count=workers)
+                line = status
+                if len(running) > 1:
+                    line += f"  (parallel: {len(running)} tasks)"
+                if line != last_status:
+                    sys.stderr.write("\r  " + line.ljust(70))
+                    sys.stderr.flush()
+                    last_status = line
+                time.sleep(0.3)
+            sys.stderr.write("\n")
+            sys.stderr.flush()
+        thread.join()
+        results = results_holder[0] if results_holder else {}
+        if json_output:
+            import json
+            print(json.dumps(results))
+        else:
+            from hivemind.cli.ui import console
+            for task_id, result in results.items():
+                console.print(f"--- {task_id} ---")
+                console.print((result or "")[:2000])
+                if (result or "") and len(result) > 2000:
+                    console.print("...")
+    return 0
 
-    thread.join()
-    results = results_holder[0] if results_holder else {}
 
-    for task_id, result in results.items():
-        print(f"--- {task_id} ---")
-        print((result or "")[:2000])
-        if (result or "") and len(result) > 2000:
-            print("...")
+def _run_meta(mega_task: str, max_swarms: int | None = None, budget: float | None = None) -> int:
+    """Run meta-planner: decompose mega-task into sub-swarms, run them, print synthesis."""
+    import asyncio
+    from hivemind.orchestration import MetaPlanner
+    from hivemind.config import get_config
+
+    cfg = get_config()
+    planner_model = getattr(cfg.models, "planner", "mock")
+    planner = MetaPlanner(model_name=planner_model)
+    result = asyncio.run(planner.run(mega_task, max_swarms=max_swarms, budget_usd=budget))
+    from hivemind.cli.ui import console
+    console.print(result.final_synthesis)
+    if result.sla_breaches:
+        console.print("\n[hive.warning]SLA breaches:[/]", [f"{b.swarm_id}: {b.breach_type}" for b in result.sla_breaches])
+    return 0
+
+
+def _run_meta_plan(mega_task: str) -> int:
+    """Decompose only: print SubSwarmSpecs as table, no execution."""
+    import asyncio
+    from hivemind.orchestration import MetaPlanner
+    from hivemind.config import get_config
+
+    cfg = get_config()
+    planner_model = getattr(cfg.models, "planner", "mock")
+    planner = MetaPlanner(model_name=planner_model)
+    specs = asyncio.run(planner.decompose(mega_task))
+    try:
+        from rich.console import Console
+        from rich.table import Table
+        c = Console()
+        t = Table(title="SubSwarmSpecs")
+        t.add_column("swarm_id", style="cyan")
+        t.add_column("root_task", style="green", max_width=50)
+        t.add_column("priority")
+        t.add_column("workers")
+        t.add_column("depends_on")
+        for s in specs:
+            t.add_row(
+                s.swarm_id,
+                (s.root_task or "")[:50],
+                str(s.priority),
+                str(s.worker_count),
+                ",".join(s.depends_on) or "-",
+            )
+        c.print(t)
+    except ImportError:
+        from hivemind.cli.ui import console
+        for s in specs:
+            console.print(f"  {s.swarm_id}: priority={s.priority} workers={s.worker_count} deps={s.depends_on}")
+            console.print(f"    task: {(s.root_task or '')[:80]}")
+    return 0
+
+
+def _run_approvals_list() -> int:
+    """Table: request_id, task (truncated), trigger, created, expires, status."""
+    from hivemind.config import get_config
+    from hivemind.hitl.approval import ApprovalStore
+    cfg = get_config()
+    store = ApprovalStore(cfg.data_dir)
+    pending = store.list_pending()
+    try:
+        from rich.console import Console
+        from rich.table import Table
+        c = Console()
+        t = Table(title="Pending approvals")
+        t.add_column("request_id", style="cyan")
+        t.add_column("task", style="green", max_width=40)
+        t.add_column("trigger", style="yellow")
+        t.add_column("created")
+        t.add_column("expires")
+        t.add_column("status")
+        for r in pending:
+            desc = (getattr(r.task, "description", "") or "")[:40]
+            t.add_row(r.request_id[:12], desc, str(r.trigger.type), r.created_at[:19], r.expires_at[:19], r.status)
+        c.print(t)
+    except ImportError:
+        from hivemind.cli.ui import console
+        for r in pending:
+            console.print(f"  {r.request_id}  {getattr(r.task, 'description', '')[:50]}  {r.trigger.type}  {r.status}")
+    return 0
+
+
+def _run_approvals_show(request_id: str) -> int:
+    """Full approval request details."""
+    from hivemind.config import get_config
+    from hivemind.hitl.approval import ApprovalStore
+    cfg = get_config()
+    store = ApprovalStore(cfg.data_dir)
+    req = store.get(request_id)
+    if req is None:
+        from hivemind.cli.ui import err_console
+        err_console.print(f"No approval request found: {request_id}")
+        return 1
+    from hivemind.cli.ui import console
+    console.print("Request ID:", req.request_id)
+    console.print("Task:", getattr(req.task, "description", ""))
+    console.print("Proposed result:", (req.proposed_result or "")[:500])
+    console.print("Trigger:", req.trigger.type, req.trigger.threshold)
+    console.print("Created:", req.created_at, "Expires:", req.expires_at)
+    console.print("Status:", req.status)
+    if req.reviewer_notes:
+        console.print("Notes:", req.reviewer_notes)
+    return 0
+
+
+def _run_approvals_approve(request_id: str, notes: str = "") -> int:
+    from hivemind.config import get_config
+    from hivemind.hitl.approval import ApprovalStore
+    cfg = get_config()
+    store = ApprovalStore(cfg.data_dir)
+    store.resolve(request_id, approved=True, notes=notes)
+    from hivemind.cli.ui import console
+    console.print(f"[hive.success]Approved[/] {request_id}")
+    return 0
+
+
+def _run_approvals_reject(request_id: str, notes: str = "") -> int:
+    from hivemind.config import get_config
+    from hivemind.hitl.approval import ApprovalStore
+    cfg = get_config()
+    store = ApprovalStore(cfg.data_dir)
+    store.resolve(request_id, approved=False, notes=notes)
+    from hivemind.cli.ui import console
+    console.print(f"[hive.error]Rejected[/] {request_id}")
+    return 0
+
+
+def _run_approvals_watch() -> int:
+    """Live-updating table of pending approvals, refresh every 10s."""
+    import time
+    from hivemind.config import get_config
+    from hivemind.hitl.approval import ApprovalStore
+    cfg = get_config()
+    store = ApprovalStore(cfg.data_dir)
+    try:
+        from rich.console import Console
+        from rich.table import Table
+        from rich.live import Live
+        c = Console()
+
+        def make_table():
+            pending = store.list_pending()
+            t = Table(title="Pending approvals (refresh 10s)")
+            t.add_column("request_id")
+            t.add_column("task", max_width=50)
+            t.add_column("trigger")
+            t.add_column("status")
+            for r in pending:
+                t.add_row(r.request_id[:14], (getattr(r.task, "description", "") or "")[:50], str(r.trigger.type), r.status)
+            return t
+
+        with Live(make_table(), refresh_per_second=0.1, console=c) as live:
+            while True:
+                time.sleep(10)
+                live.update(make_table())
+    except ImportError:
+        while True:
+            pending = store.list_pending()
+            for r in pending:
+                print(r.request_id, getattr(r.task, "description", "")[:40], r.status)
+            time.sleep(10)
     return 0
 
 
@@ -513,10 +744,13 @@ def _run_query(query_str: str) -> int:
 
 
 def _run_init(no_interactive: bool = False) -> int:
-    """Run init subcommand: create hivemind.toml, example workflow, dataset folder."""
-    from hivemind.cli.init import run_init
-
-    return run_init(interactive=not no_interactive)
+    """Run init: wizard with welcome screen (interactive) or minimal config (--no-interactive)."""
+    try:
+        from hivemind.cli.ui.onboarding import run_init_wizard
+        return run_init_wizard(no_interactive=no_interactive)
+    except ImportError:
+        from hivemind.cli.init import run_init
+        return run_init(interactive=not no_interactive)
 
 
 def _run_credentials(args: object) -> int:
@@ -1431,15 +1665,32 @@ def _run_health(args: object) -> int:
     return 0 if report.healthy else 1
 
 
-def _run_completion(parser: argparse.ArgumentParser, shell: str) -> int:
-    """Print shell completion script."""
+def _run_completion(parser: argparse.ArgumentParser, args: object) -> int:
+    """Print shell completion script (bash, zsh, or fish)."""
+    shell = getattr(args, "shell", "bash")
     try:
         import shtab
-
-        print(shtab.complete(parser, shell=shell))
+        if shell == "fish":
+            try:
+                from hivemind.cli.ui import err_console
+                err_console.print("[hive.warning]Fish completion: use shtab for bash/zsh; fish script can be generated from parser.[/]")
+            except ImportError:
+                pass
+            sys.stderr.write("Fish completion: add 'complete -c hivemind -a \"(hivemind --print-completion 2>/dev/null)\"' or use shtab for bash/zsh\n")
+            return 0
+        output = shtab.complete(parser, shell=shell)
+        try:
+            from hivemind.cli.ui import console
+            console.print(output, end="")
+        except ImportError:
+            print(output, end="")
         return 0
     except ImportError:
-        print("Install shtab: pip install shtab", file=sys.stderr)
+        try:
+            from hivemind.cli.ui import err_console
+            err_console.print("Install shtab: pip install shtab")
+        except ImportError:
+            print("Install shtab: pip install shtab", file=sys.stderr)
         return 1
 
 
@@ -1485,6 +1736,13 @@ Examples:
         shtab.add_argument_to(parser, ["--print-completion"])
     except ImportError:
         pass
+    global_grp = parser.add_argument_group("Global options")
+    global_grp.add_argument("--debug", action="store_true", help="Enable DEBUG log level")
+    global_grp.add_argument("--trace", action="store_true", help="Enable TRACE log level (very verbose)")
+    global_grp.add_argument("-q", "--quiet", action="store_true", help="WARN and above only, suppress progress")
+    global_grp.add_argument("--no-color", action="store_true", help="Disable color output")
+    global_grp.add_argument("--json", action="store_true", dest="json_output", help="Machine-readable JSON output")
+    global_grp.add_argument("--plain", action="store_true", help="Plain text output, no Rich (for piping)")
     subparsers = parser.add_subparsers(dest="command", help="Command")
 
     run_parser = subparsers.add_parser(
@@ -1510,7 +1768,57 @@ Examples:
         action="store_true",
         help="No progress output; only print results (for piping)",
     )
-    run_parser.set_defaults(func=lambda a: _run_swarm(a.task, a.quiet))
+    run_parser.add_argument("--summary", action="store_true", help="Only print run summary, not task results")
+    run_parser.set_defaults(func=lambda a: _run_swarm(a))
+
+    meta_parser = subparsers.add_parser(
+        "meta",
+        help="Run meta-planner: decompose mega-task into sub-swarms and run them",
+        description="Decompose a mega-task into sub-swarms with dependencies and SLAs.",
+    )
+    meta_parser.add_argument(
+        "mega_task",
+        nargs="?",
+        default="",
+        help="Mega-task to run (e.g. 'Research and implement a todo API')",
+    )
+    meta_parser.add_argument("--max-swarms", type=int, default=None, help="Max sub-swarms to run")
+    meta_parser.add_argument("--budget", type=float, default=None, help="Max budget in USD")
+    meta_sub = meta_parser.add_subparsers(dest="meta_cmd", help="Meta subcommands")
+    meta_plan_p = meta_sub.add_parser("plan", help="Decompose only; print SubSwarmSpecs as table")
+    meta_plan_p.add_argument("mega_task", help="Mega-task to decompose")
+    meta_plan_p.set_defaults(meta_cmd="plan", func=lambda a: _run_meta_plan(a.mega_task))
+    meta_parser.set_defaults(
+        meta_cmd=None,
+        func=lambda a: _run_meta(
+            a.mega_task or "Summarize the state of AI in 2024",
+            getattr(a, "max_swarms", None),
+            getattr(a, "budget", None),
+        ),
+    )
+
+    approvals_parser = subparsers.add_parser(
+        "approvals",
+        help="Human-in-the-loop approval requests",
+        description="List, show, approve, or reject pending approval requests.",
+    )
+    approvals_sub = approvals_parser.add_subparsers(dest="approvals_cmd", help="Approval subcommands")
+    approvals_list_p = approvals_sub.add_parser("list", help="Table of pending approvals")
+    approvals_list_p.set_defaults(func=lambda a: _run_approvals_list())
+    approvals_show_p = approvals_sub.add_parser("show", help="Show full approval request")
+    approvals_show_p.add_argument("request_id", help="Request ID")
+    approvals_show_p.set_defaults(func=lambda a: _run_approvals_show(a.request_id))
+    approvals_approve_p = approvals_sub.add_parser("approve", help="Approve a request")
+    approvals_approve_p.add_argument("request_id", help="Request ID")
+    approvals_approve_p.add_argument("--notes", type=str, default="", help="Reviewer notes")
+    approvals_approve_p.set_defaults(func=lambda a: _run_approvals_approve(a.request_id, getattr(a, "notes", "")))
+    approvals_reject_p = approvals_sub.add_parser("reject", help="Reject a request")
+    approvals_reject_p.add_argument("request_id", help="Request ID")
+    approvals_reject_p.add_argument("--notes", type=str, default="", help="Reviewer notes")
+    approvals_reject_p.set_defaults(func=lambda a: _run_approvals_reject(a.request_id, getattr(a, "notes", "")))
+    approvals_watch_p = approvals_sub.add_parser("watch", help="Live-updating table of pending approvals (10s refresh)")
+    approvals_watch_p.set_defaults(func=lambda a: _run_approvals_watch())
+    approvals_parser.set_defaults(approvals_cmd="list", func=lambda a: _run_approvals_list())
 
     tui_parser = subparsers.add_parser(
         "tui",
@@ -2032,10 +2340,10 @@ Examples:
     )
     completion_parser.add_argument(
         "shell",
-        choices=["bash", "zsh"],
-        help="Shell type",
+        choices=["bash", "zsh", "fish"],
+        help="Shell type (bash, zsh, or fish)",
     )
-    completion_parser.set_defaults(func=lambda a: _run_completion(parser, a.shell))
+    completion_parser.set_defaults(func=lambda a: _run_completion(parser, a))
 
     upgrade_parser = subparsers.add_parser(
         "upgrade",
@@ -2126,6 +2434,22 @@ Examples:
 
     _load_project_dotenv()
     args = parser.parse_args()
+    # Apply global CLI options
+    no_color = getattr(args, "no_color", False) or os.environ.get("NO_COLOR")
+    plain = getattr(args, "plain", False) or (not sys.stdout.isatty())
+    try:
+        from hivemind.cli.ui import reconfigure_console, set_log_level
+        reconfigure_console(no_color=bool(no_color), force_terminal=False if plain else None)
+        if getattr(args, "trace", False):
+            set_log_level("trace")
+        elif getattr(args, "debug", False):
+            set_log_level("debug")
+        elif getattr(args, "quiet", False):
+            set_log_level("warn")
+        else:
+            set_log_level("info")
+    except ImportError:
+        pass
     if not args.command:
         return _run_tui()
     return args.func(args)

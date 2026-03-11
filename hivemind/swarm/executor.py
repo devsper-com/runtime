@@ -72,6 +72,11 @@ class Executor:
         checkpointer: object = None,
         sandbox_config: object = None,
         audit_logger: object = None,
+        hitl_enabled: bool = False,
+        hitl_escalation_checker: object = None,
+        hitl_approval_store: object = None,
+        hitl_notifier: object = None,
+        hitl_resolver: object = None,
     ) -> None:
         self.scheduler = scheduler
         self.agent = agent
@@ -95,6 +100,11 @@ class Executor:
         self.checkpointer = checkpointer
         self.sandbox_config = sandbox_config
         self.audit_logger = audit_logger
+        self.hitl_enabled = hitl_enabled
+        self.hitl_escalation_checker = hitl_escalation_checker
+        self.hitl_approval_store = hitl_approval_store
+        self.hitl_notifier = hitl_notifier
+        self.hitl_resolver = hitl_resolver
 
     def run_sync(self) -> None:
         """Run the execution loop to completion (synchronous entry point)."""
@@ -295,6 +305,7 @@ class Executor:
         result = task.result or ""
         self._set_cached_result(task, result)
 
+        last_critic_score: float | None = None
         # v1.7: critic loop — only for non-speculative, eligible roles, not already retried
         role = getattr(task, "role", None) or ""
         retry_count = getattr(task, "retry_count", 0)
@@ -310,6 +321,7 @@ class Executor:
             critique = await self.critic_agent.critique(
                 task, result, model=self.fast_model
             )
+            last_critic_score = critique.score
             self._emit(
                 events.TASK_CRITIQUED,
                 {
@@ -328,6 +340,114 @@ class Executor:
                 task.result = None
                 task.status = TaskStatus.PENDING
                 return await self._execute_task(task, is_speculative)
+
+        # v2.1: HITL — if escalation triggered, create approval request and wait
+        if not is_speculative and self.hitl_enabled and self.hitl_escalation_checker:
+            from hivemind.agents.agent import AgentResponse
+            from hivemind.explainability.decision_tree import DecisionRecord
+            from hivemind.hitl.escalation import EscalationTrigger
+            from hivemind.hitl.approval import ApprovalRequest, ApprovalStore
+            from datetime import timedelta
+
+            fake_response = AgentResponse(
+                task_id=task.id,
+                result=result,
+                tools_called=getattr(task, "tools_called", []) or [],
+                broadcasts=[],
+                tokens_used=None,
+                duration_seconds=0.0,
+                error=None,
+                success=True,
+            )
+            fake_decision = DecisionRecord(
+                task_id=task.id,
+                task_description=task.description or "",
+                strategy_selected="",
+                strategy_reason="",
+                critic_score=last_critic_score,
+                confidence=float(last_critic_score) if last_critic_score is not None else 0.0,
+            )
+            match = self.hitl_escalation_checker.evaluate(task, fake_response, fake_decision)
+            if match is not None:
+                trigger, hitl_policy = match
+                request_id = str(__import__("uuid").uuid4())
+                now = datetime.now(timezone.utc)
+                timeout_sec = getattr(hitl_policy, "timeout_seconds", 3600)
+                expires = now + timedelta(seconds=timeout_sec)
+                approval = ApprovalRequest(
+                    request_id=request_id,
+                    task=task,
+                    proposed_result=result,
+                    decision_record=fake_decision,
+                    trigger=trigger,
+                    created_at=now.isoformat(),
+                    expires_at=expires.isoformat(),
+                    status="pending",
+                )
+                store = self.hitl_approval_store
+                if store is not None:
+                    store.save(approval)
+                if self.hitl_notifier is not None:
+                    await self.hitl_notifier.notify(approval, hitl_policy)
+                # In-process resolver or poll store
+                approved_result = True
+                if self.hitl_resolver is not None:
+                    resolver = self.hitl_resolver
+                    try:
+                        if asyncio.iscoroutinefunction(resolver):
+                            approved_result = await resolver(approval, hitl_policy)
+                        else:
+                            approved_result = await asyncio.to_thread(resolver, approval, hitl_policy)
+                    except Exception:
+                        approved_result = False
+                    if store is not None:
+                        store.resolve(request_id, approved_result, "")
+                    if not approved_result:
+                        self.scheduler.mark_failed(task.id, "Rejected by human reviewer")
+                        self._emit(
+                            events.TASK_REJECTED_BY_HUMAN,
+                            {"task_id": task.id, "request_id": request_id},
+                        )
+                        return task.id
+                    # approved: fall through to mark_completed
+                else:
+                    # Poll for resolution every 5s up to timeout
+                    poll_interval = 5
+                    elapsed = 0
+                    while store is not None and elapsed < timeout_sec:
+                        await asyncio.sleep(min(poll_interval, timeout_sec - elapsed))
+                        elapsed += poll_interval
+                        req = store.get(request_id)
+                        if req is None:
+                            break
+                        if req.status == "approved":
+                            break
+                        if req.status == "rejected":
+                            self.scheduler.mark_failed(task.id, "Rejected by human reviewer")
+                            self._emit(
+                                events.TASK_REJECTED_BY_HUMAN,
+                                {"task_id": task.id, "request_id": request_id},
+                            )
+                            return task.id
+                    # After loop: approved or timeout
+                    req = store.get(request_id) if store else None
+                    if req is not None and req.status == "rejected":
+                        self.scheduler.mark_failed(task.id, "Rejected by human reviewer")
+                        self._emit(
+                            events.TASK_REJECTED_BY_HUMAN,
+                            {"task_id": task.id, "request_id": request_id},
+                        )
+                        return task.id
+                    if req is not None and req.status == "pending" and elapsed >= timeout_sec:
+                        on_timeout = getattr(hitl_policy, "on_timeout", "auto_approve")
+                        if on_timeout == "auto_reject":
+                            self.scheduler.mark_failed(task.id, "Approval timeout (auto_reject)")
+                            if store:
+                                approval.status = "timeout"
+                                store.save(approval)
+                            return task.id
+                        # auto_approve or escalate_further: treat as approve for now
+                    # approved or auto_approve: fall through to mark_completed
 
         if not is_speculative:
             self.scheduler.mark_completed(task.id, result)

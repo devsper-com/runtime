@@ -150,15 +150,13 @@ export default function Home() {
       >
         <div className="landing-split">
           <div className="landing-left">
-            <motion.a
-              href="https://github.com/rithulkamesh/hivemind/releases/tag/v2.0.2"
-              className="hero-pill"
-              variants={itemVariants}
-            >
-              <span className="hero-pill-icon">✨</span>
-              <span>Hivemind v2.0.2 Released: Multi-node distributed mode</span>
-              <ArrowRight size={14} className="hero-pill-icon" style={{ color: '#a8b1ff', marginLeft: '4px' }} />
-            </motion.a>
+            <motion.div variants={itemVariants}>
+              <Link to="/docs/release_notes" className="hero-pill">
+                <span className="hero-pill-icon">✨</span>
+                <span>What's new in v2.1.5 — Release notes</span>
+                <ArrowRight size={14} className="hero-pill-icon" style={{ color: '#a8b1ff', marginLeft: '4px' }} />
+              </Link>
+            </motion.div>
 
             <motion.div className="hero-wordmark" variants={itemVariants}>
               Hivemind

@@ -16,7 +16,7 @@ from hivemind.utils.event_logger import EventLog
 from hivemind.utils.models import generate
 
 
-PLANNER_PROMPT = """Break the following task into 5 smaller steps.
+PLANNER_PROMPT = """Break the following task into the minimal number of smaller steps needed (use only as many as the task requires—often 1–3 for simple tasks, more for complex ones).
 
 Task:
 {task_description}
@@ -29,7 +29,6 @@ Return a numbered list.
 Example format:
 1. List the contents of /tmp
 2. Summarize the file listing
-3. ...
 """
 
 EXPAND_TASKS_PROMPT = """A task just completed in a workflow.
@@ -46,6 +45,20 @@ Example:
 
 
 NUMBERED_LINE = re.compile(r"^\s*\d+[.)]\s*(.+)$", re.MULTILINE)
+
+# Skip decomposition for short, single-step prompts (e.g. "What is 2+2?")
+MAX_SIMPLE_TASK_LEN = 200
+MULTI_STEP_PATTERN = re.compile(
+    r"\b(then|and then|first|second|step\s*\d|finally|after that|next,?)\b|\n|^\s*\d+[.)]\s+",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _is_simple_task(description: str) -> bool:
+    """True if the task looks like a single question/request, not a multi-step workflow."""
+    if not description or len(description.strip()) > MAX_SIMPLE_TASK_LEN:
+        return False
+    return MULTI_STEP_PATTERN.search(description.strip()) is None
 
 
 def _short_id() -> str:
@@ -91,6 +104,14 @@ class Planner:
                     self._emit(events.TASK_CREATED, {"task_id": st.id, "description": st.description})
                 self._emit(events.PLANNER_FINISHED, {"task_id": task.id, "subtask_count": len(subtasks)})
                 return subtasks
+
+        # Simple single-step prompt: skip LLM decomposition (avoids overcomplication)
+        if _is_simple_task(task.description or ""):
+            if getattr(task, "role", None) is None:
+                task.role = infer_role_from_description(task.description or "")
+            self._emit(events.TASK_CREATED, {"task_id": task.id, "description": task.description})
+            self._emit(events.PLANNER_FINISHED, {"task_id": task.id, "subtask_count": 1})
+            return [task]
 
         task_description = (task.description or "") + self.prompt_suffix
         kg_section = ""

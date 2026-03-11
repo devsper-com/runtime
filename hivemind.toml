@@ -27,3 +27,24 @@ name = "filesystem"
 transport = "stdio"
 command = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 
+[[mcp.servers]]
+name = "time"
+transport = "stdio"
+command = ["npx", "-y", "@modelcontextprotocol/server-time"]
+
+[hitl]
+enabled = true
+
+[[hitl.policies]]
+name = "high-cost"
+on_timeout = "auto_approve"
+timeout_seconds = 1800
+approvers = ["webhook://https://hooks.example.com/hivemind"]
+
+[[hitl.policies.triggers]]
+type = "cost_above"
+threshold = 0.01
+
+[[hitl.policies.triggers]]
+type = "critic_score_below"
+threshold = 0.50

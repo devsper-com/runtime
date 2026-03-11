@@ -155,9 +155,10 @@ class Swarm:
         """Resume the executor so new tasks can be picked."""
         self._pause_event.set()
 
-    def run(self, user_task: str) -> dict[str, str]:
+    def run(self, user_task: str, hitl_resolver: object = None) -> dict[str, str]:
         """
         Create root task → plan subtasks → add to scheduler → run executor → return task_id → result.
+        hitl_resolver: optional (approval, policy) -> bool for in-process approval prompts.
         """
         self._emit(events.SWARM_STARTED, {"user_task": user_task[:200]})
 
@@ -206,6 +207,36 @@ class Swarm:
         if getattr(self, "message_bus_enabled", True):
             message_bus = SwarmMessageBus(event_log=self.event_log)
 
+        # Build HITL once for both single-node and executor paths
+        hitl_enabled = False
+        hitl_escalation_checker = None
+        hitl_approval_store = None
+        hitl_notifier = None
+        if self._config is not None:
+            hitl_cfg = getattr(self._config, "hitl", None)
+            if hitl_cfg and getattr(hitl_cfg, "enabled", False):
+                from hivemind.hitl.escalation import EscalationChecker, EscalationPolicy, EscalationTrigger
+                from hivemind.hitl.approval import ApprovalStore, ApprovalNotifier
+                policies: list[EscalationPolicy] = []
+                for p in getattr(hitl_cfg, "policies", []) or []:
+                    triggers = [
+                        EscalationTrigger(type=getattr(t, "type", "confidence_below"), threshold=getattr(t, "threshold", 0.5))
+                        for t in getattr(p, "triggers", []) or []
+                    ]
+                    policies.append(
+                        EscalationPolicy(
+                            triggers=triggers,
+                            approvers=getattr(p, "approvers", []) or [],
+                            timeout_seconds=getattr(p, "timeout_seconds", 3600),
+                            on_timeout=getattr(p, "on_timeout", "auto_approve"),
+                        )
+                    )
+                if policies:
+                    hitl_enabled = True
+                    hitl_escalation_checker = EscalationChecker(policies)
+                    hitl_approval_store = ApprovalStore(getattr(self._config, "data_dir", ".hivemind"))
+                    hitl_notifier = ApprovalNotifier()
+
         nodes_mode = "distributed"  # no config -> use executor path (v1.9 behavior)
         if self._config is not None:
             nodes_cfg = getattr(self._config, "nodes", None)
@@ -234,6 +265,11 @@ class Swarm:
                 agent_factory=_agent_factory,
                 user_task=user_task,
                 message_bus=message_bus,
+                hitl_enabled=hitl_enabled,
+                hitl_escalation_checker=hitl_escalation_checker,
+                hitl_approval_store=hitl_approval_store,
+                hitl_notifier=hitl_notifier,
+                hitl_resolver=hitl_resolver,
             )
             async def _run_single():
                 await single_node.start()
@@ -409,6 +445,11 @@ class Swarm:
             checkpointer=checkpointer,
             sandbox_config=sandbox_config,
             audit_logger=audit_logger,
+            hitl_enabled=hitl_enabled,
+            hitl_escalation_checker=hitl_escalation_checker,
+            hitl_approval_store=hitl_approval_store,
+            hitl_notifier=hitl_notifier,
+            hitl_resolver=hitl_resolver,
         )
         executor.run_sync()
 

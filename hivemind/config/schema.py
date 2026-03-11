@@ -184,6 +184,27 @@ class A2AConfig(BaseModel):
     serve_port: int = 8080
 
 
+class HitlTriggerConfig(BaseModel):
+    """v2.1: Single escalation trigger (e.g. cost_above, critic_score_below)."""
+    type: str = "confidence_below"
+    threshold: float | str = 0.5
+
+
+class HitlPolicyConfig(BaseModel):
+    """v2.1: HITL policy with triggers and approvers."""
+    name: str = ""
+    on_timeout: Literal["auto_approve", "auto_reject", "escalate_further"] = "auto_approve"
+    timeout_seconds: int = 3600
+    approvers: list[str] = Field(default_factory=list)
+    triggers: list[HitlTriggerConfig] = Field(default_factory=list)
+
+
+class HitlConfig(BaseModel):
+    """v2.1: Human-in-the-loop escalation and approval."""
+    enabled: bool = False
+    policies: list[HitlPolicyConfig] = Field(default_factory=list)
+
+
 class HivemindConfigModel(BaseModel):
     """Full resolved configuration with Pydantic validation."""
 
@@ -204,6 +225,7 @@ class HivemindConfigModel(BaseModel):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     compliance: ComplianceConfig = Field(default_factory=ComplianceConfig)
+    hitl: HitlConfig = Field(default_factory=HitlConfig)
 
     # Backward-compat aliases (property-style access from old HivemindConfig)
     @property

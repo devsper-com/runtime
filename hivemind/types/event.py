@@ -37,6 +37,8 @@ class events(Enum):
     MEMORY_CONSOLIDATED = "memory_consolidated"
     # v2.0
     PROVIDER_FALLBACK = "provider_fallback"
+    # v2.1
+    TASK_REJECTED_BY_HUMAN = "task_rejected_by_human"
 
 class Event(BaseModel):
     timestamp: datetime

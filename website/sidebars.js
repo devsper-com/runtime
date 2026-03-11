@@ -2,6 +2,7 @@
 const sidebars = {
   docs: [
     { type: 'doc', id: 'index', label: 'Overview' },
+    { type: 'doc', id: 'release_notes', label: 'Release notes' },
     { type: 'doc', id: 'introduction', label: 'Introduction' },
     {
       type: 'category',

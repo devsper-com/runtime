@@ -29,3 +29,4 @@ Use this checklist before tagging a release or publishing to PyPI.
 
 - [ ] Verify the package is installable: `pip install hivemind-ai` and `hivemind --help`.
 - [ ] Update `CHANGELOG.md` with the release date and any last-minute notes.
+- [ ] **Website release notes** — Copy the new release section from `CHANGELOG.md` into `website/docs/release_notes.md` (move **Unreleased** into `[X.Y.Z]` and update the hero pill version on the home page in `website/src/pages/index.js` if needed).

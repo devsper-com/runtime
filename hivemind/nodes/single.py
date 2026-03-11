@@ -69,6 +69,11 @@ def create_single_node(
     agent_factory: object,
     user_task: str = "",
     message_bus: object = None,
+    hitl_enabled: bool = False,
+    hitl_escalation_checker: object = None,
+    hitl_approval_store: object = None,
+    hitl_notifier: object = None,
+    hitl_resolver: object = None,
 ) -> SingleNode:
     """Build SingleNode with InMemoryBus, filesystem state, in-memory registry/elector."""
     run_id = getattr(scheduler, "run_id", "") or ""
@@ -131,6 +136,11 @@ def create_single_node(
         run_id=run_id,
         user_task=user_task,
         message_bus=message_bus,
+        hitl_enabled=hitl_enabled,
+        hitl_escalation_checker=hitl_escalation_checker,
+        hitl_approval_store=hitl_approval_store,
+        hitl_notifier=hitl_notifier,
+        hitl_resolver=hitl_resolver,
     )
     return SingleNode(
         config=config,

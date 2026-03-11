@@ -8,7 +8,7 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from hivemind.types.task import Task
+from hivemind.types.task import Task, TaskStatus
 from hivemind.agents.agent import Agent, AgentRequest
 from hivemind.bus.message import create_bus_message
 from hivemind.bus.topics import (
@@ -144,6 +144,11 @@ class WorkerNode:
         run_id: str,
         user_task: str = "",
         message_bus: object = None,
+        hitl_enabled: bool = False,
+        hitl_escalation_checker: object = None,
+        hitl_approval_store: object = None,
+        hitl_notifier: object = None,
+        hitl_resolver: object = None,
     ) -> None:
         self.config = config
         self.bus = bus
@@ -157,6 +162,11 @@ class WorkerNode:
         self._run_id = run_id
         self.user_task = user_task or ""
         self.message_bus = message_bus
+        self.hitl_enabled = hitl_enabled
+        self.hitl_escalation_checker = hitl_escalation_checker
+        self.hitl_approval_store = hitl_approval_store
+        self.hitl_notifier = hitl_notifier
+        self.hitl_resolver = hitl_resolver
         self.node_id = _make_node_id()
         nodes_cfg = getattr(config, "nodes", None)
         role = NodeRole.WORKER
@@ -286,15 +296,111 @@ class WorkerNode:
             self._last_completed_ids.append(task.id)
             if len(self._last_completed_ids) > 50:
                 self._last_completed_ids.pop(0)
-            log.info("Worker %s completed task %s (%.1fs)", self.node_id[:8], task_id_short, time.monotonic() - start)
-            await self.bus.publish(
-                create_bus_message(
-                    topic=TASK_COMPLETED,
-                    payload=response.to_dict(),
-                    sender_id=self.node_id,
-                    run_id=self._run_id,
+            # Apply response to task for HITL evaluation
+            task.result = response.result
+            task.status = TaskStatus.COMPLETED if response.success else TaskStatus.FAILED
+            task.error = response.error
+            result = response.result or ""
+            # HITL: escalation check before publishing TASK_COMPLETED
+            should_publish_completed = True
+            if self.hitl_enabled and self.hitl_escalation_checker and response.success:
+                from hivemind.explainability.decision_tree import DecisionRecord
+                from hivemind.hitl.approval import ApprovalRequest
+                from datetime import datetime, timezone, timedelta
+                last_critic_score = None
+                fake_decision = DecisionRecord(
+                    task_id=task.id,
+                    task_description=task.description or "",
+                    strategy_selected="",
+                    strategy_reason="",
+                    critic_score=last_critic_score,
+                    confidence=float(last_critic_score) if last_critic_score is not None else 0.0,
                 )
-            )
+                match = self.hitl_escalation_checker.evaluate(task, response, fake_decision)
+                if match is not None:
+                    trigger, hitl_policy = match
+                    request_id = str(__import__("uuid").uuid4())
+                    now = datetime.now(timezone.utc)
+                    timeout_sec = getattr(hitl_policy, "timeout_seconds", 3600)
+                    expires = now + timedelta(seconds=timeout_sec)
+                    approval = ApprovalRequest(
+                        request_id=request_id,
+                        task=task,
+                        proposed_result=result,
+                        decision_record=fake_decision,
+                        trigger=trigger,
+                        created_at=now.isoformat(),
+                        expires_at=expires.isoformat(),
+                        status="pending",
+                    )
+                    store = self.hitl_approval_store
+                    if store is not None:
+                        store.save(approval)
+                    if self.hitl_notifier is not None:
+                        await self.hitl_notifier.notify(approval, hitl_policy)
+                    approved_result = True
+                    if self.hitl_resolver is not None:
+                        resolver = self.hitl_resolver
+                        try:
+                            import asyncio
+                            if asyncio.iscoroutinefunction(resolver):
+                                approved_result = await resolver(approval, hitl_policy)
+                            else:
+                                approved_result = await asyncio.to_thread(resolver, approval, hitl_policy)
+                        except Exception:
+                            approved_result = False
+                        if store is not None:
+                            store.resolve(request_id, approved_result, "")
+                    else:
+                        poll_interval = 5
+                        elapsed = 0
+                        approved_result = True
+                        while store is not None and elapsed < timeout_sec:
+                            await asyncio.sleep(min(poll_interval, timeout_sec - elapsed))
+                            elapsed += poll_interval
+                            req = store.get(request_id)
+                            if req is None:
+                                break
+                            if req.status == "approved":
+                                break
+                            if req.status == "rejected":
+                                approved_result = False
+                                break
+                        if store is not None:
+                            req = store.get(request_id)
+                            if req is not None and req.status == "rejected":
+                                approved_result = False
+                            elif req is not None and req.status == "pending" and elapsed >= timeout_sec:
+                                on_timeout = getattr(hitl_policy, "on_timeout", "auto_approve")
+                                approved_result = on_timeout != "auto_reject"
+                                if not approved_result and store:
+                                    approval.status = "timeout"
+                                    store.save(approval)
+                    if not approved_result:
+                        should_publish_completed = False
+                        await self.bus.publish(
+                            create_bus_message(
+                                topic=TASK_FAILED,
+                                payload={
+                                    "task_id": task.id,
+                                    "error": "Rejected by human reviewer",
+                                    "error_type": "HITLRejected",
+                                    "worker_id": self.node_id,
+                                },
+                                sender_id=self.node_id,
+                                run_id=self._run_id,
+                            )
+                        )
+            if should_publish_completed:
+                log.info("Worker %s completed task %s (%.1fs)", self.node_id[:8], task_id_short, time.monotonic() - start)
+                await self.bus.publish(
+                    create_bus_message(
+                        topic=TASK_COMPLETED,
+                        payload=response.to_dict(),
+                        sender_id=self.node_id,
+                        run_id=self._run_id,
+                    )
+                )
         except asyncio.TimeoutError:
             err_msg = f"Execution timeout after {exec_timeout}s"
             log.warning("Worker %s failed task %s: %s", self.node_id[:8], task_id_short, err_msg)

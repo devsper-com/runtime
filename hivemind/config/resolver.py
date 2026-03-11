@@ -15,6 +15,9 @@ from hivemind.config.schema import (
     A2AAgentConfig,
     BusConfig,
     CacheConfig,
+    HitlConfig,
+    HitlPolicyConfig,
+    HitlTriggerConfig,
     HivemindConfigModel,
     KnowledgeConfig,
     MCPConfig,
@@ -172,6 +175,7 @@ def _build_merged_raw(
         "data_dir": ".hivemind",
         "mcp": {"servers": []},
         "a2a": {"agents": [], "serve": False, "serve_port": 8080},
+        "hitl": {"enabled": False, "policies": []},
         "providers": {
             "azure": {
                 "endpoint": "",
@@ -292,6 +296,29 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
         audit_logging=bool(compliance_data.get("audit_logging", True)) if isinstance(compliance_data, dict) else True,
         data_residency=str(compliance_data.get("data_residency", "us")) if isinstance(compliance_data, dict) else "us",
     )
+    hitl_data = merged.get("hitl") or {}
+    hitl_policies = hitl_data.get("policies") if isinstance(hitl_data, dict) else []
+    if not isinstance(hitl_policies, list):
+        hitl_policies = []
+    hitl_policy_configs = []
+    for p in hitl_policies:
+        if not isinstance(p, dict):
+            continue
+        triggers_data = p.get("triggers") or []
+        triggers = [HitlTriggerConfig(**(t if isinstance(t, dict) else {})) for t in triggers_data if isinstance(t, dict)]
+        hitl_policy_configs.append(
+            HitlPolicyConfig(
+                name=str(p.get("name", "")),
+                on_timeout=str(p.get("on_timeout", "auto_approve")),
+                timeout_seconds=int(p.get("timeout_seconds", 3600)),
+                approvers=list(p.get("approvers") or []),
+                triggers=triggers,
+            )
+        )
+    hitl = HitlConfig(
+        enabled=bool(hitl_data.get("enabled", False)) if isinstance(hitl_data, dict) else False,
+        policies=hitl_policy_configs,
+    )
 
     return HivemindConfigModel(
         swarm=swarm,
@@ -311,4 +338,5 @@ def resolve_config(config_path: str | None = None) -> HivemindConfigModel:
         providers=providers,
         sandbox=sandbox,
         compliance=compliance,
+        hitl=hitl,
     )
