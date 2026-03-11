@@ -7,21 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.5] — 2026-03-11
+
 ### Added
 
 - **In-app HITL resolution** — Optional in-process resolver so you can approve/reject HITL requests in the same terminal as `hivemind run` (no second terminal). When `hitl.enabled` is true and stdout is a TTY, the CLI prompts with a Rich prompt; resolution is written to ApprovalStore and the run continues or fails based on your choice.
 - **HITL in single-node path** — HITL escalation check and resolver/polling now run in the default single-node flow (WorkerNode), not only in the multi-worker Executor path.
 - **Better MCP** — `hivemind doctor` has a dedicated "MCP Servers" section listing each configured MCP server and tool count (or warnings). Second example MCP server (time server, no API key) in commented block in example hivemind.toml.
-
-### Changed
-
-- **Planner: simple-task fast path** — Short, single-step prompts (e.g. "What is 2+2?") no longer get decomposed into 5 steps; they run as one task and one agent call.
-- **Planner: dynamic step count** — Planner prompt asks for "the minimal number of smaller steps needed" instead of a fixed 5; the model can return 1–3 for simple tasks or more for complex ones.
-
-## [2.1.5] — 2026-03-11
-
-### Added
-
 - Full CLI visual redesign: amber/blue/teal color system across all commands
 - Structured logging with tracing-compatible format (matches Rust worker output)
 - Live run view: real-time task table, tool activity, cost counter during execution
@@ -43,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error display: no raw tracebacks shown to end users; use print_error/print_unexpected_error
 - hivemind run shows live view by default when TTY (use `--plain` or pipe for old behavior)
 - Docs URLs use https://hivemind.rithul.dev
+- **Planner: simple-task fast path** — Short, single-step prompts (e.g. "What is 2+2?") no longer get decomposed into 5 steps; they run as one task and one agent call.
+- **Planner: dynamic step count** — Planner prompt asks for "the minimal number of smaller steps needed" instead of a fixed 5; the model can return 1–3 for simple tasks or more for complex ones.
 
 ## [2.1.0] — 2026-03-11
 
