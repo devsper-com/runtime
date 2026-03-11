@@ -62,9 +62,11 @@ function AnimatedTerminal() {
     return () => timeouts.forEach(clearTimeout);
   }, []);
 
-  const endRef = React.useRef(null);
+  const bodyRef = React.useRef(null);
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
   }, [lines]);
 
   return (
@@ -74,7 +76,7 @@ function AnimatedTerminal() {
         <div className="hero-terminal-dot yellow" />
         <div className="hero-terminal-dot green" />
       </div>
-      <div className="hero-terminal-body" style={{ maxHeight: '380px', overflowY: 'auto' }}>
+      <div ref={bodyRef} className="hero-terminal-body hero-terminal-body-scroll">
         {lines.map((line, i) => (
           <motion.div
             key={i}
@@ -107,7 +109,6 @@ function AnimatedTerminal() {
             <span className="term-text">_</span>
           </motion.div>
         )}
-        <div ref={endRef} />
       </div>
     </div>
   );

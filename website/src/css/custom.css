@@ -828,6 +828,25 @@ button,
   min-height: 220px;
 }
 
+.hero-terminal-body-scroll {
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+@media (max-width: 996px) {
+  .hero-terminal {
+    max-height: min(380px, 65vh);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .hero-terminal-body-scroll {
+    max-height: min(380px, calc(65vh - 32px));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 .term-line {
   display: flex;
   margin-bottom: 6px;
