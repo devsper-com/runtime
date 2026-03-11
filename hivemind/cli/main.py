@@ -24,6 +24,7 @@ def _load_project_dotenv() -> None:
     try:
         from dotenv import load_dotenv
         from hivemind.config.config_loader import project_config_paths
+
         for p in project_config_paths():
             if p.is_file():
                 load_dotenv(p.parent / ".env")
@@ -83,13 +84,19 @@ def _run_swarm(args: object) -> int:
     run_id = getattr(event_log, "run_id", "") or ""
 
     hitl_resolver = None
-    if getattr(getattr(cfg, "hitl", None), "enabled", False) and sys.stdout.isatty() and not plain:
+    if (
+        getattr(getattr(cfg, "hitl", None), "enabled", False)
+        and sys.stdout.isatty()
+        and not plain
+    ):
         from hivemind.hitl.approval import ApprovalStore
+
         _store = ApprovalStore(getattr(cfg, "data_dir", ".hivemind"))
 
         def _prompt_resolver(approval, policy):  # sync, runs in thread
             try:
                 from hivemind.cli.ui import console
+
                 task_desc = (getattr(approval.task, "description", "") or "")[:60]
                 console.print()
                 console.print("[hive.warning]Approval required[/]")
@@ -99,7 +106,10 @@ def _run_swarm(args: object) -> int:
                 if preview:
                     console.print(f"  Result preview: {preview}...")
                 from rich.prompt import Prompt
-                choice = Prompt.ask("Approve this result? [y/n]", choices=["y", "n"], default="y")
+
+                choice = Prompt.ask(
+                    "Approve this result? [y/n]", choices=["y", "n"], default="y"
+                )
                 approved = choice.lower() == "y"
                 _store.resolve(approval.request_id, approved, "")
                 return approved
@@ -117,6 +127,7 @@ def _run_swarm(args: object) -> int:
     if use_live_view:
         try:
             from hivemind.cli.ui import run_live_view, print_run_summary
+
             state = run_live_view(
                 log_path=log_path,
                 run_id=run_id,
@@ -127,7 +138,12 @@ def _run_swarm(args: object) -> int:
             results = results_holder[0] if results_holder else {}
             if json_output:
                 import json
-                out = {"run_id": state.run_id_short, "tasks": len(state.tasks), "results": results}
+
+                out = {
+                    "run_id": state.run_id_short,
+                    "tasks": len(state.tasks),
+                    "results": results,
+                }
                 print(json.dumps(out))
             else:
                 print_run_summary(state, results, summary_only=summary_only)
@@ -135,6 +151,7 @@ def _run_swarm(args: object) -> int:
             thread.join()
             results = results_holder[0] if results_holder else {}
             from hivemind.cli.ui import console
+
             for task_id, result in results.items():
                 console.print(f"--- {task_id} ---")
                 console.print((result or "")[:2000])
@@ -143,6 +160,7 @@ def _run_swarm(args: object) -> int:
     else:
         if not quiet:
             from hivemind.cli.run_progress import read_run_status
+
             last_status = ""
             while thread.is_alive():
                 status, running = read_run_status(log_path, worker_count=workers)
@@ -160,9 +178,11 @@ def _run_swarm(args: object) -> int:
         results = results_holder[0] if results_holder else {}
         if json_output:
             import json
+
             print(json.dumps(results))
         else:
             from hivemind.cli.ui import console
+
             for task_id, result in results.items():
                 console.print(f"--- {task_id} ---")
                 console.print((result or "")[:2000])
@@ -171,7 +191,9 @@ def _run_swarm(args: object) -> int:
     return 0
 
 
-def _run_meta(mega_task: str, max_swarms: int | None = None, budget: float | None = None) -> int:
+def _run_meta(
+    mega_task: str, max_swarms: int | None = None, budget: float | None = None
+) -> int:
     """Run meta-planner: decompose mega-task into sub-swarms, run them, print synthesis."""
     import asyncio
     from hivemind.orchestration import MetaPlanner
@@ -180,11 +202,17 @@ def _run_meta(mega_task: str, max_swarms: int | None = None, budget: float | Non
     cfg = get_config()
     planner_model = getattr(cfg.models, "planner", "mock")
     planner = MetaPlanner(model_name=planner_model)
-    result = asyncio.run(planner.run(mega_task, max_swarms=max_swarms, budget_usd=budget))
+    result = asyncio.run(
+        planner.run(mega_task, max_swarms=max_swarms, budget_usd=budget)
+    )
     from hivemind.cli.ui import console
+
     console.print(result.final_synthesis)
     if result.sla_breaches:
-        console.print("\n[hive.warning]SLA breaches:[/]", [f"{b.swarm_id}: {b.breach_type}" for b in result.sla_breaches])
+        console.print(
+            "\n[hive.warning]SLA breaches:[/]",
+            [f"{b.swarm_id}: {b.breach_type}" for b in result.sla_breaches],
+        )
     return 0
 
 
@@ -201,6 +229,7 @@ def _run_meta_plan(mega_task: str) -> int:
     try:
         from rich.console import Console
         from rich.table import Table
+
         c = Console()
         t = Table(title="SubSwarmSpecs")
         t.add_column("swarm_id", style="cyan")
@@ -219,8 +248,11 @@ def _run_meta_plan(mega_task: str) -> int:
         c.print(t)
     except ImportError:
         from hivemind.cli.ui import console
+
         for s in specs:
-            console.print(f"  {s.swarm_id}: priority={s.priority} workers={s.worker_count} deps={s.depends_on}")
+            console.print(
+                f"  {s.swarm_id}: priority={s.priority} workers={s.worker_count} deps={s.depends_on}"
+            )
             console.print(f"    task: {(s.root_task or '')[:80]}")
     return 0
 
@@ -229,12 +261,14 @@ def _run_approvals_list() -> int:
     """Table: request_id, task (truncated), trigger, created, expires, status."""
     from hivemind.config import get_config
     from hivemind.hitl.approval import ApprovalStore
+
     cfg = get_config()
     store = ApprovalStore(cfg.data_dir)
     pending = store.list_pending()
     try:
         from rich.console import Console
         from rich.table import Table
+
         c = Console()
         t = Table(title="Pending approvals")
         t.add_column("request_id", style="cyan")
@@ -245,12 +279,22 @@ def _run_approvals_list() -> int:
         t.add_column("status")
         for r in pending:
             desc = (getattr(r.task, "description", "") or "")[:40]
-            t.add_row(r.request_id[:12], desc, str(r.trigger.type), r.created_at[:19], r.expires_at[:19], r.status)
+            t.add_row(
+                r.request_id[:12],
+                desc,
+                str(r.trigger.type),
+                r.created_at[:19],
+                r.expires_at[:19],
+                r.status,
+            )
         c.print(t)
     except ImportError:
         from hivemind.cli.ui import console
+
         for r in pending:
-            console.print(f"  {r.request_id}  {getattr(r.task, 'description', '')[:50]}  {r.trigger.type}  {r.status}")
+            console.print(
+                f"  {r.request_id}  {getattr(r.task, 'description', '')[:50]}  {r.trigger.type}  {r.status}"
+            )
     return 0
 
 
@@ -258,14 +302,17 @@ def _run_approvals_show(request_id: str) -> int:
     """Full approval request details."""
     from hivemind.config import get_config
     from hivemind.hitl.approval import ApprovalStore
+
     cfg = get_config()
     store = ApprovalStore(cfg.data_dir)
     req = store.get(request_id)
     if req is None:
         from hivemind.cli.ui import err_console
+
         err_console.print(f"No approval request found: {request_id}")
         return 1
     from hivemind.cli.ui import console
+
     console.print("Request ID:", req.request_id)
     console.print("Task:", getattr(req.task, "description", ""))
     console.print("Proposed result:", (req.proposed_result or "")[:500])
@@ -280,10 +327,12 @@ def _run_approvals_show(request_id: str) -> int:
 def _run_approvals_approve(request_id: str, notes: str = "") -> int:
     from hivemind.config import get_config
     from hivemind.hitl.approval import ApprovalStore
+
     cfg = get_config()
     store = ApprovalStore(cfg.data_dir)
     store.resolve(request_id, approved=True, notes=notes)
     from hivemind.cli.ui import console
+
     console.print(f"[hive.success]Approved[/] {request_id}")
     return 0
 
@@ -291,10 +340,12 @@ def _run_approvals_approve(request_id: str, notes: str = "") -> int:
 def _run_approvals_reject(request_id: str, notes: str = "") -> int:
     from hivemind.config import get_config
     from hivemind.hitl.approval import ApprovalStore
+
     cfg = get_config()
     store = ApprovalStore(cfg.data_dir)
     store.resolve(request_id, approved=False, notes=notes)
     from hivemind.cli.ui import console
+
     console.print(f"[hive.error]Rejected[/] {request_id}")
     return 0
 
@@ -304,12 +355,14 @@ def _run_approvals_watch() -> int:
     import time
     from hivemind.config import get_config
     from hivemind.hitl.approval import ApprovalStore
+
     cfg = get_config()
     store = ApprovalStore(cfg.data_dir)
     try:
         from rich.console import Console
         from rich.table import Table
         from rich.live import Live
+
         c = Console()
 
         def make_table():
@@ -320,7 +373,12 @@ def _run_approvals_watch() -> int:
             t.add_column("trigger")
             t.add_column("status")
             for r in pending:
-                t.add_row(r.request_id[:14], (getattr(r.task, "description", "") or "")[:50], str(r.trigger.type), r.status)
+                t.add_row(
+                    r.request_id[:14],
+                    (getattr(r.task, "description", "") or "")[:50],
+                    str(r.trigger.type),
+                    r.status,
+                )
             return t
 
         with Live(make_table(), refresh_per_second=0.1, console=c) as live:
@@ -373,17 +431,24 @@ def _run_analyze_dispatch(args: object) -> int:
     run_id_or_path = getattr(args, "run_id_or_path", None)
     no_ai = getattr(args, "no_ai", False)
     json_out = getattr(args, "analyze_json", False)
-    if run_id_or_path is None or (isinstance(run_id_or_path, str) and not run_id_or_path.strip()):
+    if run_id_or_path is None or (
+        isinstance(run_id_or_path, str) and not run_id_or_path.strip()
+    ):
         from rich.console import Console
         from hivemind.runtime.run_history import RunHistory
+
         console = Console()
         rows = RunHistory().list_runs(limit=5)
         if rows:
-            console.print("Recent runs (use [cyan]hivemind analyze <run_id>[/] for run analysis):")
+            console.print(
+                "Recent runs (use [cyan]hivemind analyze <run_id>[/] for run analysis):"
+            )
             for r in rows[:5]:
                 console.print(f"  [dim]{r.run_id}[/]")
         else:
-            console.print("No runs yet. Use [cyan]hivemind analyze <run_id>[/] after a run, or [cyan]hivemind analyze .[/] for repo analysis.")
+            console.print(
+                "No runs yet. Use [cyan]hivemind analyze <run_id>[/] after a run, or [cyan]hivemind analyze .[/] for repo analysis."
+            )
         return 0
     s = str(run_id_or_path).strip()
     if s in (".", "..") or "/" in s or os.path.exists(s):
@@ -425,12 +490,16 @@ def _run_analyze_run(
         import json
         from dataclasses import asdict
         from hivemind.intelligence.analysis.run_report import TaskSummary
+
         def _serialize(obj):
             if hasattr(obj, "value"):
                 return obj.value
             if hasattr(obj, "__dataclass_fields__"):
-                return {k: _serialize(getattr(obj, k)) for k in obj.__dataclass_fields__}
+                return {
+                    k: _serialize(getattr(obj, k)) for k in obj.__dataclass_fields__
+                }
             return obj
+
         out = {
             "run_id": report.run_id,
             "root_task": report.root_task,
@@ -470,8 +539,11 @@ def _run_analyze_run(
 
     print_run_report(report, console)
     if not no_ai:
-        worker_model = getattr(cfg, "worker_model", None) or getattr(cfg.models, "worker", "gpt-4o-mini")
+        worker_model = getattr(cfg, "worker_model", None) or getattr(
+            cfg.models, "worker", "gpt-4o-mini"
+        )
         from hivemind.utils.models import resolve_model
+
         worker_model = resolve_model(worker_model, "analysis")
         analysis_text = analyze(
             report,
@@ -480,7 +552,9 @@ def _run_analyze_run(
         )
         report.plain_english_analysis = analysis_text
         console.print()
-        console.print(Panel(analysis_text, title="Plain-English Analysis", border_style="dim"))
+        console.print(
+            Panel(analysis_text, title="Plain-English Analysis", border_style="dim")
+        )
     return 0
 
 
@@ -490,6 +564,7 @@ def _run_runs(args: object) -> int:
     if run_id and str(run_id).strip():
         return _run_analyze_run(str(run_id).strip(), no_ai=True, json_output=False)
     from hivemind.runtime.run_history import RunHistory
+
     limit = getattr(args, "limit", 20)
     failed = getattr(args, "failed", False)
     json_out = getattr(args, "runs_json", False)
@@ -498,6 +573,7 @@ def _run_runs(args: object) -> int:
     rows = history.list_runs(limit=limit, filter_status=filter_status)
     if json_out:
         import json
+
         out = [
             {
                 "run_id": r.run_id,
@@ -516,6 +592,7 @@ def _run_runs(args: object) -> int:
         return 0
     from rich.console import Console
     from rich.table import Table
+
     console = Console()
     table = Table(title="Run history")
     table.add_column("Run ID", style="dim", max_width=36, overflow="fold")
@@ -528,7 +605,9 @@ def _run_runs(args: object) -> int:
     table.add_column("Date", style="dim", width=24)
     for r in rows:
         short_id = r.run_id[:32] + "…" if len(r.run_id) > 32 else r.run_id
-        task_preview = (r.root_task or "")[:40] + ("…" if len(r.root_task or "") > 40 else "")
+        task_preview = (r.root_task or "")[:40] + (
+            "…" if len(r.root_task or "") > 40 else ""
+        )
         if r.failed_tasks > 0 and r.completed_tasks > 0:
             status = "[yellow]⚠ partial[/]"
         elif r.failed_tasks > 0:
@@ -537,13 +616,19 @@ def _run_runs(args: object) -> int:
             status = "[green]✓ completed[/]"
         dur = f"{r.duration_seconds:.1f}s"
         tasks = f"{r.completed_tasks}/{r.total_tasks}"
-        cost = f"${r.estimated_cost_usd:.4f}" if r.estimated_cost_usd is not None else "—"
+        cost = (
+            f"${r.estimated_cost_usd:.4f}" if r.estimated_cost_usd is not None else "—"
+        )
         date = (r.started_at or "")[:24]
-        table.add_row(short_id, task_preview, r.strategy or "—", status, dur, tasks, cost, date)
+        table.add_row(
+            short_id, task_preview, r.strategy or "—", status, dur, tasks, cost, date
+        )
     if rows:
         console.print(table)
     else:
-        console.print("No runs recorded. Run a swarm first (e.g. [cyan]hivemind run \"task\"[/]).")
+        console.print(
+            'No runs recorded. Run a swarm first (e.g. [cyan]hivemind run "task"[/]).'
+        )
     return 0
 
 
@@ -572,16 +657,21 @@ def _workflow_list() -> int:
         from hivemind.workflow.loader import list_workflows, load_workflow
     except ImportError:
         from hivemind.workflow.loader import list_workflows, load_workflow
+
         names = list_workflows()
         for n in names:
             wf = load_workflow(n)
             if wf:
-                print(f"{wf.name}  v{wf.version}  steps={len(wf.steps)}  {wf.description or ''}")
+                print(
+                    f"{wf.name}  v{wf.version}  steps={len(wf.steps)}  {wf.description or ''}"
+                )
         return 0
     console = Console()
     names = list_workflows()
     if not names:
-        console.print("No workflows defined. Add [workflow] to workflow.hivemind.toml or hivemind.toml.")
+        console.print(
+            "No workflows defined. Add [workflow] to workflow.hivemind.toml or hivemind.toml."
+        )
         return 0
     table = Table(title="Workflows")
     table.add_column("Name", style="cyan")
@@ -605,6 +695,7 @@ def _workflow_validate(name: str) -> int:
     """Validate workflow by name. Exit 0 if valid, 1 if errors."""
     from hivemind.workflow.loader import load_workflow
     from hivemind.workflow.validator import ValidationReport, validate_workflow
+
     wf = load_workflow(name)
     if not wf:
         print(f"Workflow '{name}' not found.", file=sys.stderr)
@@ -613,6 +704,7 @@ def _workflow_validate(name: str) -> int:
     try:
         from rich.console import Console
         from rich.markup import escape
+
         console = Console()
         if report.errors:
             for e in report.errors:
@@ -649,6 +741,7 @@ def _workflow_run(name: str, input_pairs: list[str]) -> int:
     from hivemind.memory.memory_index import MemoryIndex
     from hivemind.workflow.loader import load_workflow
     from hivemind.workflow.runner import WorkflowRunner
+
     wf = load_workflow(name)
     if not wf:
         print(f"Workflow '{name}' not found.", file=sys.stderr)
@@ -682,6 +775,7 @@ def _workflow_run(name: str, input_pairs: list[str]) -> int:
     try:
         from rich.console import Console
         from rich.table import Table
+
         console = Console()
         table = Table(title="Workflow run summary")
         table.add_column("Step", style="cyan")
@@ -704,8 +798,12 @@ def _workflow_run(name: str, input_pairs: list[str]) -> int:
         console.print(table)
     except ImportError:
         for step_id, sr in ctx.steps.items():
-            status = "skipped" if sr.skipped else ("failed" if sr.error else "completed")
-            print(f"  {step_id}  {status}  {sr.duration_seconds:.2f}s  {sr.error or ''}")
+            status = (
+                "skipped" if sr.skipped else ("failed" if sr.error else "completed")
+            )
+            print(
+                f"  {step_id}  {status}  {sr.duration_seconds:.2f}s  {sr.error or ''}"
+            )
     for step_id, sr in ctx.steps.items():
         if not sr.skipped and not sr.error and sr.raw_result:
             print(f"\n--- {step_id} ---")
@@ -747,9 +845,11 @@ def _run_init(no_interactive: bool = False) -> int:
     """Run init: wizard with welcome screen (interactive) or minimal config (--no-interactive)."""
     try:
         from hivemind.cli.ui.onboarding import run_init_wizard
+
         return run_init_wizard(no_interactive=no_interactive)
     except ImportError:
         from hivemind.cli.init import run_init
+
         return run_init(interactive=not no_interactive)
 
 
@@ -771,11 +871,13 @@ def _run_mcp_list() -> int:
     """List configured MCP servers and their tool counts (from live discovery)."""
     from hivemind.config import get_config
     from hivemind.tools.mcp import discover_mcp_tools
+
     cfg = get_config()
     servers = getattr(getattr(cfg, "mcp", None), "servers", None) or []
     try:
         from rich.console import Console
         from rich.table import Table
+
         console = Console()
         table = Table(title="MCP servers")
         table.add_column("Name", style="cyan")
@@ -790,7 +892,9 @@ def _run_mcp_list() -> int:
                 count = "—"
             table.add_row(sname, getattr(s, "transport", "?"), str(count))
         if not servers:
-            console.print("No MCP servers configured. Add [[mcp.servers]] to hivemind.toml or use [cyan]hivemind mcp add[/].")
+            console.print(
+                "No MCP servers configured. Add [[mcp.servers]] to hivemind.toml or use [cyan]hivemind mcp add[/]."
+            )
         else:
             console.print(table)
     except ImportError:
@@ -802,18 +906,24 @@ def _run_mcp_list() -> int:
 def _run_mcp_test(server_name: str) -> int:
     """Connect to server, list tools, print names and descriptions. Exit 1 if connection fails."""
     from hivemind.config import get_config
+
     cfg = get_config()
     servers = getattr(getattr(cfg, "mcp", None), "servers", None) or []
     server = next((s for s in servers if getattr(s, "name", "") == server_name), None)
     if not server:
-        print(f"Error: MCP server '{server_name}' not found in config.", file=sys.stderr)
+        print(
+            f"Error: MCP server '{server_name}' not found in config.", file=sys.stderr
+        )
         return 1
     try:
         from hivemind.tools.mcp import discover_mcp_tools
+
         adapters = discover_mcp_tools(server)
         print(f"Connected to '{server_name}'. Tools: {len(adapters)}")
         for a in adapters:
-            print(f"  - {getattr(a, '_mcp_tool_name', a.name)}: {(a.description or '')[:80]}")
+            print(
+                f"  - {getattr(a, '_mcp_tool_name', a.name)}: {(a.description or '')[:80]}"
+            )
         return 0
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -824,19 +934,27 @@ def _run_mcp_add() -> int:
     """Interactive: prompt for transport, command/url, name; append to hivemind.toml [mcp.servers]."""
     from pathlib import Path
     from hivemind.config.config_loader import project_config_paths
+
     config_path = None
     for p in project_config_paths():
         if p.is_file():
             config_path = p
             break
     if not config_path:
-        print("Error: No hivemind.toml found. Run [cyan]hivemind init[/] first.", file=sys.stderr)
+        print(
+            "Error: No hivemind.toml found. Run [cyan]hivemind init[/] first.",
+            file=sys.stderr,
+        )
         return 1
     try:
         name = input("Server name (e.g. filesystem): ").strip() or "mcp-server"
-        transport = input("Transport (stdio|http|sse) [stdio]: ").strip().lower() or "stdio"
+        transport = (
+            input("Transport (stdio|http|sse) [stdio]: ").strip().lower() or "stdio"
+        )
         if transport == "stdio":
-            cmd_str = input("Command (space-separated, e.g. npx -y @modelcontextprotocol/server-filesystem /tmp): ").strip()
+            cmd_str = input(
+                "Command (space-separated, e.g. npx -y @modelcontextprotocol/server-filesystem /tmp): "
+            ).strip()
             command = cmd_str.split() if cmd_str else []
             url = None
         else:
@@ -846,7 +964,7 @@ def _run_mcp_add() -> int:
         # Append [[mcp.servers]] entry
         entry = f'\n[[mcp.servers]]\nname = "{name}"\ntransport = "{transport}"\n'
         if command:
-            entry += f'command = {json.dumps(command)}\n'
+            entry += f"command = {json.dumps(command)}\n"
         if url:
             entry += f'url = "{url}"\n'
         if "\n[mcp]" not in toml and "[[mcp.servers]]" not in toml:
@@ -865,8 +983,13 @@ def _run_a2a_serve(port: int | None) -> int:
     """Start A2A server, print AgentCard URL."""
     from hivemind.config import get_config
     from hivemind.agents.a2a.server import run_a2a_server
+
     cfg = get_config()
-    p = port if port is not None else getattr(getattr(cfg, "a2a", None), "serve_port", 8080)
+    p = (
+        port
+        if port is not None
+        else getattr(getattr(cfg, "a2a", None), "serve_port", 8080)
+    )
     swarm_name = getattr(getattr(cfg, "swarm", None), "name", None) or "hivemind"
     print(f"A2A server starting at http://localhost:{p}", file=sys.stderr)
     print(f"AgentCard: http://localhost:{p}/.well-known/agent.json", file=sys.stderr)
@@ -878,8 +1001,10 @@ def _run_a2a_discover(url: str) -> int:
     """Fetch AgentCard, print skills, optionally add to config."""
     try:
         from hivemind.agents.a2a.client import A2AClient
+
         client = A2AClient()
         import asyncio
+
         card = asyncio.run(client.get_agent_card(url))
         print(f"Name: {card.name}")
         print(f"Description: {card.description}")
@@ -902,11 +1027,16 @@ def _run_a2a_call(url: str, task: str) -> int:
         from hivemind.agents.a2a.types import A2ATaskRequest
         import asyncio
         import uuid
+
         client = A2AClient()
-        request = A2ATaskRequest(id=str(uuid.uuid4()), message={"text": task}, session_id=None)
+        request = A2ATaskRequest(
+            id=str(uuid.uuid4()), message={"text": task}, session_id=None
+        )
+
         async def _stream():
             async for chunk in client.stream_task(url, request):
                 print(chunk, end="", flush=True)
+
         asyncio.run(_stream())
         print()
         return 0
@@ -922,10 +1052,19 @@ def _run_node_start(args) -> int:
         port = getattr(args, "port", None)
         workers = getattr(args, "workers", None)
         tags = getattr(args, "tags", "") or ""
-        print(f"Node role: {role}, port: {port or 'config default'}, workers: {workers or 'config default'}", file=sys.stderr)
+        print(
+            f"Node role: {role}, port: {port or 'config default'}, workers: {workers or 'config default'}",
+            file=sys.stderr,
+        )
         if tags:
-            print(f"Tags: {[t.strip() for t in tags.split(',') if t.strip()]}", file=sys.stderr)
-        print("Distributed node start: set nodes.mode=distributed and nodes.role in hivemind.toml, then run your process.", file=sys.stderr)
+            print(
+                f"Tags: {[t.strip() for t in tags.split(',') if t.strip()]}",
+                file=sys.stderr,
+            )
+        print(
+            "Distributed node start: set nodes.mode=distributed and nodes.role in hivemind.toml, then run your process.",
+            file=sys.stderr,
+        )
         return 0
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -938,20 +1077,34 @@ def _run_node_status(args) -> int:
     if not url:
         try:
             from hivemind.config import get_config
+
             url = get_config().nodes.controller_url
         except Exception:
             url = "http://localhost:7700"
     try:
         import httpx
+
         r = httpx.get(f"{url.rstrip('/')}/status", timeout=10.0)
         r.raise_for_status()
         data = r.json()
         from rich.console import Console
         from rich.table import Table
+
         cons = Console()
-        cons.print("[bold]Run[/bold]", data.get("run_id", ""), "[bold]Leader[/bold]", data.get("node_id", ""))
+        cons.print(
+            "[bold]Run[/bold]",
+            data.get("run_id", ""),
+            "[bold]Leader[/bold]",
+            data.get("node_id", ""),
+        )
         s = data.get("scheduler", {})
-        cons.print("Tasks:", s.get("completed", 0), "completed,", s.get("pending", 0), "pending")
+        cons.print(
+            "Tasks:",
+            s.get("completed", 0),
+            "completed,",
+            s.get("pending", 0),
+            "pending",
+        )
         return 0
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -964,11 +1117,13 @@ def _run_node_workers(args) -> int:
     if not url:
         try:
             from hivemind.config import get_config
+
             url = get_config().nodes.controller_url
         except Exception:
             url = "http://localhost:7700"
     try:
         import httpx
+
         r = httpx.get(f"{url.rstrip('/')}/status", timeout=10.0)
         r.raise_for_status()
         data = r.json()
@@ -985,11 +1140,13 @@ def _run_node_drain(args) -> int:
     url = getattr(args, "controller_url", None)
     try:
         from hivemind.config import get_config
+
         url = url or get_config().nodes.controller_url
     except Exception:
         url = "http://localhost:7700"
     try:
         import httpx
+
         r = httpx.post(
             f"{url.rstrip('/')}/control",
             json={"command": "drain", "target": getattr(args, "node_id", "")},
@@ -1008,10 +1165,13 @@ def _run_node_logs(args) -> int:
     url = getattr(args, "controller_url", None) or "http://localhost:7700"
     try:
         from hivemind.config import get_config
+
         url = get_config().nodes.controller_url
     except Exception:
         pass
-    print("Connect to", url, "stream/events (--follow); not implemented", file=sys.stderr)
+    print(
+        "Connect to", url, "stream/events (--follow); not implemented", file=sys.stderr
+    )
     return 0
 
 
@@ -1111,6 +1271,7 @@ def _run_analytics() -> int:
     try:
         from hivemind.tools.scoring import get_default_score_store
         from hivemind.tools.scoring.report import generate_tools_report
+
         store = get_default_score_store()
         scores = store.get_all_scores()
         if scores:
@@ -1150,7 +1311,10 @@ def _run_tools(args: object) -> int:
             store.reset(tool_name_reset)
             print(f"Score history wiped for: {tool_name_reset}")
             return 0
-        print("Usage: hivemind tools reset <tool_name> | hivemind tools reset --all", file=sys.stderr)
+        print(
+            "Usage: hivemind tools reset <tool_name> | hivemind tools reset --all",
+            file=sys.stderr,
+        )
         return 1
 
     # List: all registered tools with scores
@@ -1177,12 +1341,26 @@ def _run_tools(args: object) -> int:
             success_rate = s.success_rate
             avg_lat = s.avg_latency_ms
             calls = s.total_calls
-            last_used = s.last_updated[:10] if len(s.last_updated) >= 10 else s.last_updated
+            last_used = (
+                s.last_updated[:10] if len(s.last_updated) >= 10 else s.last_updated
+            )
             is_new = s.is_new
         if poor_only and score_val >= 0.40:
             continue
         cat = _tool_category(t)
-        rows.append((t.name, cat, score_val, label, success_rate, avg_lat, calls, last_used, is_new))
+        rows.append(
+            (
+                t.name,
+                cat,
+                score_val,
+                label,
+                success_rate,
+                avg_lat,
+                calls,
+                last_used,
+                is_new,
+            )
+        )
 
     rows.sort(key=lambda r: -r[2])
     table = Table(title="Tool reliability scores")
@@ -1236,14 +1414,18 @@ def _run_cache(subcommand: str, threshold: float | None = None) -> int:
         print(f"Cached task results (exact): {st['entries']}")
         try:
             from hivemind.cache.store import get_default_cache_store
+
             store = get_default_cache_store(db_path)
             sst = store.stats()
             semantic_count = sst.get("semantic_entries", 0)
             if semantic_count > 0:
                 try:
                     from hivemind.config import get_config
+
                     cfg = get_config()
-                    th = getattr(getattr(cfg, "cache", None), "similarity_threshold", 0.92)
+                    th = getattr(
+                        getattr(cfg, "cache", None), "similarity_threshold", 0.92
+                    )
                 except Exception:
                     th = 0.92
                 print(f"Semantic cache: enabled (threshold: {th})")
@@ -1260,6 +1442,7 @@ def _run_cache(subcommand: str, threshold: float | None = None) -> int:
         cache.clear()
         try:
             from hivemind.cache.store import get_default_cache_store
+
             get_default_cache_store(db_path).clear()
         except Exception:
             pass
@@ -1269,6 +1452,7 @@ def _run_cache(subcommand: str, threshold: float | None = None) -> int:
         try:
             from hivemind.cache.task_cache import SemanticTaskCache
             from hivemind.cache.embedding_index import _cosine_sim, bytes_to_embedding
+
             sem = SemanticTaskCache(
                 similarity_threshold=threshold or 0.92,
                 max_age_hours=168.0,
@@ -1285,19 +1469,26 @@ def _run_cache(subcommand: str, threshold: float | None = None) -> int:
             print("Threshold | Entries that would match self | Avg other-match count")
             print("----------|-------------------------------|----------------------")
             for th in ths:
-                self_ok = sum(1 for i in range(len(vecs)) if _cosine_sim(vecs[i], vecs[i]) >= th)
+                self_ok = sum(
+                    1 for i in range(len(vecs)) if _cosine_sim(vecs[i], vecs[i]) >= th
+                )
                 other_count = 0
                 for i in range(len(vecs)):
                     for j in range(len(vecs)):
                         if i != j and _cosine_sim(vecs[i], vecs[j]) >= th:
                             other_count += 1
                 avg_other = other_count / len(vecs) if vecs else 0
-                print(f"  {th:.2f}     | {self_ok}/{len(vecs)}                          | {avg_other:.1f}")
+                print(
+                    f"  {th:.2f}     | {self_ok}/{len(vecs)}                          | {avg_other:.1f}"
+                )
             return 0
         except Exception as e:
             print(f"Cache tune failed: {e}", file=sys.stderr)
             return 1
-    print("Usage: hivemind cache stats | hivemind cache clear | hivemind cache tune [--threshold 0.90]", file=sys.stderr)
+    print(
+        "Usage: hivemind cache stats | hivemind cache clear | hivemind cache tune [--threshold 0.90]",
+        file=sys.stderr,
+    )
     return 1
 
 
@@ -1349,7 +1540,9 @@ def _run_synthesize(
     if kg and not no_kg:
         kg.load()
         kg.build_from_memory(merge=True)
-    synthesizer = CrossRunSynthesizer(memory_index=index, knowledge_graph=kg, worker_model=worker_model)
+    synthesizer = CrossRunSynthesizer(
+        memory_index=index, knowledge_graph=kg, worker_model=worker_model
+    )
     since_dt = None
     if since:
         try:
@@ -1359,18 +1552,27 @@ def _run_synthesize(
     out_chunks = []
     console = Console()
     if json_out:
-        full = synthesizer.synthesize(query, max_sources=20, stream=False, use_kg=not no_kg, since=since_dt)
+        full = synthesizer.synthesize(
+            query, max_sources=20, stream=False, use_kg=not no_kg, since=since_dt
+        )
         answer = full if isinstance(full, str) else "".join(full)
         memories = index.query_across_runs(query, top_k=20, include_archived=False)
         if since_dt:
             memories = [m for m in memories if m.timestamp >= since_dt]
         run_ids = list(dict.fromkeys(getattr(m, "run_id", "") or "" for m in memories))
         run_ids = [r for r in run_ids if r]
-        obj = {"query": query, "sources_used": len(memories), "run_ids": run_ids, "answer": answer}
+        obj = {
+            "query": query,
+            "sources_used": len(memories),
+            "run_ids": run_ids,
+            "answer": answer,
+        }
         print(json.dumps(obj, indent=2))
         return 0
     with console.status("Synthesizing..."):
-        it = synthesizer.synthesize(query, max_sources=20, stream=True, use_kg=not no_kg, since=since_dt)
+        it = synthesizer.synthesize(
+            query, max_sources=20, stream=True, use_kg=not no_kg, since=since_dt
+        )
         for chunk in it:
             out_chunks.append(chunk)
             console.print(chunk, end="")
@@ -1380,7 +1582,12 @@ def _run_synthesize(
         memories = [m for m in memories if m.timestamp >= since_dt]
     run_ids = list(dict.fromkeys(getattr(m, "run_id", "") or "" for m in memories))
     run_ids = [r for r in run_ids if r]
-    console.print(Panel(f"Sources: {len(memories)} records across {len(run_ids)} runs\nRun IDs: {', '.join(run_ids[:15])}{'...' if len(run_ids) > 15 else ''}", title="Sources"))
+    console.print(
+        Panel(
+            f"Sources: {len(memories)} records across {len(run_ids)} runs\nRun IDs: {', '.join(run_ids[:15])}{'...' if len(run_ids) > 15 else ''}",
+            title="Sources",
+        )
+    )
     return 0
 
 
@@ -1413,9 +1620,17 @@ def _run_memory_consolidate(dry_run: bool = False, min_cluster_size: int = 3) ->
         report = loop.run_until_complete(
             consolidator.consolidate(store, index, worker_model, dry_run=dry_run)
         )
-    avg_per = report.records_archived / report.clusters_consolidated if report.clusters_consolidated else 0
-    console.print(f"Found {report.clusters_found} clusters (avg {avg_per:.1f} records/cluster)")
-    console.print(f"Consolidating {report.clusters_consolidated} clusters with {min_cluster_size}+ records...")
+    avg_per = (
+        report.records_archived / report.clusters_consolidated
+        if report.clusters_consolidated
+        else 0
+    )
+    console.print(
+        f"Found {report.clusters_found} clusters (avg {avg_per:.1f} records/cluster)"
+    )
+    console.print(
+        f"Consolidating {report.clusters_consolidated} clusters with {min_cluster_size}+ records..."
+    )
     with Progress(SpinnerColumn(), console=console) as progress:
         progress.add_task("consolidate", total=report.clusters_consolidated)
     console.print("Results:")
@@ -1423,7 +1638,9 @@ def _run_memory_consolidate(dry_run: bool = False, min_cluster_size: int = 3) ->
     console.print(f"  Summaries created:   {report.records_created}")
     console.print(f"  Est. tokens saved:   ~{report.tokens_saved_estimate} per run")
     if dry_run:
-        console.print("Run hivemind memory consolidate without --dry-run to apply changes.")
+        console.print(
+            "Run hivemind memory consolidate without --dry-run to apply changes."
+        )
     return 0
 
 
@@ -1438,9 +1655,12 @@ def _run_checkpoint_list(args: object) -> int:
     from hivemind.config import get_config
     from hivemind.swarm.checkpointer import SchedulerCheckpointer
     import os
+
     try:
         cfg = get_config()
-        events_dir = getattr(cfg, "events_dir", ".hivemind/events") or ".hivemind/events"
+        events_dir = (
+            getattr(cfg, "events_dir", ".hivemind/events") or ".hivemind/events"
+        )
     except Exception:
         events_dir = ".hivemind/events"
     ckp = SchedulerCheckpointer(events_dir=events_dir)
@@ -1454,6 +1674,7 @@ def _run_checkpoint_list(args: object) -> int:
             path = os.path.join(events_dir, name)
             try:
                 import json
+
                 with open(path, "r") as f:
                     data = json.load(f)
                 completed = data.get("completed_count", 0)
@@ -1468,13 +1689,16 @@ def _run_checkpoint_list(args: object) -> int:
     try:
         from rich.console import Console
         from rich.table import Table
+
         console = Console()
         table = Table(title="Checkpoints")
         table.add_column("Run ID", style="dim")
         table.add_column("Completed", justify="right")
         table.add_column("Failed", justify="right")
         table.add_column("Snapshot at")
-        for run_id, completed, failed, snapshot_at in sorted(found, key=lambda x: -len(x[0])):
+        for run_id, completed, failed, snapshot_at in sorted(
+            found, key=lambda x: -len(x[0])
+        ):
             table.add_row(run_id[:48], str(completed), str(failed), snapshot_at)
         console.print(table)
     except ImportError:
@@ -1488,13 +1712,19 @@ def _run_checkpoint_restore(run_id: str) -> int:
     from hivemind.config import get_config
     from hivemind.swarm.checkpointer import SchedulerCheckpointer
     from hivemind.types.exceptions import CheckpointNotFoundError
+
     if not run_id or not run_id.strip():
-        print("Error: run_id required. Use: hivemind checkpoint restore <run_id>", file=sys.stderr)
+        print(
+            "Error: run_id required. Use: hivemind checkpoint restore <run_id>",
+            file=sys.stderr,
+        )
         return 1
     run_id = run_id.strip()
     try:
         cfg = get_config()
-        events_dir = getattr(cfg, "events_dir", ".hivemind/events") or ".hivemind/events"
+        events_dir = (
+            getattr(cfg, "events_dir", ".hivemind/events") or ".hivemind/events"
+        )
     except Exception:
         events_dir = ".hivemind/events"
     ckp = SchedulerCheckpointer(events_dir=events_dir)
@@ -1503,8 +1733,12 @@ def _run_checkpoint_restore(run_id: str) -> int:
     except CheckpointNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-    print(f"Restored scheduler for run_id={run_id!r}: {len(scheduler.get_all_tasks())} tasks, {scheduler.get_results()} results.")
-    print("Resume execution is not yet implemented (1.10). Use checkpoint list to inspect state.")
+    print(
+        f"Restored scheduler for run_id={run_id!r}: {len(scheduler.get_all_tasks())} tasks, {scheduler.get_results()} results."
+    )
+    print(
+        "Resume execution is not yet implemented (1.10). Use checkpoint list to inspect state."
+    )
     return 0
 
 
@@ -1512,6 +1746,7 @@ def _run_audit_dispatch(args: object) -> int:
     """Audit: print table, export, or verify."""
     from hivemind.config import get_config
     from hivemind.audit.logger import AuditLogger
+
     cmd = getattr(args, "audit_cmd", None)
     run_id = getattr(args, "run_id", None)
     export_fmt = getattr(args, "export", None)
@@ -1525,7 +1760,10 @@ def _run_audit_dispatch(args: object) -> int:
         print(msg)
         return 0 if ok else 1
     if not run_id:
-        print("Error: run_id required (e.g. hivemind audit events_2025-03-10...)", file=sys.stderr)
+        print(
+            "Error: run_id required (e.g. hivemind audit events_2025-03-10...)",
+            file=sys.stderr,
+        )
         return 1
     cfg = get_config()
     logger = AuditLogger(cfg.data_dir, run_id=run_id)
@@ -1540,6 +1778,7 @@ def _run_audit_dispatch(args: object) -> int:
     try:
         from rich.console import Console
         from rich.table import Table
+
         console = Console()
         table = Table(title=f"Audit log: {run_id}")
         table.add_column("timestamp")
@@ -1551,6 +1790,7 @@ def _run_audit_dispatch(args: object) -> int:
             if not line:
                 continue
             import json
+
             r = json.loads(line)
             table.add_row(
                 r.get("timestamp", "")[:19],
@@ -1575,6 +1815,7 @@ def _run_explain(args: object) -> int:
     try:
         from hivemind.explainability.decision_tree import DecisionTreeBuilder
         from hivemind.config import get_config
+
         cfg = get_config()
         events_dir = cfg.events_dir
         builder = DecisionTreeBuilder()
@@ -1593,7 +1834,11 @@ def _run_explain(args: object) -> int:
             print(f"  model: {r.model_selected} ({r.model_tier})")
             print(f"  tools: {r.tools_selected}")
             print(f"  confidence: {r.confidence:.0%}")
-            print(f"  rationale: {r.rationale[:300]}..." if len(r.rationale or "") > 300 else f"  rationale: {r.rationale}")
+            print(
+                f"  rationale: {r.rationale[:300]}..."
+                if len(r.rationale or "") > 300
+                else f"  rationale: {r.rationale}"
+            )
         return 0
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -1603,13 +1848,18 @@ def _run_explain(args: object) -> int:
 def _run_simulate(args: object) -> int:
     """Simulate: dry-run planning, no LLM or tools."""
     import asyncio
+
     task = getattr(args, "task", "")
     cost_only = getattr(args, "cost_only", False) or getattr(args, "cost", False)
     if not task:
-        print("Error: task required (e.g. hivemind simulate \"Summarize X\")", file=sys.stderr)
+        print(
+            'Error: task required (e.g. hivemind simulate "Summarize X")',
+            file=sys.stderr,
+        )
         return 1
     try:
         from hivemind.explainability.simulation import SimulationMode
+
         sim = SimulationMode()
         report = asyncio.run(sim.simulate(task))
         if cost_only:
@@ -1631,6 +1881,7 @@ def _run_health(args: object) -> int:
     import asyncio
     from hivemind.config import get_config
     from hivemind.runtime.health import HealthChecker, HealthReport
+
     try:
         cfg = get_config()
     except Exception:
@@ -1638,6 +1889,7 @@ def _run_health(args: object) -> int:
     if cfg is None:
         print("No config loaded; using defaults for health checks.")
         from hivemind.config.schema import HivemindConfigModel
+
         cfg = HivemindConfigModel()
     checker = HealthChecker()
     try:
@@ -1647,6 +1899,7 @@ def _run_health(args: object) -> int:
         report = loop.run_until_complete(checker.check(cfg))
     try:
         from rich.console import Console
+
         console = Console()
         for name, ok in report.checks.items():
             if ok:
@@ -1660,7 +1913,10 @@ def _run_health(args: object) -> int:
     except ImportError:
         for name, ok in report.checks.items():
             sym = "✓" if ok else "✗"
-            print(f"  {sym} {name}" + (f"  {report.errors.get(name, '')}" if not ok else ""))
+            print(
+                f"  {sym} {name}"
+                + (f"  {report.errors.get(name, '')}" if not ok else "")
+            )
         print("healthy" if report.healthy else "unhealthy")
     return 0 if report.healthy else 1
 
@@ -1670,17 +1926,24 @@ def _run_completion(parser: argparse.ArgumentParser, args: object) -> int:
     shell = getattr(args, "shell", "bash")
     try:
         import shtab
+
         if shell == "fish":
             try:
                 from hivemind.cli.ui import err_console
-                err_console.print("[hive.warning]Fish completion: use shtab for bash/zsh; fish script can be generated from parser.[/]")
+
+                err_console.print(
+                    "[hive.warning]Fish completion: use shtab for bash/zsh; fish script can be generated from parser.[/]"
+                )
             except ImportError:
                 pass
-            sys.stderr.write("Fish completion: add 'complete -c hivemind -a \"(hivemind --print-completion 2>/dev/null)\"' or use shtab for bash/zsh\n")
+            sys.stderr.write(
+                "Fish completion: add 'complete -c hivemind -a \"(hivemind --print-completion 2>/dev/null)\"' or use shtab for bash/zsh\n"
+            )
             return 0
         output = shtab.complete(parser, shell=shell)
         try:
             from hivemind.cli.ui import console
+
             console.print(output, end="")
         except ImportError:
             print(output, end="")
@@ -1688,6 +1951,7 @@ def _run_completion(parser: argparse.ArgumentParser, args: object) -> int:
     except ImportError:
         try:
             from hivemind.cli.ui import err_console
+
             err_console.print("Install shtab: pip install shtab")
         except ImportError:
             print("Install shtab: pip install shtab", file=sys.stderr)
@@ -1699,6 +1963,26 @@ def _run_upgrade(args: object) -> int:
     from hivemind.upgrade.cli import run_upgrade
 
     return run_upgrade(args)
+
+
+def _run_plugins_dispatch(args: object) -> int:
+    """Plugins: login, publish."""
+    cmd = getattr(args, "plugins_cmd", None)
+    if cmd == "login":
+        from hivemind.plugins.marketplace.publisher import cmd_login
+
+        cmd_login()
+        return 0
+    if cmd == "publish":
+        from hivemind.plugins.marketplace.publisher import PluginPublisher, PublishError
+
+        try:
+            PluginPublisher().publish(getattr(args, "path", "."))
+            return 0
+        except PublishError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+    return 0
 
 
 def main() -> int:
@@ -1737,12 +2021,30 @@ Examples:
     except ImportError:
         pass
     global_grp = parser.add_argument_group("Global options")
-    global_grp.add_argument("--debug", action="store_true", help="Enable DEBUG log level")
-    global_grp.add_argument("--trace", action="store_true", help="Enable TRACE log level (very verbose)")
-    global_grp.add_argument("-q", "--quiet", action="store_true", help="WARN and above only, suppress progress")
-    global_grp.add_argument("--no-color", action="store_true", help="Disable color output")
-    global_grp.add_argument("--json", action="store_true", dest="json_output", help="Machine-readable JSON output")
-    global_grp.add_argument("--plain", action="store_true", help="Plain text output, no Rich (for piping)")
+    global_grp.add_argument(
+        "--debug", action="store_true", help="Enable DEBUG log level"
+    )
+    global_grp.add_argument(
+        "--trace", action="store_true", help="Enable TRACE log level (very verbose)"
+    )
+    global_grp.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="WARN and above only, suppress progress",
+    )
+    global_grp.add_argument(
+        "--no-color", action="store_true", help="Disable color output"
+    )
+    global_grp.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Machine-readable JSON output",
+    )
+    global_grp.add_argument(
+        "--plain", action="store_true", help="Plain text output, no Rich (for piping)"
+    )
     subparsers = parser.add_subparsers(dest="command", help="Command")
 
     run_parser = subparsers.add_parser(
@@ -1768,7 +2070,11 @@ Examples:
         action="store_true",
         help="No progress output; only print results (for piping)",
     )
-    run_parser.add_argument("--summary", action="store_true", help="Only print run summary, not task results")
+    run_parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Only print run summary, not task results",
+    )
     run_parser.set_defaults(func=lambda a: _run_swarm(a))
 
     meta_parser = subparsers.add_parser(
@@ -1782,12 +2088,20 @@ Examples:
         default="",
         help="Mega-task to run (e.g. 'Research and implement a todo API')",
     )
-    meta_parser.add_argument("--max-swarms", type=int, default=None, help="Max sub-swarms to run")
-    meta_parser.add_argument("--budget", type=float, default=None, help="Max budget in USD")
+    meta_parser.add_argument(
+        "--max-swarms", type=int, default=None, help="Max sub-swarms to run"
+    )
+    meta_parser.add_argument(
+        "--budget", type=float, default=None, help="Max budget in USD"
+    )
     meta_sub = meta_parser.add_subparsers(dest="meta_cmd", help="Meta subcommands")
-    meta_plan_p = meta_sub.add_parser("plan", help="Decompose only; print SubSwarmSpecs as table")
+    meta_plan_p = meta_sub.add_parser(
+        "plan", help="Decompose only; print SubSwarmSpecs as table"
+    )
     meta_plan_p.add_argument("mega_task", help="Mega-task to decompose")
-    meta_plan_p.set_defaults(meta_cmd="plan", func=lambda a: _run_meta_plan(a.mega_task))
+    meta_plan_p.set_defaults(
+        meta_cmd="plan", func=lambda a: _run_meta_plan(a.mega_task)
+    )
     meta_parser.set_defaults(
         meta_cmd=None,
         func=lambda a: _run_meta(
@@ -1802,23 +2116,41 @@ Examples:
         help="Human-in-the-loop approval requests",
         description="List, show, approve, or reject pending approval requests.",
     )
-    approvals_sub = approvals_parser.add_subparsers(dest="approvals_cmd", help="Approval subcommands")
-    approvals_list_p = approvals_sub.add_parser("list", help="Table of pending approvals")
+    approvals_sub = approvals_parser.add_subparsers(
+        dest="approvals_cmd", help="Approval subcommands"
+    )
+    approvals_list_p = approvals_sub.add_parser(
+        "list", help="Table of pending approvals"
+    )
     approvals_list_p.set_defaults(func=lambda a: _run_approvals_list())
-    approvals_show_p = approvals_sub.add_parser("show", help="Show full approval request")
+    approvals_show_p = approvals_sub.add_parser(
+        "show", help="Show full approval request"
+    )
     approvals_show_p.add_argument("request_id", help="Request ID")
     approvals_show_p.set_defaults(func=lambda a: _run_approvals_show(a.request_id))
     approvals_approve_p = approvals_sub.add_parser("approve", help="Approve a request")
     approvals_approve_p.add_argument("request_id", help="Request ID")
-    approvals_approve_p.add_argument("--notes", type=str, default="", help="Reviewer notes")
-    approvals_approve_p.set_defaults(func=lambda a: _run_approvals_approve(a.request_id, getattr(a, "notes", "")))
+    approvals_approve_p.add_argument(
+        "--notes", type=str, default="", help="Reviewer notes"
+    )
+    approvals_approve_p.set_defaults(
+        func=lambda a: _run_approvals_approve(a.request_id, getattr(a, "notes", ""))
+    )
     approvals_reject_p = approvals_sub.add_parser("reject", help="Reject a request")
     approvals_reject_p.add_argument("request_id", help="Request ID")
-    approvals_reject_p.add_argument("--notes", type=str, default="", help="Reviewer notes")
-    approvals_reject_p.set_defaults(func=lambda a: _run_approvals_reject(a.request_id, getattr(a, "notes", "")))
-    approvals_watch_p = approvals_sub.add_parser("watch", help="Live-updating table of pending approvals (10s refresh)")
+    approvals_reject_p.add_argument(
+        "--notes", type=str, default="", help="Reviewer notes"
+    )
+    approvals_reject_p.set_defaults(
+        func=lambda a: _run_approvals_reject(a.request_id, getattr(a, "notes", ""))
+    )
+    approvals_watch_p = approvals_sub.add_parser(
+        "watch", help="Live-updating table of pending approvals (10s refresh)"
+    )
     approvals_watch_p.set_defaults(func=lambda a: _run_approvals_watch())
-    approvals_parser.set_defaults(approvals_cmd="list", func=lambda a: _run_approvals_list())
+    approvals_parser.set_defaults(
+        approvals_cmd="list", func=lambda a: _run_approvals_list()
+    )
 
     tui_parser = subparsers.add_parser(
         "tui",
@@ -1962,15 +2294,34 @@ Examples:
     memory_parser.add_argument(
         "--limit", "-n", type=int, default=20, help="Max entries to show (for list)"
     )
-    memory_sub = memory_parser.add_subparsers(dest="memory_cmd", help="memory subcommand")
+    memory_sub = memory_parser.add_subparsers(
+        dest="memory_cmd", help="memory subcommand"
+    )
     memory_list_p = memory_sub.add_parser("list", help="List memory entries (default)")
-    memory_list_p.add_argument("--limit", "-n", type=int, default=20, help="Max entries")
+    memory_list_p.add_argument(
+        "--limit", "-n", type=int, default=20, help="Max entries"
+    )
     memory_list_p.set_defaults(func=lambda a: _run_memory(getattr(a, "limit", 20)))
-    memory_parser.set_defaults(memory_cmd="list", func=lambda a: _run_memory(getattr(a, "limit", 20)))
-    memory_consolidate_p = memory_sub.add_parser("consolidate", help="Cluster and summarize similar memories")
-    memory_consolidate_p.add_argument("--dry-run", action="store_true", help="Preview without writing")
-    memory_consolidate_p.add_argument("--min-cluster-size", type=int, default=3, help="Min records per cluster (default 3)")
-    memory_consolidate_p.set_defaults(func=lambda a: _run_memory_consolidate(getattr(a, "dry_run", False), getattr(a, "min_cluster_size", 3)))
+    memory_parser.set_defaults(
+        memory_cmd="list", func=lambda a: _run_memory(getattr(a, "limit", 20))
+    )
+    memory_consolidate_p = memory_sub.add_parser(
+        "consolidate", help="Cluster and summarize similar memories"
+    )
+    memory_consolidate_p.add_argument(
+        "--dry-run", action="store_true", help="Preview without writing"
+    )
+    memory_consolidate_p.add_argument(
+        "--min-cluster-size",
+        type=int,
+        default=3,
+        help="Min records per cluster (default 3)",
+    )
+    memory_consolidate_p.set_defaults(
+        func=lambda a: _run_memory_consolidate(
+            getattr(a, "dry_run", False), getattr(a, "min_cluster_size", 3)
+        )
+    )
 
     synthesize_parser = subparsers.add_parser(
         "synthesize",
@@ -1986,10 +2337,22 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     synthesize_parser.add_argument("query", help="Question to synthesize from memory")
-    synthesize_parser.add_argument("--no-kg", action="store_true", help="Skip knowledge graph, use memory only")
-    synthesize_parser.add_argument("--json", action="store_true", help="Output JSON: query, sources_used, run_ids, answer")
-    synthesize_parser.add_argument("--since", metavar="DATE", help="Filter memory to records after date (ISO)")
-    synthesize_parser.set_defaults(func=lambda a: _run_synthesize(a.query, a.no_kg, a.json, getattr(a, "since", None)))
+    synthesize_parser.add_argument(
+        "--no-kg", action="store_true", help="Skip knowledge graph, use memory only"
+    )
+    synthesize_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output JSON: query, sources_used, run_ids, answer",
+    )
+    synthesize_parser.add_argument(
+        "--since", metavar="DATE", help="Filter memory to records after date (ISO)"
+    )
+    synthesize_parser.set_defaults(
+        func=lambda a: _run_synthesize(
+            a.query, a.no_kg, a.json, getattr(a, "since", None)
+        )
+    )
 
     query_parser = subparsers.add_parser(
         "query",
@@ -2083,7 +2446,9 @@ Examples:
     mcp_test_p = mcp_sub.add_parser("test", help="Test connection to an MCP server")
     mcp_test_p.add_argument("server_name", help="Server name from config")
     mcp_test_p.set_defaults(func=lambda a: _run_mcp_test(a.server_name))
-    mcp_add_p = mcp_sub.add_parser("add", help="Interactively add an MCP server to hivemind.toml")
+    mcp_add_p = mcp_sub.add_parser(
+        "add", help="Interactively add an MCP server to hivemind.toml"
+    )
     mcp_add_p.set_defaults(func=lambda a: _run_mcp_add())
     mcp_parser.set_defaults(mcp_cmd="list", func=lambda a: _run_mcp_list())
 
@@ -2094,12 +2459,18 @@ Examples:
     )
     a2a_sub = a2a_parser.add_subparsers(dest="a2a_cmd", help="Subcommand")
     a2a_serve_p = a2a_sub.add_parser("serve", help="Start A2A server")
-    a2a_serve_p.add_argument("--port", type=int, default=None, help="Port (default: config or 8080)")
+    a2a_serve_p.add_argument(
+        "--port", type=int, default=None, help="Port (default: config or 8080)"
+    )
     a2a_serve_p.set_defaults(func=lambda a: _run_a2a_serve(getattr(a, "port", None)))
-    a2a_discover_p = a2a_sub.add_parser("discover", help="Fetch AgentCard from URL, print skills")
+    a2a_discover_p = a2a_sub.add_parser(
+        "discover", help="Fetch AgentCard from URL, print skills"
+    )
     a2a_discover_p.add_argument("url", help="Agent URL (e.g. http://localhost:8080)")
     a2a_discover_p.set_defaults(func=lambda a: _run_a2a_discover(a.url))
-    a2a_call_p = a2a_sub.add_parser("call", help="Send task to external A2A agent, stream output")
+    a2a_call_p = a2a_sub.add_parser(
+        "call", help="Send task to external A2A agent, stream output"
+    )
     a2a_call_p.add_argument("url", help="Agent URL")
     a2a_call_p.add_argument("task", help="Task text to send")
     a2a_call_p.set_defaults(func=lambda a: _run_a2a_call(a.url, a.task))
@@ -2112,13 +2483,24 @@ Examples:
     )
     node_sub = node_parser.add_subparsers(dest="node_cmd", help="Subcommand")
     node_start_p = node_sub.add_parser("start", help="Start a node in the foreground")
-    node_start_p.add_argument("--role", choices=["controller", "worker", "hybrid"], default="hybrid", help="Node role")
+    node_start_p.add_argument(
+        "--role",
+        choices=["controller", "worker", "hybrid"],
+        default="hybrid",
+        help="Node role",
+    )
     node_start_p.add_argument("--port", type=int, default=None, help="RPC port")
-    node_start_p.add_argument("--workers", type=int, default=None, help="Max workers (worker node)")
-    node_start_p.add_argument("--tags", type=str, default="", help="Comma-separated tags e.g. gpu,high-mem")
+    node_start_p.add_argument(
+        "--workers", type=int, default=None, help="Max workers (worker node)"
+    )
+    node_start_p.add_argument(
+        "--tags", type=str, default="", help="Comma-separated tags e.g. gpu,high-mem"
+    )
     node_start_p.set_defaults(func=lambda a: _run_node_start(a))
     node_status_p = node_sub.add_parser("status", help="Query controller status")
-    node_status_p.add_argument("--controller-url", type=str, default=None, help="Controller RPC URL")
+    node_status_p.add_argument(
+        "--controller-url", type=str, default=None, help="Controller RPC URL"
+    )
     node_status_p.set_defaults(func=lambda a: _run_node_status(a))
     node_workers_p = node_sub.add_parser("workers", help="List workers from controller")
     node_workers_p.add_argument("--controller-url", type=str, default=None)
@@ -2128,7 +2510,9 @@ Examples:
     node_drain_p.add_argument("--controller-url", type=str, default=None)
     node_drain_p.set_defaults(func=lambda a: _run_node_drain(a))
     node_logs_p = node_sub.add_parser("logs", help="Stream events from controller")
-    node_logs_p.add_argument("--follow", action="store_true", help="Keep connection open")
+    node_logs_p.add_argument(
+        "--follow", action="store_true", help="Keep connection open"
+    )
     node_logs_p.add_argument("--controller-url", type=str, default=None)
     node_logs_p.set_defaults(func=lambda a: _run_node_logs(a))
 
@@ -2232,7 +2616,9 @@ Examples:
         default=None,
         help="Similarity threshold for tune (e.g. 0.90)",
     )
-    cache_parser.set_defaults(func=lambda a: _run_cache(a.subcommand, getattr(a, "threshold", None)))
+    cache_parser.set_defaults(
+        func=lambda a: _run_cache(a.subcommand, getattr(a, "threshold", None))
+    )
 
     build_parser = subparsers.add_parser(
         "build",
@@ -2321,6 +2707,28 @@ Examples:
     )
     credentials_parser.set_defaults(func=lambda a: _run_credentials(a))
 
+    plugins_parser = subparsers.add_parser(
+        "plugins",
+        help="Manage plugins (marketplace)",
+        description="Login to registry and publish plugins.",
+        epilog="""
+Examples:
+  hivemind plugins login
+  hivemind plugins publish
+  hivemind plugins publish ./my_plugin
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    plugins_sub = plugins_parser.add_subparsers(dest="plugins_cmd", help="Subcommand")
+    plugins_login_p = plugins_sub.add_parser("login", help="Login to Hivemind Registry")
+    plugins_login_p.set_defaults(plugins_cmd="login")
+    plugins_publish_p = plugins_sub.add_parser("publish", help="Publish a plugin")
+    plugins_publish_p.add_argument(
+        "path", nargs="?", default=".", help="Plugin directory (default: .)"
+    )
+    plugins_publish_p.set_defaults(plugins_cmd="publish")
+    plugins_parser.set_defaults(func=_run_plugins_dispatch)
+
     completion_parser = subparsers.add_parser(
         "completion",
         help="Generate shell completion script",
@@ -2386,10 +2794,16 @@ Examples:
         help="List checkpoints or restore a run",
         description="List checkpoint files or restore a run from checkpoint and resume.",
     )
-    checkpoint_sub = checkpoint_parser.add_subparsers(dest="checkpoint_cmd", help="Subcommand")
-    checkpoint_list_p = checkpoint_sub.add_parser("list", help="List all checkpoint files")
+    checkpoint_sub = checkpoint_parser.add_subparsers(
+        dest="checkpoint_cmd", help="Subcommand"
+    )
+    checkpoint_list_p = checkpoint_sub.add_parser(
+        "list", help="List all checkpoint files"
+    )
     checkpoint_list_p.set_defaults(func=_run_checkpoint_dispatch)
-    checkpoint_restore_p = checkpoint_sub.add_parser("restore", help="Restore run from checkpoint")
+    checkpoint_restore_p = checkpoint_sub.add_parser(
+        "restore", help="Restore run from checkpoint"
+    )
     checkpoint_restore_p.add_argument("run_id", help="Run ID to restore")
     checkpoint_restore_p.set_defaults(func=_run_checkpoint_dispatch)
     checkpoint_parser.set_defaults(checkpoint_cmd="list", func=_run_checkpoint_dispatch)
@@ -2399,10 +2813,16 @@ Examples:
         help="View or export audit log for a run",
         description="Print audit log as table, export to CSV/JSONL, or verify chain integrity.",
     )
-    audit_parser.add_argument("run_id", nargs="?", default=None, help="Run ID (e.g. events_...)")
-    audit_parser.add_argument("--export", choices=["jsonl", "csv", "siem"], default=None, help="Export format")
+    audit_parser.add_argument(
+        "run_id", nargs="?", default=None, help="Run ID (e.g. events_...)"
+    )
+    audit_parser.add_argument(
+        "--export", choices=["jsonl", "csv", "siem"], default=None, help="Export format"
+    )
     audit_sub = audit_parser.add_subparsers(dest="audit_cmd", help="Subcommand")
-    audit_verify_p = audit_sub.add_parser("verify", help="Verify audit log chain integrity")
+    audit_verify_p = audit_sub.add_parser(
+        "verify", help="Verify audit log chain integrity"
+    )
     audit_verify_p.add_argument("run_id", help="Run ID to verify")
     audit_verify_p.set_defaults(audit_cmd="verify")
     audit_parser.set_defaults(func=_run_audit_dispatch)
@@ -2413,7 +2833,9 @@ Examples:
         description="Print decision tree and rationale for agent actions.",
     )
     explain_parser.add_argument("run_id", help="Run ID")
-    explain_parser.add_argument("task_id", nargs="?", default=None, help="Optional task ID for single task")
+    explain_parser.add_argument(
+        "task_id", nargs="?", default=None, help="Optional task ID for single task"
+    )
     explain_parser.set_defaults(func=_run_explain)
 
     simulate_parser = subparsers.add_parser(
@@ -2422,7 +2844,9 @@ Examples:
         description="Run planner and scheduler only; output task list and cost estimate.",
     )
     simulate_parser.add_argument("task", help="Root task description")
-    simulate_parser.add_argument("--cost", action="store_true", help="Print cost estimate only")
+    simulate_parser.add_argument(
+        "--cost", action="store_true", help="Print cost estimate only"
+    )
     simulate_parser.set_defaults(func=_run_simulate)
 
     health_parser = subparsers.add_parser(
@@ -2439,7 +2863,10 @@ Examples:
     plain = getattr(args, "plain", False) or (not sys.stdout.isatty())
     try:
         from hivemind.cli.ui import reconfigure_console, set_log_level
-        reconfigure_console(no_color=bool(no_color), force_terminal=False if plain else None)
+
+        reconfigure_console(
+            no_color=bool(no_color), force_terminal=False if plain else None
+        )
         if getattr(args, "trace", False):
             set_log_level("trace")
         elif getattr(args, "debug", False):

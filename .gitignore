@@ -19,6 +19,9 @@ env/
 .env
 .env.local
 .env.*.local
+.env.registry
+.env.registry.dev
+registry/.env
 
 # Hivemind runtime and output
 .hivemind/
@@ -45,6 +48,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+.cursor/
 
 tmp
 **/build-errors.log
