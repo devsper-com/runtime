@@ -1,37 +1,26 @@
-# Deploy docs to GitHub Pages (hivemind.rithul.dev)
-# - On push to main: build Docusaurus and deploy to gh-pages
-# - On release published: open a PR with versioned docs (merge it to update main; workflow never pushes to main = no diverging branch).
+# Docs versioning: on release, create a versioned docs snapshot and open a PR.
+# Actual deployment is handled by docs-deploy.yml (pushes to EC2).
 #
-# Required: Repo Settings → Pages → Build and deployment → Source:
-#   "Deploy from a branch" → Branch: gh-pages → / (root)
+# On release published: creates versioned docs via docusaurus docs:version,
+# then opens a PR to merge the versioned snapshot into main.
 
-name: Docs
+name: Docs Version
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/docs.yml"
-      - "website/**"
   release:
     types: [published]
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
+  pull-requests: write
 
 concurrency:
-  group: docs
+  group: docs-version
   cancel-in-progress: false
 
 jobs:
   add-version:
-    if: github.event_name == 'release'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -74,32 +63,3 @@ jobs:
             website/versioned_sidebars
             website/versions.json
           delete-branch: true
-
-  deploy:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: website/package-lock.json
-
-      - name: Install and build
-        run: |
-          cd website
-          npm ci
-          npm run build
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: website/build
-          cname: hivemind.rithul.dev
