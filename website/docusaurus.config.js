@@ -1,7 +1,7 @@
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: 'Hivemind',
-  tagline: 'Distributed AI Swarm Runtime',
+  title: 'hivemind',
+  tagline: 'The AI swarm runtime for complex tasks',
   favicon: 'img/favicon.svg',
   url: 'https://hivemind.rithul.dev',
   baseUrl: '/',
@@ -36,10 +36,16 @@ const config = {
       tagName: 'link',
       attributes: {
         rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap',
+        href: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap',
       },
     },
-    // SEO: default meta description and og:description (Docusaurus 3 does not allow root "description")
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'stylesheet',
+        href: 'https://cdn.jsdelivr.net/npm/geist@1/dist/font/css/geist-sans.min.css',
+      },
+    },
     {
       tagName: 'meta',
       attributes: {
@@ -56,7 +62,6 @@ const config = {
           'Hivemind is a distributed AI swarm runtime. Orchestrate multi-agent systems with a swarm execution model: tasks become a DAG, then run in parallel. pip install hivemind-ai',
       },
     },
-    // JSON-LD for SEO (Organization + SoftwareApplication)
     {
       tagName: 'script',
       attributes: { type: 'application/ld+json' },
@@ -65,14 +70,14 @@ const config = {
         '@graph': [
           {
             '@type': 'Organization',
-            name: 'Hivemind',
+            name: 'hivemind',
             url: 'https://hivemind.rithul.dev',
             logo: 'https://hivemind.rithul.dev/img/logo.svg',
-            description: 'Distributed AI Swarm Runtime',
+            description: 'The AI swarm runtime for complex tasks',
           },
           {
             '@type': 'SoftwareApplication',
-            name: 'Hivemind',
+            name: 'hivemind',
             applicationCategory: 'DeveloperApplication',
             operatingSystem: 'Windows, macOS, Linux',
             description:
@@ -85,6 +90,10 @@ const config = {
     },
   ],
 
+  customFields: {
+    registryUrl: 'https://registry.hivemind.rithul.dev',
+  },
+
   presets: [
     [
       'classic',
@@ -92,7 +101,7 @@ const config = {
         docs: {
           routeBasePath: 'docs',
           sidebarPath: './sidebars.js',
-          editUrl: 'https://github.com/rithulkamesh/hivemind/edit/main/docs/',
+          editUrl: 'https://github.com/rithulkamesh/hivemind/edit/main/website/',
           showLastUpdateTime: true,
           lastVersion: 'current',
           versions: {
@@ -113,22 +122,13 @@ const config = {
   themeConfig: {
     colorMode: {
       defaultMode: 'dark',
+      disableSwitch: true,
       respectPrefersColorScheme: false,
     },
 
-    // Announcement bar (banner) – edit content as needed
-    announcementBar: {
-      id: 'announcement',
-      content: 'Documentation for the Hivemind distributed AI swarm runtime. <a href="/docs/introduction">Get started</a>',
-      backgroundColor: '#0f172a',
-      textColor: '#e2e8f0',
-      isCloseable: true,
-    },
-
-    // SEO: default social image and meta
     image: 'img/banner.png',
     metadata: [
-      { name: 'keywords', content: 'hivemind, AI, multi-agent, swarm, distributed AI, LLM, agents, Python, DAG, orchestration' },
+      { name: 'keywords', content: 'hivemind, AI, multi-agent, swarm, distributed AI, LLM, agents, Python, DAG, orchestration, plugins, registry' },
       { name: 'twitter:card', content: 'summary_large_image' },
       { name: 'twitter:site', content: '@rithulkamesh' },
       { property: 'og:type', content: 'website' },
@@ -136,7 +136,7 @@ const config = {
     ],
 
     navbar: {
-      title: 'Hivemind',
+      title: 'hivemind',
       hideOnScroll: true,
       logo: {
         alt: 'Hivemind',
@@ -145,10 +145,19 @@ const config = {
       },
       items: [
         {
-          type: 'docSidebar',
-          sidebarId: 'docs',
+          to: '/docs/',
           position: 'left',
           label: 'Docs',
+        },
+        {
+          to: '/docs/plugins/overview',
+          position: 'left',
+          label: 'Plugins',
+        },
+        {
+          href: 'https://registry.hivemind.rithul.dev',
+          position: 'left',
+          label: 'Registry',
         },
         {
           href: 'https://github.com/rithulkamesh/hivemind',
@@ -159,33 +168,16 @@ const config = {
         },
       ],
     },
-    footer: {
-      style: 'dark',
-      links: [
-        {
-          title: 'Docs',
-          items: [
-            { label: 'Introduction', to: '/docs/introduction' },
-            { label: 'Configuration', to: '/docs/configuration' },
-            { label: 'CLI', to: '/docs/cli' },
-            { label: 'Architecture', to: '/docs/architecture' },
-          ],
-        },
-        {
-          title: 'Project',
-          items: [
-            { label: 'GitHub', href: 'https://github.com/rithulkamesh/hivemind' },
-            { label: 'PyPI', href: 'https://pypi.org/project/hivemind-ai/' },
-          ],
-        },
-      ],
-      copyright: `Hivemind. Distributed AI Swarm Runtime.`,
-    },
+
+    // Footer is handled by the landing page component; disable the Docusaurus footer
+    footer: undefined,
+
     prism: {
       theme: require('prism-react-renderer').themes.github,
       darkTheme: require('prism-react-renderer').themes.vsDark,
-      additionalLanguages: ['bash', 'toml', 'python'],
+      additionalLanguages: ['bash', 'toml', 'python', 'go'],
     },
+
     sidebar: {
       hideable: false,
     },

@@ -1,222 +1,410 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from '@docusaurus/Link';
 import Layout from '@theme/Layout';
-import { motion } from 'framer-motion';
-import { ArrowRight, BookOpen, Settings, Terminal, Layers, Copy, Check } from 'lucide-react';
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.1,
-    },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 10 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] },
-  },
-};
-
-function AnimatedTerminal() {
-  const [lines, setLines] = useState([]);
-
+/* ------------------------------------------------------------------ */
+/*  Intersection Observer hook – triggers fade-in on scroll            */
+/* ------------------------------------------------------------------ */
+function useInView(options = {}) {
+  const ref = useRef(null);
+  const [inView, setInView] = useState(false);
   useEffect(() => {
-    const sequence = [
-      { text: "$ uv run hivemind run \"List files in /tmp and summarize what you see\"", type: "prompt", delay: 500 },
-      { text: "  Running…                                                              ", type: "dim", delay: 1200 },
-      { text: "--- aadd3120 ---", type: "dim", delay: 1800 },
-      { text: "Tool result (repo_structure_map):", type: "text", delay: 2000 },
-      { text: "/", type: "tree", delay: 2100 },
-      { text: "├── .hivemind", type: "tree", delay: 2150 },
-      { text: "│   ├── events", type: "tree", delay: 2200 },
-      { text: "│   │   ├── events_2026-03-10_dag.json", type: "tree", delay: 2300 },
-      { text: "│   ├── memory.db", type: "tree", delay: 2400 },
-      { text: "│   └── tool_analytics.db", type: "tree", delay: 2450 },
-      { text: "├── logo.svg", type: "tree", delay: 2500 },
-      { text: "└── logo_dark.svg", type: "tree", delay: 2550 },
-      { text: "--- c858617b ---", type: "dim", delay: 3000 },
-      { text: "Tool result (run_shell_command):", type: "text", delay: 3200 },
-      { text: "NAME|SIZE|TYPE|PERMS|OWNER|MTIME", type: "text", delay: 3400 },
-      { text: "2f093fe9-a235-5d1c-9a62-3fae2cdf7eb1|-|unknown|-|-|-", type: "text", delay: 3450 },
-      { text: "Arturia|-|unknown|-|-|-", type: "text", delay: 3500 },
-      { text: "hivemind_build_out|-|unknown|-|-|-", type: "text", delay: 3550 },
-      { text: "test_refs.docx|-|unknown|-|-|-", type: "text", delay: 3600 },
-      { text: "$", type: "prompt", delay: 4500 }
-    ];
-
-    let timeouts = [];
-    sequence.forEach((line) => {
-      const timeout = setTimeout(() => {
-        setLines(prev => [...prev, line]);
-      }, line.delay);
-      timeouts.push(timeout);
-    });
-
-    return () => timeouts.forEach(clearTimeout);
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setInView(true);
+          observer.unobserve(el);
+        }
+      },
+      { threshold: 0.15, ...options },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
+  return [ref, inView];
+}
 
-  const bodyRef = React.useRef(null);
+/* ------------------------------------------------------------------ */
+/*  Section 1 — Hero                                                   */
+/* ------------------------------------------------------------------ */
+const terminalText =
+  '$ hivemind run "Research the top 5 AI papers this week,\n' +
+  '    summarize each, and draft a newsletter"\n' +
+  '\u28FE Planning... spawning 6 agents\n' +
+  '\u2713 research_agent_1  found 847 papers (2.1s)\n' +
+  '\u2713 research_agent_2  filtered to top 5  (1.8s)\n' +
+  '\u2713 summarizer_1      GPT-4o summary done (3.2s)\n' +
+  '...\n' +
+  '\u2713 Complete \u2014 newsletter.md written (12.4s)';
+
+function HeroTerminal() {
+  const [charCount, setCharCount] = useState(0);
+
   useEffect(() => {
-    if (bodyRef.current) {
-      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-    }
-  }, [lines]);
+    if (charCount >= terminalText.length) return;
+    const delay = charCount === 0 ? 400 : 12;
+    const t = setTimeout(() => setCharCount((c) => c + 1), delay);
+    return () => clearTimeout(t);
+  }, [charCount]);
+
+  const visible = terminalText.slice(0, charCount);
+  const lines = visible.split('\n');
 
   return (
     <div className="hero-terminal">
       <div className="hero-terminal-header">
-        <div className="hero-terminal-dot red" />
-        <div className="hero-terminal-dot yellow" />
-        <div className="hero-terminal-dot green" />
+        <span className="hero-terminal-dot red" />
+        <span className="hero-terminal-dot yellow" />
+        <span className="hero-terminal-dot green" />
+        <span className="hero-terminal-title">terminal</span>
       </div>
-      <div ref={bodyRef} className="hero-terminal-body hero-terminal-body-scroll">
-        {lines.map((line, i) => (
-          <motion.div
-            key={i}
-            className="term-line"
-            style={{ flexDirection: line.type === 'prompt' && line.text.startsWith('$') ? 'column' : 'row' }}
-            initial={{ opacity: 0, x: -5 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.1 }}
-          >
-            {line.type === 'prompt' && line.text.startsWith('$') ? (
-              <>
-                <span className="term-prompt" style={{ marginBottom: '4px' }}>~/dev/hivemind/ on main!</span>
-                <div style={{ display: 'flex' }}>
-                  <span className="term-prompt">$</span>
-                  <span className="term-text">{line.text.slice(2)}</span>
-                </div>
-              </>
-            ) : (
-              <span className={`term-${line.type}`}>{line.text}</span>
-            )}
-          </motion.div>
-        ))}
-        {/* Blinking cursor */}
-        {lines.length < 23 && (
-          <motion.div
-            className="term-line"
-            animate={{ opacity: [1, 0] }}
-            transition={{ repeat: Infinity, duration: 0.8 }}
-          >
-            <span className="term-text">_</span>
-          </motion.div>
+      <div className="hero-terminal-body">
+        {lines.map((line, i) => {
+          let cls = 'term-dim';
+          if (line.startsWith('$')) cls = 'term-prompt';
+          else if (line.startsWith('\u2713')) cls = 'term-success';
+          else if (line.startsWith('\u28FE')) cls = 'term-dim';
+          return (
+            <div key={i} className={`term-line ${cls}`}>
+              {line}
+            </div>
+          );
+        })}
+        {charCount < terminalText.length && (
+          <span className="term-cursor">_</span>
         )}
       </div>
     </div>
   );
 }
 
-function CodeSnippet() {
-  const [copied, setCopied] = useState(false);
-  const code = "pip install hivemind-ai";
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy', err);
-    }
-  };
-
+function Hero() {
   return (
-    <div className="hero-code-wrapper" onClick={handleCopy}>
-      <div className="hero-install-premium">
-        <span>$ {code}</span>
-        <div className="copy-icon">
-          {copied ? <Check size={16} className="term-success" /> : <Copy size={16} />}
+    <section className="hm-hero">
+      <div className="hm-hero-grid" aria-hidden="true" />
+      <div className="hm-hero-glow" aria-hidden="true" />
+
+      <div className="hm-hero-inner">
+        <div className="hm-hero-content">
+          <Link to="/docs/changelog" className="hm-badge hm-fade-up hm-delay-1">
+            v2.3 &mdash; Now with multimodal agents &rarr;
+          </Link>
+
+          <h1 className="hm-hero-h1 hm-fade-up hm-delay-0">
+            The AI swarm runtime<br />for complex tasks
+          </h1>
+
+          <p className="hm-hero-sub hm-fade-up hm-delay-2">
+            hivemind breaks any task into a DAG of agents,
+            runs them in parallel, and synthesizes the results.
+          </p>
+
+          <div className="hm-hero-ctas hm-fade-up hm-delay-2">
+            <Link
+              to="/docs/getting-started/installation"
+              className="hm-btn hm-btn-primary"
+            >
+              Get started
+            </Link>
+            <Link
+              to="https://github.com/rithulkamesh/hivemind"
+              className="hm-btn hm-btn-ghost"
+            >
+              View on GitHub
+            </Link>
+          </div>
+
+          <div className="hm-hero-terminal-wrap hm-fade-up hm-delay-3">
+            <HeroTerminal />
+          </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
-export default function Home() {
+/* ------------------------------------------------------------------ */
+/*  Section 2 — Feature grid                                           */
+/* ------------------------------------------------------------------ */
+const features = [
+  {
+    icon: '\u26A1',
+    title: 'Parallel execution',
+    desc: 'Tasks run as a DAG \u2014 independent agents fire simultaneously.',
+  },
+  {
+    icon: '\uD83E\uDDE0',
+    title: 'Persistent memory',
+    desc: 'Agents remember across runs. Vector search over past context.',
+  },
+  {
+    icon: '\uD83D\uDD27',
+    title: 'Tool ecosystem',
+    desc: '100+ built-in tools. Extend with plugins from the registry.',
+  },
+  {
+    icon: '\uD83D\uDD04',
+    title: 'Self-healing',
+    desc: 'Failed tasks are automatically diagnosed and retried with a new strategy.',
+  },
+  {
+    icon: '\uD83D\uDCCA',
+    title: 'Run intelligence',
+    desc: 'Cost tracking, bottleneck analysis, critical path visualization.',
+  },
+  {
+    icon: '\uD83C\uDF10',
+    title: 'Distributed',
+    desc: 'Scale across nodes. Redis-backed, Rust worker, single binary to start.',
+  },
+];
+
+function FeatureGrid() {
+  const [ref, inView] = useInView();
   return (
-    <Layout title="Hivemind" description="Distributed AI Swarm Runtime" noFooter>
-      <motion.main
-        className="landing-page"
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-      >
-        <div className="landing-split">
-          <div className="landing-left">
-            <motion.div variants={itemVariants}>
-              <Link to="/docs/release_notes" className="hero-pill">
-                <span className="hero-pill-icon">✨</span>
-                <span>What's new in v2.1.5 — Release notes</span>
-                <ArrowRight size={14} className="hero-pill-icon" style={{ color: '#a8b1ff', marginLeft: '4px' }} />
-              </Link>
-            </motion.div>
-
-            <motion.div className="hero-wordmark" variants={itemVariants}>
-              Hivemind
-            </motion.div>
-
-            <motion.h1 className="hero-headline" variants={itemVariants}>
-              Distributed AI Swarm Runtime
-            </motion.h1>
-
-            <motion.p className="hero-description" variants={itemVariants}>
-              Orchestrate multi-agent systems with a swarm execution model: tasks become a DAG, then run in parallel across isolated nodes.
-            </motion.p>
-
-            <motion.div variants={itemVariants}>
-              <CodeSnippet />
-            </motion.div>
+    <section ref={ref} className={`hm-features ${inView ? 'hm-visible' : ''}`}>
+      <h2 className="hm-section-heading">
+        Everything you need to build with AI agents
+      </h2>
+      <p className="hm-section-subheading">
+        Built for production. Designed for developers.
+      </p>
+      <div className="hm-feature-grid">
+        {features.map((f, i) => (
+          <div
+            key={f.title}
+            className="hm-feature-card"
+            style={{ transitionDelay: `${i * 80}ms` }}
+          >
+            <span className="hm-feature-icon">{f.icon}</span>
+            <h3>{f.title}</h3>
+            <p>{f.desc}</p>
           </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
-          <div className="landing-right">
-            <motion.div variants={itemVariants} style={{ width: '100%' }}>
-              <AnimatedTerminal />
-            </motion.div>
+/* ------------------------------------------------------------------ */
+/*  Section 3 — Code example tabs                                      */
+/* ------------------------------------------------------------------ */
+const codeTabs = [
+  {
+    id: 'run',
+    label: 'Run a task',
+    lang: 'python',
+    code: `import hivemind
+
+result = hivemind.run(
+    "Analyze this CSV and write a report with charts",
+    files=["sales_data.csv"],
+    model="claude-sonnet-4",
+)
+print(result.output)   # report.md written`,
+  },
+  {
+    id: 'workflow',
+    label: 'Write a workflow',
+    lang: 'toml',
+    code: `[workflow.research_report]
+name = "Research Report"
+version = "1.0"
+
+[[workflow.research_report.steps]]
+id = "research"
+task = "Find the latest papers on {input.topic}"
+
+[[workflow.research_report.steps]]
+id = "summarize"
+task = "Summarize each paper in 2 paragraphs"
+depends_on = ["research"]
+
+[[workflow.research_report.steps]]
+id = "draft"
+task = "Draft a report combining all summaries"
+depends_on = ["summarize"]`,
+  },
+  {
+    id: 'plugin',
+    label: 'Build a plugin',
+    lang: 'python',
+    code: `from hivemind.tools.base import Tool
+from hivemind.tools.registry import register
+
+class SearchTool(Tool):
+    name = "web_search"
+    description = "Search the web for a query"
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"}
+        },
+        "required": ["query"],
+    }
+
+    def run(self, **kwargs) -> str:
+        return search(kwargs["query"])
+
+register(SearchTool())`,
+  },
+];
+
+function CodeTabs() {
+  const [active, setActive] = useState('run');
+  const [ref, inView] = useInView();
+
+  return (
+    <section
+      ref={ref}
+      className={`hm-code-section ${inView ? 'hm-visible' : ''}`}
+    >
+      <h2 className="hm-section-heading">
+        Simple to start. Powerful at scale.
+      </h2>
+      <div className="hm-code-tabs">
+        <div className="hm-tab-bar" role="tablist">
+          {codeTabs.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={active === t.id}
+              className={`hm-tab ${active === t.id ? 'hm-tab-active' : ''}`}
+              onClick={() => setActive(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="hm-tab-content">
+          {codeTabs.map((t) => (
+            <pre
+              key={t.id}
+              className={`hm-code-block ${active === t.id ? 'hm-code-visible' : ''}`}
+              aria-hidden={active !== t.id}
+            >
+              <code>{t.code}</code>
+            </pre>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Section 4 — Registry callout                                       */
+/* ------------------------------------------------------------------ */
+function RegistryCallout() {
+  const [ref, inView] = useInView();
+  return (
+    <section
+      ref={ref}
+      className={`hm-registry ${inView ? 'hm-visible' : ''}`}
+    >
+      <div className="hm-registry-card">
+        <div className="hm-registry-text">
+          <h2>Share tools with the ecosystem</h2>
+          <p>
+            Publish plugins to the hivemind registry. One command to install,
+            one command to publish. pip-compatible.
+          </p>
+          <div className="hm-registry-links">
+            <Link to="https://registry.hivemind.rithul.dev" className="hm-link-arrow">
+              Browse registry &rarr;
+            </Link>
+            <Link to="/docs/plugins/publishing" className="hm-link-arrow">
+              Publish your first plugin &rarr;
+            </Link>
           </div>
         </div>
-
-        <motion.div className="bento-grid" variants={itemVariants}>
-          <Link to="/docs/introduction" className="bento-card">
-            <div className="bento-icon"><BookOpen size={20} /></div>
-            <div>
-              <h3 className="bento-title">Introduction</h3>
-              <p className="bento-desc">Learn the core concepts of Swarm intelligence and DAG-based task routing.</p>
+        <div className="hm-registry-terminal">
+          <div className="hero-terminal">
+            <div className="hero-terminal-header">
+              <span className="hero-terminal-dot red" />
+              <span className="hero-terminal-dot yellow" />
+              <span className="hero-terminal-dot green" />
             </div>
-          </Link>
-
-          <Link to="/docs/configuration" className="bento-card">
-            <div className="bento-icon"><Settings size={20} /></div>
-            <div>
-              <h3 className="bento-title">Configuration</h3>
-              <p className="bento-desc">Configure your distributed nodes, resource limits, and environment variables.</p>
+            <div className="hero-terminal-body">
+              <div className="term-line term-prompt">
+                $ hivemind reg install hivemind-plugin-browseruse
+              </div>
+              <div className="term-line term-success">
+                {'\u2713'} Installed 3 tools: browse, click, extract_text
+              </div>
+              <div className="term-line" />
+              <div className="term-line term-prompt">
+                $ hivemind run "Book me a flight to Tokyo next Friday"
+              </div>
+              <div className="term-line term-dim">
+                {'\u28FE'} Planning...
+              </div>
             </div>
-          </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
-          <Link to="/docs/cli" className="bento-card">
-            <div className="bento-icon"><Terminal size={20} /></div>
-            <div>
-              <h3 className="bento-title">CLI Reference</h3>
-              <p className="bento-desc">Explore commands to initialize, manage, and monitor your AI swarms.</p>
-            </div>
+/* ------------------------------------------------------------------ */
+/*  Section 5 — Footer                                                 */
+/* ------------------------------------------------------------------ */
+function Footer() {
+  return (
+    <footer className="hm-footer">
+      <div className="hm-footer-inner">
+        <div className="hm-footer-col hm-footer-brand">
+          <h4>hivemind</h4>
+          <p>The AI swarm runtime for complex tasks.</p>
+          <Link to="https://github.com/rithulkamesh/hivemind">
+            GitHub
           </Link>
+        </div>
+        <div className="hm-footer-col">
+          <h4>Docs</h4>
+          <Link to="/docs/getting-started/installation">Getting Started</Link>
+          <Link to="/docs/concepts/swarm">Concepts</Link>
+          <Link to="/docs/cli/overview">CLI Reference</Link>
+          <Link to="/docs/plugins/overview">Plugins</Link>
+        </div>
+        <div className="hm-footer-col">
+          <h4>Registry</h4>
+          <Link to="https://registry.hivemind.rithul.dev">Browse</Link>
+          <Link to="/docs/registry/publishing">Publish</Link>
+          <Link to="/docs/registry/api-reference">API Reference</Link>
+        </div>
+      </div>
+      <div className="hm-footer-bottom">
+        Built by{' '}
+        <a href="https://rithul.dev" target="_blank" rel="noopener noreferrer">
+          rithul
+        </a>{' '}
+        &middot; MIT License
+      </div>
+    </footer>
+  );
+}
 
-          <Link to="/docs/architecture" className="bento-card">
-            <div className="bento-icon"><Layers size={20} /></div>
-            <div>
-              <h3 className="bento-title">Architecture</h3>
-              <p className="bento-desc">Deep dive into the runtime execution model and orchestration layer.</p>
-            </div>
-          </Link>
-        </motion.div>
-      </motion.main>
+/* ------------------------------------------------------------------ */
+/*  Page                                                               */
+/* ------------------------------------------------------------------ */
+export default function Home() {
+  return (
+    <Layout
+      title="hivemind — The AI swarm runtime for complex tasks"
+      description="hivemind breaks any task into a DAG of agents, runs them in parallel, and synthesizes the results."
+      noFooter
+    >
+      <main className="hm-landing">
+        <Hero />
+        <FeatureGrid />
+        <CodeTabs />
+        <RegistryCallout />
+        <Footer />
+      </main>
     </Layout>
   );
 }

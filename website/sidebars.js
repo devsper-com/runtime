@@ -1,50 +1,79 @@
 /** @type {import('@docusaurus/plugin-content-docs').SidebarsConfig} */
 const sidebars = {
   docs: [
-    { type: 'doc', id: 'index', label: 'Overview' },
-    { type: 'doc', id: 'release_notes', label: 'Release notes' },
-    { type: 'doc', id: 'introduction', label: 'Introduction' },
+    { type: 'doc', id: 'intro', label: 'What is hivemind?' },
+
     {
       type: 'category',
-      label: 'Getting started',
+      label: 'Getting Started',
       collapsed: false,
       items: [
-        { type: 'link', label: 'Installation', href: '/docs' },
-        'configuration',
-        'examples',
+        'getting-started/installation',
+        'getting-started/quickstart',
+        'getting-started/concepts',
+        'getting-started/configuration',
       ],
     },
+
     {
       type: 'category',
-      label: 'Concepts',
-      collapsed: false,
+      label: 'Core Concepts',
       items: [
-        'architecture',
-        'swarm_runtime',
-        'memory_system',
-        'tools',
-        'providers',
+        'concepts/swarm',
+        'concepts/agents',
+        'concepts/tools',
+        'concepts/memory',
+        'concepts/knowledge-graph',
+        'concepts/workflows',
       ],
     },
+
     {
       type: 'category',
-      label: 'Reference',
-      collapsed: false,
+      label: 'Plugins',
       items: [
-        { type: 'doc', id: 'cli', label: 'CLI Reference' },
-        { type: 'link', label: 'Configuration Schema', href: '/docs/configuration#schema-v1-format' },
+        'plugins/overview',
+        'plugins/quickstart',
+        'plugins/tool-reference',
+        'plugins/publishing',
+        'plugins/examples',
+        'plugins/troubleshooting',
       ],
     },
+
     {
       type: 'category',
-      label: 'Contributing',
-      collapsed: false,
+      label: 'CLI Reference',
       items: [
-        'development',
-        'release_checklist',
-        'faq',
+        'cli/overview',
+        'cli/run',
+        'cli/reg',
+        'cli/config',
+        'cli/tools',
+        'cli/memory',
       ],
     },
+
+    {
+      type: 'category',
+      label: 'Registry',
+      items: [
+        'registry/overview',
+        'registry/publishing',
+        'registry/api-reference',
+      ],
+    },
+
+    {
+      type: 'category',
+      label: 'Self-hosting',
+      items: [
+        'self-hosting/registry',
+        'self-hosting/distributed',
+      ],
+    },
+
+    { type: 'doc', id: 'changelog', label: 'Changelog' },
   ],
 };
 
