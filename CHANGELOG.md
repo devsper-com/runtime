@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.6] — 2026-03-14
+
+### Added
+
+- **Docs site overhaul** — Completely redesigned landing page at [hivemind.rithul.dev](https://hivemind.rithul.dev) with animated hero, feature grid, code tabs, and registry callout. Restructured sidebar navigation with 7 categories: Getting Started, Core Concepts, Plugins, CLI Reference, Registry, and Self-hosting.
+- **Docs hosting on EC2** — Docusaurus static site now served via Caddy alongside the registry at `hivemind.rithul.dev`, with automatic TLS via Let's Encrypt.
+- **Unified CI/CD pipeline** — Replaced separate `registry-api.yml` and `registry-web.yml` workflows with a single `registry-deploy.yml` (test, build, push, deploy) using OIDC + EC2 Instance Connect. New `docs-deploy.yml` workflow for automatic docs deployment on push.
+- **Registry deployment hardening** — Improved Dockerfiles with multi-stage builds, production-ready Caddy configuration with security headers, and comprehensive deployment documentation.
+
+### Changed
+
+- Docs site uses Geist + JetBrains Mono fonts, amber color system, dark-only mode
+- Simplified `docs.yml` workflow to versioning-only (removed GitHub Pages deployment)
+
 ## [2.1.5] — 2026-03-11
 
 ### Added
