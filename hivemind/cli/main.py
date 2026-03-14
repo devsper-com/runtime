@@ -1965,24 +1965,43 @@ def _run_upgrade(args: object) -> int:
     return run_upgrade(args)
 
 
-def _run_plugins_dispatch(args: object) -> int:
-    """Plugins: login, publish."""
-    cmd = getattr(args, "plugins_cmd", None)
-    if cmd == "login":
-        from hivemind.plugins.marketplace.publisher import cmd_login
-
-        cmd_login()
+def _run_reg_dispatch(args: object) -> int:
+    """Registry commands."""
+    cmd = getattr(args, "reg_cmd", None)
+    if not cmd:
         return 0
-    if cmd == "publish":
-        from hivemind.plugins.marketplace.publisher import PluginPublisher, PublishError
+    from hivemind.cli.commands.reg import (
+        cmd_login,
+        cmd_logout,
+        cmd_whoami,
+        cmd_publish,
+        cmd_search,
+        cmd_info,
+        cmd_test,
+        cmd_versions,
+        cmd_yank,
+    )
 
-        try:
-            PluginPublisher().publish(getattr(args, "path", "."))
-            return 0
-        except PublishError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
+    cmds = {
+        "login": cmd_login,
+        "logout": cmd_logout,
+        "whoami": cmd_whoami,
+        "publish": cmd_publish,
+        "search": cmd_search,
+        "info": cmd_info,
+        "test": cmd_test,
+        "versions": cmd_versions,
+        "yank": cmd_yank,
+    }
+    if cmd in cmds:
+        return cmds[cmd](args)
     return 0
+
+
+def _run_plugins_dispatch(args: object) -> int:
+    cmd = getattr(args, "plugins_cmd", None)
+    args.reg_cmd = cmd
+    return _run_reg_dispatch(args)
 
 
 def main() -> int:
@@ -2707,26 +2726,77 @@ Examples:
     )
     credentials_parser.set_defaults(func=lambda a: _run_credentials(a))
 
-    plugins_parser = subparsers.add_parser(
-        "plugins",
-        help="Manage plugins (marketplace)",
-        description="Login to registry and publish plugins.",
+    reg_parser = subparsers.add_parser(
+        "reg",
+        help="Registry commands: login, publish, search, etc.",
+        description="Login to registry, publish plugins, search, etc.",
         epilog="""
 Examples:
-  hivemind plugins login
-  hivemind plugins publish
-  hivemind plugins publish ./my_plugin
+  hivemind reg login
+  hivemind reg publish
+  hivemind reg search <query>
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    plugins_sub = plugins_parser.add_subparsers(dest="plugins_cmd", help="Subcommand")
-    plugins_login_p = plugins_sub.add_parser("login", help="Login to Hivemind Registry")
-    plugins_login_p.set_defaults(plugins_cmd="login")
-    plugins_publish_p = plugins_sub.add_parser("publish", help="Publish a plugin")
-    plugins_publish_p.add_argument(
-        "path", nargs="?", default=".", help="Plugin directory (default: .)"
+    reg_sub = reg_parser.add_subparsers(dest="reg_cmd", help="Subcommand")
+
+    reg_login_p = reg_sub.add_parser("login", help="Login to Hivemind Registry")
+    reg_login_p.set_defaults(reg_cmd="login")
+
+    reg_logout_p = reg_sub.add_parser("logout", help="Logout of Hivemind Registry")
+    reg_logout_p.set_defaults(reg_cmd="logout")
+
+    reg_whoami_p = reg_sub.add_parser("whoami", help="Show current logged in user")
+    reg_whoami_p.set_defaults(reg_cmd="whoami")
+
+    reg_publish_p = reg_sub.add_parser("publish", help="Publish a plugin")
+    reg_publish_p.add_argument("--dir", default=".", help="Plugin directory")
+    reg_publish_p.add_argument(
+        "--skip-build", action="store_true", help="Skip building dist"
     )
-    plugins_publish_p.set_defaults(plugins_cmd="publish")
+    reg_publish_p.add_argument("--dry-run", action="store_true", help="Dry run")
+    reg_publish_p.set_defaults(reg_cmd="publish")
+
+    reg_search_p = reg_sub.add_parser("search", help="Search for plugins")
+    reg_search_p.add_argument("query", help="Search query")
+    reg_search_p.add_argument("--verified", action="store_true", help="Verified only")
+    reg_search_p.add_argument("--limit", type=int, default=10, help="Limit")
+    reg_search_p.set_defaults(reg_cmd="search")
+
+    reg_info_p = reg_sub.add_parser("info", help="Get plugin info")
+    reg_info_p.add_argument("package", help="Package name")
+    reg_info_p.set_defaults(reg_cmd="info")
+
+    reg_test_p = reg_sub.add_parser("test", help="Test plugin for publishing")
+    reg_test_p.add_argument("--dir", default=".", help="Plugin directory")
+    reg_test_p.set_defaults(reg_cmd="test")
+
+    reg_versions_p = reg_sub.add_parser("versions", help="List versions")
+    reg_versions_p.add_argument("package", help="Package name")
+    reg_versions_p.set_defaults(reg_cmd="versions")
+
+    reg_yank_p = reg_sub.add_parser("yank", help="Yank a version")
+    reg_yank_p.add_argument("package", help="Package name")
+    reg_yank_p.add_argument("version", help="Version")
+    reg_yank_p.add_argument("--reason", required=True, help="Reason")
+    reg_yank_p.set_defaults(reg_cmd="yank")
+
+    reg_parser.set_defaults(func=_run_reg_dispatch)
+
+    plugins_parser = subparsers.add_parser(
+        "plugins",
+        help="Alias for reg commands",
+        description="Alias for reg commands",
+    )
+    plugins_sub = plugins_parser.add_subparsers(dest="plugins_cmd", help="Subcommand")
+    plugins_sub.add_parser("login", help="Alias for reg login").set_defaults(
+        plugins_cmd="login"
+    )
+    p_pub = plugins_sub.add_parser("publish", help="Alias for reg publish")
+    p_pub.add_argument("dir", nargs="?", default=".")
+    p_pub.add_argument("--skip-build", action="store_true")
+    p_pub.add_argument("--dry-run", action="store_true")
+    p_pub.set_defaults(plugins_cmd="publish")
     plugins_parser.set_defaults(func=_run_plugins_dispatch)
 
     completion_parser = subparsers.add_parser(
