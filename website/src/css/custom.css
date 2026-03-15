@@ -556,19 +556,57 @@ body:has(.hm-landing) .footer {
 
 @keyframes hero-grid-drift {
   0% { transform: translate(0, 0); }
-  100% { transform: translate(0, -20px); }
+  100% { transform: translate(0, -60px); }
 }
 
-/* Amber glow — bottom center */
-.hm-hero-glow {
+/* Ambient lighting — three layered radial glows */
+.hm-hero-ambient-1 {
   position: absolute;
-  bottom: -10%;
+  top: 15%;
   left: 50%;
   transform: translateX(-50%);
+  width: 900px;
+  height: 900px;
+  background: radial-gradient(ellipse 50% 40% at center, rgba(245, 166, 35, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+  animation: ambient-pulse-1 6s ease-in-out infinite alternate;
+}
+
+.hm-hero-ambient-2 {
+  position: absolute;
+  top: -5%;
+  left: 20%;
+  width: 700px;
+  height: 700px;
+  background: radial-gradient(circle, rgba(245, 166, 35, 0.06) 0%, transparent 60%);
+  pointer-events: none;
+  animation: ambient-drift-2 10s ease-in-out infinite alternate;
+}
+
+.hm-hero-ambient-3 {
+  position: absolute;
+  bottom: -15%;
+  right: 15%;
   width: 800px;
   height: 600px;
-  background: radial-gradient(ellipse, rgba(245, 166, 35, 0.08) 0%, transparent 70%);
+  background: radial-gradient(ellipse 60% 50% at center, rgba(245, 166, 35, 0.08) 0%, transparent 65%);
   pointer-events: none;
+  animation: ambient-drift-3 8s ease-in-out infinite alternate;
+}
+
+@keyframes ambient-pulse-1 {
+  0% { opacity: 0.6; transform: translateX(-50%) scale(1); }
+  100% { opacity: 1; transform: translateX(-50%) scale(1.08); }
+}
+
+@keyframes ambient-drift-2 {
+  0% { transform: translate(0, 0); opacity: 0.5; }
+  100% { transform: translate(40px, 30px); opacity: 1; }
+}
+
+@keyframes ambient-drift-3 {
+  0% { transform: translate(0, 0); opacity: 0.4; }
+  100% { transform: translate(-30px, -20px); opacity: 0.9; }
 }
 
 .hm-hero-inner {
@@ -588,27 +626,12 @@ body:has(.hm-landing) .footer {
   align-items: center;
 }
 
-/* Staggered fade-up animations */
-.hm-fade-up {
-  opacity: 0;
-  transform: translateY(20px);
-  animation: hero-fade-up 0.6s ease-out forwards;
-}
-
-.hm-delay-0 { animation-delay: 0.1s; }
-.hm-delay-1 { animation-delay: 0.3s; }
-.hm-delay-2 { animation-delay: 0.2s; }
-.hm-delay-3 { animation-delay: 0.4s; }
-
-@keyframes hero-fade-up {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 .hm-hero-terminal-wrap {
   width: 100%;
   max-width: 620px;
   margin-top: 2rem;
+  display: flex;
+  justify-content: center;
 }
 
 /* Badge */
@@ -657,6 +680,7 @@ body:has(.hm-landing) .footer {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .hm-btn {
@@ -700,12 +724,15 @@ body:has(.hm-landing) .footer {
 /* Hero terminal */
 .hero-terminal {
   width: 100%;
-  max-width: 520px;
+  max-width: 560px;
+  margin: 0 auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 80px rgba(245, 166, 35, 0.04);
   font-family: var(--font-mono);
 }
 
@@ -748,15 +775,6 @@ body:has(.hm-landing) .footer {
   margin-bottom: 0.35rem;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.term-line-enter {
-  animation: term-enter 0.2s ease-out both;
-}
-
-@keyframes term-enter {
-  from { opacity: 0; transform: translateX(-6px); }
-  to { opacity: 1; transform: translateX(0); }
 }
 
 .term-prompt { color: var(--text-muted); }
@@ -810,21 +828,12 @@ body:has(.hm-landing) .footer {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 1.5rem;
-  transition: all var(--transition);
-  /* Hidden until in view */
-  opacity: 0;
-  transform: translateY(20px);
-}
-
-.hm-visible .hm-feature-card {
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 0.5s ease, transform 0.5s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--transition), box-shadow var(--transition);
 }
 
 .hm-feature-card:hover {
   border-color: rgba(245, 166, 35, 0.3);
-  box-shadow: 0 0 30px var(--amber-glow);
+  box-shadow: 0 0 40px rgba(245, 166, 35, 0.08);
 }
 
 .hm-feature-icon {
@@ -848,21 +857,12 @@ body:has(.hm-landing) .footer {
 }
 
 /* ---------------------------------------------------------------------------
-   Section 3 — Code tabs
+   Section 3 — Code tabs (with Docusaurus CodeBlock / Prism highlighting)
    --------------------------------------------------------------------------- */
 .hm-code-section {
   padding: 5rem 2rem;
   max-width: 800px;
   margin: 0 auto;
-  /* Hidden until in view */
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.hm-code-section.hm-visible {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .hm-code-tabs {
@@ -902,28 +902,34 @@ body:has(.hm-landing) .footer {
   position: relative;
 }
 
-.hm-code-block {
-  display: none;
+/* Style Docusaurus CodeBlock inside our tabs */
+.hm-code-block-wrap {
+  position: relative;
+}
+
+.hm-code-block-wrap .prism-code,
+.hm-code-block-wrap pre {
   margin: 0 !important;
-  padding: 1.25rem !important;
-  background: #0f0f0f !important;
   border: none !important;
   border-radius: 0 !important;
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  line-height: 1.6;
-  color: var(--text-muted);
-  overflow-x: auto;
+  background: #0f0f0f !important;
+  font-size: 0.8125rem !important;
+  line-height: 1.6 !important;
+  padding: 1.25rem !important;
 }
 
-.hm-code-visible {
-  display: block;
-  animation: code-fade 0.2s ease;
+/* Hide CodeBlock title bar and copy button inside landing page tabs */
+.hm-code-block-wrap [class*="codeBlockTitle"],
+.hm-code-block-wrap [class*="buttonGroup"] {
+  display: none !important;
 }
 
-@keyframes code-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* Ensure the CodeBlock container doesn't add extra wrapper styles */
+.hm-code-block-wrap > div {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
 }
 
 /* ---------------------------------------------------------------------------
@@ -933,15 +939,6 @@ body:has(.hm-landing) .footer {
   padding: 5rem 2rem;
   max-width: 1100px;
   margin: 0 auto;
-  /* Hidden until in view */
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.hm-registry.hm-visible {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .hm-registry-card {
@@ -1100,6 +1097,11 @@ body:has(.hm-landing) .footer {
 
   .hero-terminal {
     max-width: 100%;
+  }
+
+  .hm-hero-ambient-2,
+  .hm-hero-ambient-3 {
+    display: none;
   }
 }
 

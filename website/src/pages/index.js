@@ -1,30 +1,33 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from '@docusaurus/Link';
 import Layout from '@theme/Layout';
+import CodeBlock from '@theme/CodeBlock';
+import { motion, useInView, AnimatePresence } from 'framer-motion';
 
 /* ------------------------------------------------------------------ */
-/*  Intersection Observer hook – triggers fade-in on scroll            */
+/*  Animation variants                                                 */
 /* ------------------------------------------------------------------ */
-function useInView(options = {}) {
-  const ref = useRef(null);
-  const [inView, setInView] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setInView(true);
-          observer.unobserve(el);
-        }
-      },
-      { threshold: 0.15, ...options },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, inView];
-}
+const fadeUp = {
+  hidden: { opacity: 0, y: 24 },
+  visible: (i = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: i * 0.1 },
+  }),
+};
+
+const stagger = {
+  visible: { transition: { staggerChildren: 0.08 } },
+};
+
+const cardVariant = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+  },
+};
 
 /* ------------------------------------------------------------------ */
 /*  Section 1 — Hero                                                   */
@@ -53,7 +56,12 @@ function HeroTerminal() {
   const lines = visible.split('\n');
 
   return (
-    <div className="hero-terminal">
+    <motion.div
+      className="hero-terminal"
+      initial={{ opacity: 0, y: 20, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.7, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
+    >
       <div className="hero-terminal-header">
         <span className="hero-terminal-dot red" />
         <span className="hero-terminal-dot yellow" />
@@ -76,32 +84,55 @@ function HeroTerminal() {
           <span className="term-cursor">_</span>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function Hero() {
   return (
     <section className="hm-hero">
+      {/* Ambient lighting layers */}
       <div className="hm-hero-grid" aria-hidden="true" />
-      <div className="hm-hero-glow" aria-hidden="true" />
+      <div className="hm-hero-ambient-1" aria-hidden="true" />
+      <div className="hm-hero-ambient-2" aria-hidden="true" />
+      <div className="hm-hero-ambient-3" aria-hidden="true" />
 
       <div className="hm-hero-inner">
         <div className="hm-hero-content">
-          <Link to="/docs/changelog" className="hm-badge hm-fade-up hm-delay-1">
-            v2.3 &mdash; Now with multimodal agents &rarr;
-          </Link>
+          <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={1}>
+            <Link to="/docs/changelog" className="hm-badge">
+              v2.1.6 &mdash; Plugin registry live &rarr;
+            </Link>
+          </motion.div>
 
-          <h1 className="hm-hero-h1 hm-fade-up hm-delay-0">
+          <motion.h1
+            className="hm-hero-h1"
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            custom={0}
+          >
             The AI swarm runtime<br />for complex tasks
-          </h1>
+          </motion.h1>
 
-          <p className="hm-hero-sub hm-fade-up hm-delay-2">
+          <motion.p
+            className="hm-hero-sub"
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            custom={2}
+          >
             hivemind breaks any task into a DAG of agents,
             runs them in parallel, and synthesizes the results.
-          </p>
+          </motion.p>
 
-          <div className="hm-hero-ctas hm-fade-up hm-delay-2">
+          <motion.div
+            className="hm-hero-ctas"
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            custom={2}
+          >
             <Link
               to="/docs/getting-started/installation"
               className="hm-btn hm-btn-primary"
@@ -114,11 +145,17 @@ function Hero() {
             >
               View on GitHub
             </Link>
-          </div>
+          </motion.div>
 
-          <div className="hm-hero-terminal-wrap hm-fade-up hm-delay-3">
+          <motion.div
+            className="hm-hero-terminal-wrap"
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            custom={3}
+          >
             <HeroTerminal />
-          </div>
+          </motion.div>
         </div>
       </div>
     </section>
@@ -162,34 +199,49 @@ const features = [
 ];
 
 function FeatureGrid() {
-  const [ref, inView] = useInView();
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, amount: 0.15 });
+
   return (
-    <section ref={ref} className={`hm-features ${inView ? 'hm-visible' : ''}`}>
-      <h2 className="hm-section-heading">
+    <section ref={ref} className="hm-features">
+      <motion.h2
+        className="hm-section-heading"
+        variants={fadeUp}
+        initial="hidden"
+        animate={inView ? 'visible' : 'hidden'}
+        custom={0}
+      >
         Everything you need to build with AI agents
-      </h2>
-      <p className="hm-section-subheading">
+      </motion.h2>
+      <motion.p
+        className="hm-section-subheading"
+        variants={fadeUp}
+        initial="hidden"
+        animate={inView ? 'visible' : 'hidden'}
+        custom={1}
+      >
         Built for production. Designed for developers.
-      </p>
-      <div className="hm-feature-grid">
-        {features.map((f, i) => (
-          <div
-            key={f.title}
-            className="hm-feature-card"
-            style={{ transitionDelay: `${i * 80}ms` }}
-          >
+      </motion.p>
+      <motion.div
+        className="hm-feature-grid"
+        variants={stagger}
+        initial="hidden"
+        animate={inView ? 'visible' : 'hidden'}
+      >
+        {features.map((f) => (
+          <motion.div key={f.title} className="hm-feature-card" variants={cardVariant}>
             <span className="hm-feature-icon">{f.icon}</span>
             <h3>{f.title}</h3>
             <p>{f.desc}</p>
-          </div>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
     </section>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  Section 3 — Code example tabs                                      */
+/*  Section 3 — Code example tabs (with Prism syntax highlighting)     */
 /* ------------------------------------------------------------------ */
 const codeTabs = [
   {
@@ -254,12 +306,19 @@ register(SearchTool())`,
 
 function CodeTabs() {
   const [active, setActive] = useState('run');
-  const [ref, inView] = useInView();
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, amount: 0.15 });
+
+  const activeTab = codeTabs.find((t) => t.id === active);
 
   return (
-    <section
+    <motion.section
       ref={ref}
-      className={`hm-code-section ${inView ? 'hm-visible' : ''}`}
+      className="hm-code-section"
+      variants={fadeUp}
+      initial="hidden"
+      animate={inView ? 'visible' : 'hidden'}
+      custom={0}
     >
       <h2 className="hm-section-heading">
         Simple to start. Powerful at scale.
@@ -279,18 +338,23 @@ function CodeTabs() {
           ))}
         </div>
         <div className="hm-tab-content">
-          {codeTabs.map((t) => (
-            <pre
-              key={t.id}
-              className={`hm-code-block ${active === t.id ? 'hm-code-visible' : ''}`}
-              aria-hidden={active !== t.id}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={active}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="hm-code-block-wrap"
             >
-              <code>{t.code}</code>
-            </pre>
-          ))}
+              <CodeBlock language={activeTab.lang}>
+                {activeTab.code}
+              </CodeBlock>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
-    </section>
+    </motion.section>
   );
 }
 
@@ -298,11 +362,17 @@ function CodeTabs() {
 /*  Section 4 — Registry callout                                       */
 /* ------------------------------------------------------------------ */
 function RegistryCallout() {
-  const [ref, inView] = useInView();
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, amount: 0.15 });
+
   return (
-    <section
+    <motion.section
       ref={ref}
-      className={`hm-registry ${inView ? 'hm-visible' : ''}`}
+      className="hm-registry"
+      variants={fadeUp}
+      initial="hidden"
+      animate={inView ? 'visible' : 'hidden'}
+      custom={0}
     >
       <div className="hm-registry-card">
         <div className="hm-registry-text">
@@ -321,7 +391,12 @@ function RegistryCallout() {
           </div>
         </div>
         <div className="hm-registry-terminal">
-          <div className="hero-terminal">
+          <motion.div
+            className="hero-terminal"
+            initial={{ opacity: 0, x: 20 }}
+            animate={inView ? { opacity: 1, x: 0 } : {}}
+            transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          >
             <div className="hero-terminal-header">
               <span className="hero-terminal-dot red" />
               <span className="hero-terminal-dot yellow" />
@@ -342,10 +417,10 @@ function RegistryCallout() {
                 {'\u28FE'} Planning...
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
       </div>
-    </section>
+    </motion.section>
   );
 }
 
@@ -353,8 +428,18 @@ function RegistryCallout() {
 /*  Section 5 — Footer                                                 */
 /* ------------------------------------------------------------------ */
 function Footer() {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, amount: 0.1 });
+
   return (
-    <footer className="hm-footer">
+    <motion.footer
+      ref={ref}
+      className="hm-footer"
+      variants={fadeUp}
+      initial="hidden"
+      animate={inView ? 'visible' : 'hidden'}
+      custom={0}
+    >
       <div className="hm-footer-inner">
         <div className="hm-footer-col hm-footer-brand">
           <h4>hivemind</h4>
@@ -382,9 +467,9 @@ function Footer() {
         <a href="https://rithul.dev" target="_blank" rel="noopener noreferrer">
           rithul
         </a>{' '}
-        &middot; MIT License
+        &middot; GPL-3.0 License
       </div>
-    </footer>
+    </motion.footer>
   );
 }
 
