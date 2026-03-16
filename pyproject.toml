@@ -47,7 +47,7 @@ Worker = "https://github.com/devsper-com/runtime/pkgs/container/devsper-worker"
 
 [project.scripts]
 devsper = "devsper.cli:main"
-devsper = "devsper.cli:main"  # backward compat alias
+hivemind = "devsper.cli:main"  # backward compat alias
 
 [project.optional-dependencies]
 ollama = []

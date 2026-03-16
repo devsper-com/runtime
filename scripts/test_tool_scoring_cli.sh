@@ -8,20 +8,20 @@ echo "=== 1. Unit tests ==="
 uv run python -m pytest tests/test_tool_scoring.py -v --tb=short
 
 echo ""
-echo "=== 2. hivemind tools (list) ==="
-uv run hivemind tools
+echo "=== 2. devsper tools (list) ==="
+uv run devsper tools
 
 echo ""
-echo "=== 3. hivemind tools --poor ==="
-uv run hivemind tools --poor
+echo "=== 3. devsper tools --poor ==="
+uv run devsper tools --poor
 
 echo ""
-echo "=== 4. hivemind doctor (includes scoring DB info) ==="
-uv run hivemind doctor
+echo "=== 4. devsper doctor (includes scoring DB info) ==="
+uv run devsper doctor
 
 echo ""
-echo "=== 5. hivemind analytics (includes tool report when scores exist) ==="
-uv run hivemind analytics
+echo "=== 5. devsper analytics (includes tool report when scores exist) ==="
+uv run devsper analytics
 
 echo ""
 echo "=== Done: CLI checks passed ==="

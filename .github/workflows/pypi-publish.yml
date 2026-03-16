@@ -1,21 +1,20 @@
-# Legacy: PyPI is now published from release-on-tag.yml (same workflow as the release).
-# This file is kept for reference. Creating a release with GITHUB_TOKEN does not trigger
-# release:published, so this workflow would not run on tag push. Configure PyPI Trusted
-# Publisher with workflow filename release-on-tag.yml instead.
+# Publish to PyPI on version tag push using Trusted Publisher (OIDC).
+# PyPI Trusted Publisher config: workflow filename = pypi-publish.yml
 #
-# See: https://docs.pypi.org/trusted-publishers/adding-a-published-publisher/
+# Triggered by: git tag v1.6.0 && git push origin v1.6.0
 
 name: Publish to PyPI
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   pypi-publish:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write 
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,3 +32,5 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
