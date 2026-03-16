@@ -2,8 +2,8 @@
 
 The documentation site is built with [Docusaurus](https://docusaurus.io) and deployed at **https://docs.devsper.com**.
 
-- **Source:** `website/docs/` in this repo
-- **Local dev:** From repo root run `cd website && npm install && npm run start`
-- **Build:** `cd website && npm run build`
+- **Source and deploy:** the **docs** repo (Docusaurus site; CI and deploy live there).
+- **Local dev:** In the docs repo run `npm install && npm run start`.
+- **Build:** In the docs repo run `npm run build`.
 
 The table in the main [README](../README.md) links to the deployed docs.

@@ -246,7 +246,7 @@ Outputs under `examples/output/`. Run from project root when using script paths.
 
 ## Documentation
 
-Full docs (with versioning and dark mode): **[docs.devsper.com](https://docs.devsper.com)**. Source lives in `website/docs/` and is built with [Docusaurus](https://docusaurus.io).
+Full docs (with versioning and dark mode): **[docs.devsper.com](https://docs.devsper.com)**. Source and deploy live in the **docs** repo.
 
 | Doc | Description |
 |-----|-------------|

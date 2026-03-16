@@ -33,12 +33,6 @@ examples/output/
 # MkDocs build output
 site/
 
-# Docusaurus (website/)
-website/node_modules/
-website/build/
-website/.docusaurus/
-website/.cache/
-
 # System
 .DS_Store
 Thumbs.db

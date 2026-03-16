@@ -36,7 +36,7 @@ Run a subset: `uv run python -m pytest tests/test_swarm.py -v`. Version-specific
 
 - Keep PRs focused (one feature or fix when possible).
 - Ensure all tests pass and lint/format checks succeed.
-- Update docs in `website/docs/` if you change user-facing behavior or add features (site: [docs.devsper.com](https://docs.devsper.com)).
+- Update docs in the **docs** repo if you change user-facing behavior or add features (site: [docs.devsper.com](https://docs.devsper.com)).
 - For new tools or providers, add a short note in the relevant doc (e.g. [tools](https://docs.devsper.com/docs/tools), [providers](https://docs.devsper.com/docs/providers)).
 
 ## Adding tools or features
