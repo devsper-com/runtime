@@ -13,7 +13,7 @@ load_dotenv(_load_path)
 
 
 def get_worker_model() -> str:
-    override = os.environ.get("HIVEMIND_WORKER_MODEL")
+    override = os.environ.get("DEVSPER_WORKER_MODEL")
     if override:
         return override
     if os.environ.get("GITHUB_TOKEN"):
@@ -32,7 +32,7 @@ def get_worker_model() -> str:
 
 
 def get_planner_model() -> str:
-    override = os.environ.get("HIVEMIND_PLANNER_MODEL")
+    override = os.environ.get("DEVSPER_PLANNER_MODEL")
     if override:
         return override
     if os.environ.get("GITHUB_TOKEN"):

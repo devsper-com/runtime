@@ -48,8 +48,8 @@
 ### Message bus and checkpointing (v1.9)
 
 - **Bus:** Real pub/sub backend (`InMemoryBus` or `RedisBus`). Topics: `task.ready`, `task.started`, `task.completed`, `task.failed`, `agent.broadcast`, `swarm.control`, etc. Config: `[bus] backend`, `redis_url`. EventLog can publish to the bus when configured.
-- **Checkpointer:** Writes `scheduler.snapshot()` to `{events_dir}/{run_id}.checkpoint.json` every N task completions (atomic write). CLI: `hivemind checkpoint list`, `hivemind checkpoint restore <run_id>`.
-- **Health:** `hivemind health` runs checks (bus, memory, tools, knowledge graph, checkpoint dir); exit 0/1 for orchestration healthchecks.
+- **Checkpointer:** Writes `scheduler.snapshot()` to `{events_dir}/{run_id}.checkpoint.json` every N task completions (atomic write). CLI: `devsper checkpoint list`, `devsper checkpoint restore <run_id>`.
+- **Health:** `devsper health` runs checks (bus, memory, tools, knowledge graph, checkpoint dir); exit 0/1 for orchestration healthchecks.
 
 ### Agents
 
@@ -63,7 +63,7 @@
 - **Role:** Named, schema-driven functions agents can call (e.g. read_file, codebase_indexer, store_memory).
 - **Registry:** Tools register by name; the agent receives a list of tools and calls them via a simple protocol (e.g. `TOOL: name`, `INPUT: {...}`).
 - **Smart tool selection (v1):** When config has `[tools] top_k > 0`, the **tool selector** embeds the task description and each tool’s name+description, computes similarity, and passes only the top-k tools to the agent. Optional `[tools] enabled` restricts to categories (e.g. research, coding, documents).
-- **Plugins (v1):** External packages can register tools via the `hivemind.plugins` entry point; the loader runs after built-in categories so plugin tools appear in the same registry.
+- **Plugins (v1):** External packages can register tools via the `devsper.plugins` entry point; the loader runs after built-in categories so plugin tools appear in the same registry.
 - **Runner:** Validates arguments against each tool’s `input_schema`, runs the tool, and returns a string result (or error message).
 
 ### Memory
@@ -76,18 +76,18 @@
 ### Knowledge Graph
 
 - **Role:** Builds and queries a graph over memory (documents, concepts, datasets, methods; edges like mentions, cites, related_to).
-- **Query interface (v1):** `hivemind/knowledge/query.py` provides entity search (match query text to node labels) and relationship traversal (1–2 hops). CLI: `hivemind query "diffusion models"`.
+- **Query interface (v1):** `devsper/knowledge/query.py` provides entity search (match query text to node labels) and relationship traversal (1–2 hops). CLI: `devsper query "diffusion models"`.
 - **Integration:** Can be populated from tool outputs or document pipelines and used to enrich context for later tasks.
 
 ### Configuration (v1)
 
-- **Module:** `hivemind/config/` — `config_loader.py`, `schema.py`, `defaults.py`, `resolver.py` with Pydantic models.
-- **Locations:** `./hivemind.toml`, `./workflow.hivemind.toml`, `~/.config/hivemind/config.toml`, legacy `.hivemind/config.toml`.
-- **Priority:** env > project config > user config > defaults. Exposed via `get_config()`; `Swarm(config="hivemind.toml")` loads from file.
+- **Module:** `devsper/config/` — `config_loader.py`, `schema.py`, `defaults.py`, `resolver.py` with Pydantic models.
+- **Locations:** `./devsper.toml`, `./workflow.devsper.toml`, `~/.config/devsper/config.toml`, legacy `.devsper/config.toml`.
+- **Priority:** env > project config > user config > defaults. Exposed via `get_config()`; `Swarm(config="devsper.toml")` loads from file.
 
 ### Map-reduce runtime (v1)
 
-- **Module:** `hivemind/swarm/map_reduce.py` — `swarm.map_reduce(dataset, map_fn, reduce_fn)` partitions the dataset, runs `map_fn` on each item in parallel (worker pool), then runs `reduce_fn` on the collected results. Uses the same asyncio/semaphore pattern as the executor.
+- **Module:** `devsper/swarm/map_reduce.py` — `swarm.map_reduce(dataset, map_fn, reduce_fn)` partitions the dataset, runs `map_fn` on each item in parallel (worker pool), then runs `reduce_fn` on the collected results. Uses the same asyncio/semaphore pattern as the executor.
 
 ---
 
@@ -97,7 +97,7 @@ All components emit **events** to a shared **EventLog**:
 
 - **Event types:** e.g. `swarm_started`, `swarm_finished`, `planner_started`, `planner_finished`, `task_created`, `task_started`, `task_completed`, `task_failed`, `agent_started`, `agent_finished`, `executor_started`, `executor_finished`, `tool_called`.
 - **Format:** Each event has a timestamp, type, and payload (e.g. `task_id`, `description`).
-- **Persistence:** Events are appended to a JSONL file (e.g. `.hivemind/events/events_<timestamp>.jsonl`).
+- **Persistence:** Events are appended to a JSONL file (e.g. `.devsper/events/events_<timestamp>.jsonl`).
 
 The event log is used for **replay** and **telemetry** without changing runtime logic.
 

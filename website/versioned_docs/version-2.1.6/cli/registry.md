@@ -2,6 +2,6 @@
 title: "CLI: registry"
 ---
 
-# hivemind registry
+# devsper registry
 
 Coming soon.

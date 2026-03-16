@@ -2,7 +2,7 @@
 
 ## Tool Reliability Scoring (v1.3)
 
-Run from the project root (where `hivemind.toml` or `pyproject.toml` lives).
+Run from the project root (where `devsper.toml` or `pyproject.toml` lives).
 
 ### Quick test (CLI only)
 
@@ -10,7 +10,7 @@ Run from the project root (where `hivemind.toml` or `pyproject.toml` lives).
 ./scripts/test_tool_scoring_cli.sh
 ```
 
-- Runs unit tests, then exercises `hivemind tools`, `hivemind tools --poor`, `hivemind doctor`, `hivemind analytics`.
+- Runs unit tests, then exercises `devsper tools`, `devsper tools --poor`, `devsper doctor`, `devsper analytics`.
 
 ### Full test (all CLI commands)
 
@@ -18,14 +18,14 @@ Run from the project root (where `hivemind.toml` or `pyproject.toml` lives).
 ./scripts/test_tool_scoring_full.sh
 ```
 
-- Unit tests plus: `hivemind tools`, `hivemind tools --category research`, `hivemind tools --poor`, `hivemind doctor`, `hivemind analytics`.
+- Unit tests plus: `devsper tools`, `devsper tools --category research`, `devsper tools --poor`, `devsper doctor`, `devsper analytics`.
 
 ### Optional: seed DB for a populated table
 
 ```bash
 uv run python scripts/seed_tool_scores.py
-uv run hivemind tools
-uv run hivemind analytics
+uv run devsper tools
+uv run devsper analytics
 ```
 
 ### Python smoke test
@@ -43,23 +43,23 @@ uv run python scripts/test_tool_scoring_smoke.py
 uv run python -m pytest tests/test_tool_scoring.py -v
 
 # CLI: list tools (scores if any)
-uv run hivemind tools
+uv run devsper tools
 
 # CLI: only poor tools
-uv run hivemind tools --poor
+uv run devsper tools --poor
 
 # CLI: by category
-uv run hivemind tools --category research
+uv run devsper tools --category research
 
 # Doctor (includes scoring DB info)
-uv run hivemind doctor
+uv run devsper doctor
 
 # Analytics (includes tool report when scores exist)
-uv run hivemind analytics
+uv run devsper analytics
 
 # Reset one tool (replace TOOL_NAME)
-uv run hivemind tools reset TOOL_NAME
+uv run devsper tools reset TOOL_NAME
 
 # Bypass scoring in selection (env)
-HIVEMIND_DISABLE_TOOL_SCORING=1 uv run hivemind run "list files"
+DEVSPER_DISABLE_TOOL_SCORING=1 uv run devsper run "list files"
 ```

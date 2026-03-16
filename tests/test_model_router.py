@@ -1,6 +1,6 @@
 """Tests for model router (cost/latency/quality selection)."""
 
-from hivemind.providers.model_router import MODEL_REGISTRY, TaskType, select_model
+from devsper.providers.model_router import MODEL_REGISTRY, TaskType, select_model
 
 
 def test_model_registry_has_expected_models():

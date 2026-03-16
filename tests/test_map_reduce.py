@@ -1,7 +1,7 @@
 """Tests for map-reduce swarm runtime."""
 
-from hivemind.swarm.map_reduce import map_reduce
-from hivemind.swarm.swarm import Swarm
+from devsper.swarm.map_reduce import map_reduce
+from devsper.swarm.swarm import Swarm
 
 
 def test_map_reduce_basic():

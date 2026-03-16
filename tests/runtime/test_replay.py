@@ -4,8 +4,8 @@ import tempfile
 import os
 from datetime import datetime, timezone
 
-from hivemind.types.event import Event, events
-from hivemind.runtime.replay import replay_execution, _load_events
+from devsper.types.event import Event, events
+from devsper.runtime.replay import replay_execution, _load_events
 
 
 def test_replay_empty_path_returns_no_events():

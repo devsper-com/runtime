@@ -1,9 +1,9 @@
-//! Error types for hivemind-worker.
+//! Error types for devsper-worker.
 
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum HivemindError {
+pub enum DevsperError {
     #[error("Redis: {0}")]
     Redis(#[from] redis::RedisError),
 
@@ -29,4 +29,4 @@ pub enum HivemindError {
     InvalidPayload(String),
 }
 
-pub type Result<T> = std::result::Result<T, HivemindError>;
+pub type Result<T> = std::result::Result<T, DevsperError>;

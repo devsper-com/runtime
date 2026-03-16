@@ -8,16 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from hivemind.types.event import Event, events
-from hivemind.types.task import TaskStatus
-from hivemind.intelligence.analysis.run_report import (
+from devsper.types.event import Event, events
+from devsper.types.task import TaskStatus
+from devsper.intelligence.analysis.run_report import (
     RunReport,
     TaskSummary,
     build_report_from_events,
     _critical_path_and_bottleneck,
 )
-from hivemind.intelligence.analysis.cost_estimator import CostEstimator, MODEL_PRICING
-from hivemind.runtime.run_history import RunHistory, HISTORY_DB
+from devsper.intelligence.analysis.cost_estimator import CostEstimator, MODEL_PRICING
+from devsper.runtime.run_history import RunHistory, HISTORY_DB
 
 
 @pytest.fixture
@@ -152,7 +152,7 @@ def test_run_history_record_and_list(tmp_path):
 
 def test_runs_cli_output(capsys):
     """Snapshot-style: runs command produces table-like output when no runs."""
-    from hivemind.cli.main import _run_runs
+    from devsper.cli.main import _run_runs
     class Args:
         run_id = None
         limit = 5
@@ -166,11 +166,11 @@ def test_runs_cli_output(capsys):
 def test_pause_stops_new_tasks():
     """Executor with pause_event clear should not pick new tasks (we check the loop waits)."""
     import threading
-    from hivemind.swarm.executor import Executor
-    from hivemind.swarm.scheduler import Scheduler
-    from hivemind.types.task import Task, TaskStatus
-    from hivemind.agents.agent import Agent
-    from hivemind.utils.event_logger import EventLog
+    from devsper.swarm.executor import Executor
+    from devsper.swarm.scheduler import Scheduler
+    from devsper.types.task import Task, TaskStatus
+    from devsper.agents.agent import Agent
+    from devsper.utils.event_logger import EventLog
 
     pause_ev = threading.Event()
     pause_ev.clear()
@@ -219,10 +219,10 @@ def test_pause_stops_new_tasks():
 def test_inject_appears_in_memory_context():
     """Injected note (episodic + user_injection tag) is returned by get_memory_context."""
     import tempfile
-    from hivemind.memory.memory_store import MemoryStore, get_default_store, generate_memory_id
-    from hivemind.memory.memory_index import MemoryIndex
-    from hivemind.memory.memory_router import MemoryRouter
-    from hivemind.memory.memory_types import MemoryRecord, MemoryType
+    from devsper.memory.memory_store import MemoryStore, get_default_store, generate_memory_id
+    from devsper.memory.memory_index import MemoryIndex
+    from devsper.memory.memory_router import MemoryRouter
+    from devsper.memory.memory_types import MemoryRecord, MemoryType
 
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)

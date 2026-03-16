@@ -6,29 +6,29 @@ from unittest.mock import patch
 
 import pytest
 
-from hivemind.workflow.conditions import (
+from devsper.workflow.conditions import (
     WorkflowConditionError,
     evaluate_condition,
 )
-from hivemind.workflow.context import (
+from devsper.workflow.context import (
     StepResult,
     WorkflowContext,
     WorkflowTemplateError,
 )
-from hivemind.workflow.loader import load_workflow, list_workflows
-from hivemind.workflow.resolver import (
+from devsper.workflow.loader import load_workflow, list_workflows
+from devsper.workflow.resolver import (
     WorkflowCycleError,
     build_execution_order,
     validate_dag,
 )
-from hivemind.workflow.runner import WorkflowRunner, run_workflow
-from hivemind.workflow.schema import (
+from devsper.workflow.runner import WorkflowRunner, run_workflow
+from devsper.workflow.schema import (
     OutputField,
     StepCondition,
     WorkflowDefinition,
     WorkflowStep,
 )
-from hivemind.workflow.validator import ValidationReport, validate_workflow
+from devsper.workflow.validator import ValidationReport, validate_workflow
 
 
 # --- Loader / backward compat ---
@@ -53,7 +53,7 @@ def test_load_workflow_from_path():
 
 def test_list_workflows_empty_without_file():
     """Without a workflow file, list_workflows returns [] when we use a path that doesn't exist."""
-    wf = load_workflow("nonexistent", config_path=Path("/nonexistent/hivemind.toml"))
+    wf = load_workflow("nonexistent", config_path=Path("/nonexistent/devsper.toml"))
     assert wf is None
 
 
@@ -66,7 +66,7 @@ def test_backward_compat():
         wf = load_workflow("legacy_wf", config_path=path)
         assert wf is not None
         assert len(wf.steps) == 2
-        with patch("hivemind.agents.agent.generate", side_effect=["out1", "out2"]):
+        with patch("devsper.agents.agent.generate", side_effect=["out1", "out2"]):
             results = run_workflow(
                 ["Step one", "Step two"],
                 worker_model="mock",
@@ -95,7 +95,7 @@ def test_sequential_steps_execute_in_order():
     assert [s.id for s in order[0]] == ["a"]
     assert [s.id for s in order[1]] == ["b"]
     assert [s.id for s in order[2]] == ["c"]
-    with patch("hivemind.agents.agent.generate", side_effect=["1", "2", "3"]):
+    with patch("devsper.agents.agent.generate", side_effect=["1", "2", "3"]):
         runner = WorkflowRunner()
         ctx = runner.run(wf, {}, worker_model="mock", worker_count=1)
     assert ctx.steps["a"].raw_result == "1"
@@ -133,7 +133,7 @@ def test_condition_skips_step():
         WorkflowStep(id="always", task="Always run", depends_on=["classify"]),
     ]
     wf = WorkflowDefinition(name="cond", steps=steps, inputs=[])
-    with patch("hivemind.agents.agent.generate", side_effect=['{"category": "business"}', "Always output"]):
+    with patch("devsper.agents.agent.generate", side_effect=['{"category": "business"}', "Always output"]):
         runner = WorkflowRunner()
         ctx = runner.run(wf, {}, worker_model="mock", worker_count=2)
     assert ctx.steps["classify"].skipped is False
@@ -155,7 +155,7 @@ def test_condition_blocks_dependent():
         WorkflowStep(id="depends_on_skip", task="Downstream", depends_on=["skip_me"]),
     ]
     wf = WorkflowDefinition(name="block", steps=steps, inputs=[])
-    with patch("hivemind.agents.agent.generate", side_effect=["other"]):  # first returns "other", so skip_me condition false
+    with patch("devsper.agents.agent.generate", side_effect=["other"]):  # first returns "other", so skip_me condition false
         runner = WorkflowRunner()
         ctx = runner.run(wf, {}, worker_model="mock", worker_count=1)
     assert ctx.steps["skip_me"].skipped is True
@@ -237,7 +237,7 @@ def test_output_schema_parsed():
     ]
     wf = WorkflowDefinition(name="schema", steps=steps, inputs=[])
     with patch(
-        "hivemind.agents.agent.generate",
+        "devsper.agents.agent.generate",
         return_value='{"category": "technical", "confidence": 0.95}',
     ):
         runner = WorkflowRunner()

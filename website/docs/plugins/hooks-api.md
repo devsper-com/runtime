@@ -8,10 +8,10 @@ This page documents the core APIs for tools, the tool registry, the plugin loade
 
 ## Tool Base Class
 
-**Module:** `hivemind.tools.base`
+**Module:** `devsper.tools.base`
 
 ```python
-from hivemind.tools.base import Tool
+from devsper.tools.base import Tool
 ```
 
 `Tool` is an abstract base class. All tools -- built-in and plugin -- inherit from it.
@@ -50,7 +50,7 @@ class MyTool(Tool):
 
 ## Tool Registry
 
-**Module:** `hivemind.tools.registry`
+**Module:** `devsper.tools.registry`
 
 The registry is the global store of all available tools.
 
@@ -59,7 +59,7 @@ The registry is the global store of all available tools.
 Register a tool by its `name`. If a tool with the same name already exists, it is overwritten.
 
 ```python
-from hivemind.tools.registry import register
+from devsper.tools.registry import register
 
 register(MyTool())
 ```
@@ -69,7 +69,7 @@ register(MyTool())
 Return the tool with the given name, or `None` if not found.
 
 ```python
-from hivemind.tools.registry import get
+from devsper.tools.registry import get
 
 tool = get("my_tool")
 ```
@@ -79,7 +79,7 @@ tool = get("my_tool")
 Return all registered tools.
 
 ```python
-from hivemind.tools.registry import list_tools
+from devsper.tools.registry import list_tools
 
 for tool in list_tools():
     print(f"{tool.name}: {tool.description}")
@@ -91,7 +91,7 @@ Look up a tool by name. If not found and the name has no dot, search for a singl
 
 ## Tool Runner
 
-**Module:** `hivemind.tools.tool_runner`
+**Module:** `devsper.tools.tool_runner`
 
 ### `run_tool(name: str, args: dict, task_type: str | None = None) -> str`
 
@@ -114,7 +114,7 @@ Execute a tool by name with validated arguments. This is the primary execution e
 | Runtime exception | `"Tool error: <ExceptionType>: <message>"` |
 
 ```python
-from hivemind.tools.tool_runner import run_tool
+from devsper.tools.tool_runner import run_tool
 
 result = run_tool("word_count", {"text": "hello world"})
 # Returns: "2 words"
@@ -130,11 +130,11 @@ The runner validates arguments against `input_schema` before execution:
 
 ## Plugin Loader
 
-**Module:** `hivemind.plugins.plugin_loader`
+**Module:** `devsper.plugins.plugin_loader`
 
 ### `load_plugins(enabled: list[str] | None = None) -> list[str]`
 
-Discover and load all plugins from the `hivemind.plugins` entry point group.
+Discover and load all plugins from the `devsper.plugins` entry point group.
 
 **Parameters:**
 
@@ -144,14 +144,14 @@ Discover and load all plugins from the `hivemind.plugins` entry point group.
 
 **Behavior:**
 
-1. Scans `importlib.metadata.entry_points(group="hivemind.plugins")`
+1. Scans `importlib.metadata.entry_points(group="devsper.plugins")`
 2. For each entry point, calls the referenced callable
 3. If the callable returns a list of `Tool` instances, registers each one
 4. If the callable returns `None`, assumes it called `register()` internally
 5. Records plugin metadata (name, version, tool names) in the plugin registry
 
 ```python
-from hivemind.plugins.plugin_loader import load_plugins
+from devsper.plugins.plugin_loader import load_plugins
 
 loaded = load_plugins()
 # Returns: ["demo", "web", ...]
@@ -159,7 +159,7 @@ loaded = load_plugins()
 
 ## Plugin Registry
 
-**Module:** `hivemind.plugins.plugin_registry`
+**Module:** `devsper.plugins.plugin_registry`
 
 Tracks metadata about loaded plugins. This is an internal registry (distinct from the web registry).
 
@@ -191,7 +191,7 @@ Clear the plugin registry (primarily for tests).
 
 ## Smart Tool Selector
 
-**Module:** `hivemind.tools.selector`
+**Module:** `devsper.tools.selector`
 
 The selector filters and ranks tools for a given task using category filtering and semantic similarity.
 
@@ -215,11 +215,11 @@ Return the most relevant tools for a task.
 
 ### `get_tools_for_task(task_description, config=None, role=None, score_store=None) -> list[Tool]`
 
-Higher-level function used by agents. Reads `top_k` and `enabled` categories from the hivemind config (under `[tools]`), and optionally uses score-based ranking when a `score_store` is provided.
+Higher-level function used by agents. Reads `top_k` and `enabled` categories from the devsper config (under `[tools]`), and optionally uses score-based ranking when a `score_store` is provided.
 
 ### Configuration
 
-Enable smart selection in your hivemind config:
+Enable smart selection in your devsper config:
 
 ```toml
 [tools]

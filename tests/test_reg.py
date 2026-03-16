@@ -1,4 +1,4 @@
-"""Tests for hivemind reg CLI commands.
+"""Tests for devsper reg CLI commands.
 
 Uses respx to mock HTTP requests and unittest.mock for token/credential helpers.
 """
@@ -22,28 +22,28 @@ TEST_REGISTRY = "https://test-registry.example.com"
 @pytest.fixture(autouse=True)
 def _patch_registry_url(monkeypatch):
     """Point all registry calls at our test URL."""
-    monkeypatch.setattr("hivemind.plugins.registry.REGISTRY_URL", TEST_REGISTRY)
-    monkeypatch.setattr("hivemind.cli.commands.reg.REGISTRY_URL", TEST_REGISTRY)
+    monkeypatch.setattr("devsper.plugins.registry.REGISTRY_URL", TEST_REGISTRY)
+    monkeypatch.setattr("devsper.cli.commands.reg.REGISTRY_URL", TEST_REGISTRY)
 
 
 @pytest.fixture()
 def mock_token(monkeypatch):
     """Pretend user is logged in with a test token."""
     token = "hm_test_token_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    monkeypatch.setattr("hivemind.cli.commands.reg.get_token", lambda: token)
-    monkeypatch.setattr("hivemind.cli.commands.reg.require_token", lambda: token)
+    monkeypatch.setattr("devsper.cli.commands.reg.get_token", lambda: token)
+    monkeypatch.setattr("devsper.cli.commands.reg.require_token", lambda: token)
     return token
 
 
 @pytest.fixture()
 def mock_no_token(monkeypatch):
     """Pretend user is NOT logged in."""
-    monkeypatch.setattr("hivemind.cli.commands.reg.get_token", lambda: None)
+    monkeypatch.setattr("devsper.cli.commands.reg.get_token", lambda: None)
 
     def _raise():
         raise SystemExit(1)
 
-    monkeypatch.setattr("hivemind.cli.commands.reg.require_token", _raise)
+    monkeypatch.setattr("devsper.cli.commands.reg.require_token", _raise)
 
 
 @pytest.fixture()
@@ -51,7 +51,7 @@ def mock_set_token(monkeypatch):
     """Capture set_token calls."""
     calls = []
     monkeypatch.setattr(
-        "hivemind.cli.commands.reg.set_token", lambda t: calls.append(t)
+        "devsper.cli.commands.reg.set_token", lambda t: calls.append(t)
     )
     return calls
 
@@ -61,7 +61,7 @@ def mock_delete_token(monkeypatch):
     """Capture delete_token calls."""
     calls = []
     monkeypatch.setattr(
-        "hivemind.cli.commands.reg.delete_token", lambda: calls.append(True)
+        "devsper.cli.commands.reg.delete_token", lambda: calls.append(True)
     )
     return calls
 
@@ -76,7 +76,7 @@ def _make_args(**kwargs):
 
 class TestLogout:
     def test_logout_deletes_token(self, mock_delete_token):
-        from hivemind.cli.commands.reg import cmd_logout
+        from devsper.cli.commands.reg import cmd_logout
 
         rc = cmd_logout(_make_args())
         assert rc == 0
@@ -89,7 +89,7 @@ class TestLogout:
 class TestWhoami:
     @respx.mock
     def test_whoami_success(self, mock_token):
-        from hivemind.cli.commands.reg import cmd_whoami
+        from devsper.cli.commands.reg import cmd_whoami
 
         respx.get(f"{TEST_REGISTRY}/api/v1/me").mock(
             return_value=httpx.Response(
@@ -106,7 +106,7 @@ class TestWhoami:
 
     @respx.mock
     def test_whoami_401_exits(self, mock_token):
-        from hivemind.cli.commands.reg import cmd_whoami
+        from devsper.cli.commands.reg import cmd_whoami
 
         respx.get(f"{TEST_REGISTRY}/api/v1/me").mock(
             return_value=httpx.Response(401, json={"error": "unauthorized"})
@@ -115,7 +115,7 @@ class TestWhoami:
             cmd_whoami(_make_args())
 
     def test_whoami_no_token(self, mock_no_token):
-        from hivemind.cli.commands.reg import cmd_whoami
+        from devsper.cli.commands.reg import cmd_whoami
 
         with pytest.raises(SystemExit):
             cmd_whoami(_make_args())
@@ -127,7 +127,7 @@ class TestWhoami:
 class TestSearch:
     @respx.mock
     def test_search_with_results(self):
-        from hivemind.cli.commands.reg import cmd_search
+        from devsper.cli.commands.reg import cmd_search
 
         respx.get(f"{TEST_REGISTRY}/api/v1/search").mock(
             return_value=httpx.Response(
@@ -135,13 +135,13 @@ class TestSearch:
                 json={
                     "packages": [
                         {
-                            "name": "hivemind-plugin-demo",
+                            "name": "devsper-plugin-demo",
                             "latest_version": "0.9.0",
                             "total_downloads": 42,
                             "verified": True,
                         },
                         {
-                            "name": "hivemind-plugin-foo",
+                            "name": "devsper-plugin-foo",
                             "latest_version": "1.0.0",
                             "total_downloads": 0,
                             "verified": False,
@@ -150,12 +150,12 @@ class TestSearch:
                 },
             )
         )
-        rc = cmd_search(_make_args(query="hivemind", verified=False, limit=10))
+        rc = cmd_search(_make_args(query="devsper", verified=False, limit=10))
         assert rc == 0
 
     @respx.mock
     def test_search_no_results(self):
-        from hivemind.cli.commands.reg import cmd_search
+        from devsper.cli.commands.reg import cmd_search
 
         respx.get(f"{TEST_REGISTRY}/api/v1/search").mock(
             return_value=httpx.Response(200, json={"packages": []})
@@ -165,7 +165,7 @@ class TestSearch:
 
     @respx.mock
     def test_search_error(self):
-        from hivemind.cli.commands.reg import cmd_search
+        from devsper.cli.commands.reg import cmd_search
 
         respx.get(f"{TEST_REGISTRY}/api/v1/search").mock(
             return_value=httpx.Response(500, text="Internal Server Error")
@@ -181,13 +181,13 @@ class TestSearch:
 class TestInfo:
     @respx.mock
     def test_info_success(self):
-        from hivemind.cli.commands.reg import cmd_info
+        from devsper.cli.commands.reg import cmd_info
 
-        respx.get(f"{TEST_REGISTRY}/api/v1/packages/hivemind-plugin-demo").mock(
+        respx.get(f"{TEST_REGISTRY}/api/v1/packages/devsper-plugin-demo").mock(
             return_value=httpx.Response(
                 200,
                 json={
-                    "name": "hivemind-plugin-demo",
+                    "name": "devsper-plugin-demo",
                     "description": "A demo plugin",
                     "latest_version": "0.9.0",
                     "total_downloads": 42,
@@ -195,12 +195,12 @@ class TestInfo:
                 },
             )
         )
-        rc = cmd_info(_make_args(package="hivemind-plugin-demo"))
+        rc = cmd_info(_make_args(package="devsper-plugin-demo"))
         assert rc == 0
 
     @respx.mock
     def test_info_not_found(self):
-        from hivemind.cli.commands.reg import cmd_info
+        from devsper.cli.commands.reg import cmd_info
 
         respx.get(f"{TEST_REGISTRY}/api/v1/packages/nope").mock(
             return_value=httpx.Response(404, json={"error": "not found"})
@@ -215,10 +215,10 @@ class TestInfo:
 class TestVersions:
     @respx.mock
     def test_versions_success(self):
-        from hivemind.cli.commands.reg import cmd_versions
+        from devsper.cli.commands.reg import cmd_versions
 
         respx.get(
-            f"{TEST_REGISTRY}/api/v1/packages/hivemind-plugin-demo/versions"
+            f"{TEST_REGISTRY}/api/v1/packages/devsper-plugin-demo/versions"
         ).mock(
             return_value=httpx.Response(
                 200,
@@ -242,12 +242,12 @@ class TestVersions:
                 },
             )
         )
-        rc = cmd_versions(_make_args(package="hivemind-plugin-demo"))
+        rc = cmd_versions(_make_args(package="devsper-plugin-demo"))
         assert rc == 0
 
     @respx.mock
     def test_versions_not_found(self):
-        from hivemind.cli.commands.reg import cmd_versions
+        from devsper.cli.commands.reg import cmd_versions
 
         respx.get(f"{TEST_REGISTRY}/api/v1/packages/nope/versions").mock(
             return_value=httpx.Response(404, json={"error": "not found"})
@@ -257,7 +257,7 @@ class TestVersions:
 
     @respx.mock
     def test_versions_empty(self):
-        from hivemind.cli.commands.reg import cmd_versions
+        from devsper.cli.commands.reg import cmd_versions
 
         respx.get(f"{TEST_REGISTRY}/api/v1/packages/demo/versions").mock(
             return_value=httpx.Response(200, json={"versions": []})
@@ -272,14 +272,14 @@ class TestVersions:
 class TestYank:
     @respx.mock
     def test_yank_success(self, mock_token):
-        from hivemind.cli.commands.reg import cmd_yank
+        from devsper.cli.commands.reg import cmd_yank
 
         respx.post(
-            f"{TEST_REGISTRY}/api/v1/packages/hivemind-plugin-demo/0.1.0/yank"
+            f"{TEST_REGISTRY}/api/v1/packages/devsper-plugin-demo/0.1.0/yank"
         ).mock(return_value=httpx.Response(200, json={"ok": True}))
         rc = cmd_yank(
             _make_args(
-                package="hivemind-plugin-demo",
+                package="devsper-plugin-demo",
                 version="0.1.0",
                 reason="security issue",
             )
@@ -288,27 +288,27 @@ class TestYank:
 
     @respx.mock
     def test_yank_unauthorized(self, mock_token):
-        from hivemind.cli.commands.reg import cmd_yank
+        from devsper.cli.commands.reg import cmd_yank
 
         respx.post(
-            f"{TEST_REGISTRY}/api/v1/packages/hivemind-plugin-demo/0.1.0/yank"
+            f"{TEST_REGISTRY}/api/v1/packages/devsper-plugin-demo/0.1.0/yank"
         ).mock(return_value=httpx.Response(401, json={"error": "unauthorized"}))
         with pytest.raises(SystemExit):
             cmd_yank(
                 _make_args(
-                    package="hivemind-plugin-demo",
+                    package="devsper-plugin-demo",
                     version="0.1.0",
                     reason="oops",
                 )
             )
 
     def test_yank_no_token(self, mock_no_token):
-        from hivemind.cli.commands.reg import cmd_yank
+        from devsper.cli.commands.reg import cmd_yank
 
         with pytest.raises(SystemExit):
             cmd_yank(
                 _make_args(
-                    package="hivemind-plugin-demo",
+                    package="devsper-plugin-demo",
                     version="0.1.0",
                     reason="no auth",
                 )
@@ -321,17 +321,17 @@ class TestYank:
 class TestTestCommand:
     def test_valid_plugin(self, tmp_path):
         """A minimal valid plugin passes all checks."""
-        from hivemind.cli.commands.reg import cmd_test
+        from devsper.cli.commands.reg import cmd_test
 
         # Create pyproject.toml
         pyproject = {
             "project": {
-                "name": "hivemind-test-plugin",
+                "name": "devsper-test-plugin",
                 "version": "0.1.0",
                 "description": "Test plugin",
                 "license": "MIT",
                 "requires-python": ">=3.12",
-                "entry-points": {"hivemind.plugins": {"test": "test_plugin:load"}},
+                "entry-points": {"devsper.plugins": {"test": "test_plugin:load"}},
             }
         }
         import tomllib
@@ -339,13 +339,13 @@ class TestTestCommand:
         # Write pyproject.toml manually (tomllib is read-only)
         pyproject_str = """
 [project]
-name = "hivemind-test-plugin"
+name = "devsper-test-plugin"
 version = "0.1.0"
 description = "Test plugin"
 license = "MIT"
 requires-python = ">=3.12"
 
-[project.entry-points."hivemind.plugins"]
+[project.entry-points."devsper.plugins"]
 test = "test_plugin:load"
 """
         (tmp_path / "pyproject.toml").write_text(pyproject_str)
@@ -370,23 +370,23 @@ def load():
 
     def test_missing_pyproject(self, tmp_path):
         """No pyproject.toml -> SystemExit."""
-        from hivemind.cli.commands.reg import cmd_test
+        from devsper.cli.commands.reg import cmd_test
 
         with pytest.raises(SystemExit):
             cmd_test(_make_args(dir=str(tmp_path)))
 
     def test_missing_version(self, tmp_path):
         """Missing version field fails."""
-        from hivemind.cli.commands.reg import cmd_test
+        from devsper.cli.commands.reg import cmd_test
 
         pyproject_str = """
 [project]
-name = "hivemind-test-plugin"
+name = "devsper-test-plugin"
 description = "Test plugin"
 license = "MIT"
 requires-python = ">=3.12"
 
-[project.entry-points."hivemind.plugins"]
+[project.entry-points."devsper.plugins"]
 test = "test_plugin:load"
 """
         (tmp_path / "pyproject.toml").write_text(pyproject_str)
@@ -402,18 +402,18 @@ test = "test_plugin:load"
 class TestPublish:
     def test_publish_dry_run(self, tmp_path, mock_token, monkeypatch):
         """Dry run prints files but doesn't upload."""
-        from hivemind.cli.commands.reg import cmd_publish
+        from devsper.cli.commands.reg import cmd_publish
 
         # Create a minimal valid plugin
         pyproject_str = """
 [project]
-name = "hivemind-test-plugin"
+name = "devsper-test-plugin"
 version = "0.1.0"
 description = "Test plugin"
 license = "MIT"
 requires-python = ">=3.12"
 
-[project.entry-points."hivemind.plugins"]
+[project.entry-points."devsper.plugins"]
 test = "test_plugin:load"
 """
         (tmp_path / "pyproject.toml").write_text(pyproject_str)
@@ -434,7 +434,7 @@ def load():
         # Pre-create dist with a fake wheel
         dist_dir = tmp_path / "dist"
         dist_dir.mkdir()
-        fake_wheel = dist_dir / "hivemind_test_plugin-0.1.0-py3-none-any.whl"
+        fake_wheel = dist_dir / "devsper_test_plugin-0.1.0-py3-none-any.whl"
         fake_wheel.write_bytes(b"fake wheel content")
 
         rc = cmd_publish(_make_args(dir=str(tmp_path), skip_build=True, dry_run=True))
@@ -442,7 +442,7 @@ def load():
 
     def test_publish_no_token(self, tmp_path, mock_no_token):
         """Publish without token exits."""
-        from hivemind.cli.commands.reg import cmd_publish
+        from devsper.cli.commands.reg import cmd_publish
 
         with pytest.raises(SystemExit):
             cmd_publish(_make_args(dir=str(tmp_path), skip_build=False, dry_run=False))
@@ -450,17 +450,17 @@ def load():
     @respx.mock
     def test_publish_upload_success(self, tmp_path, mock_token, monkeypatch):
         """Full publish flow: skip_build + existing dist -> upload succeeds."""
-        from hivemind.cli.commands.reg import cmd_publish
+        from devsper.cli.commands.reg import cmd_publish
 
         pyproject_str = """
 [project]
-name = "hivemind-test-plugin"
+name = "devsper-test-plugin"
 version = "0.2.0"
 description = "Test plugin"
 license = "MIT"
 requires-python = ">=3.12"
 
-[project.entry-points."hivemind.plugins"]
+[project.entry-points."devsper.plugins"]
 test = "test_plugin:load"
 """
         (tmp_path / "pyproject.toml").write_text(pyproject_str)
@@ -479,22 +479,22 @@ def load():
         )
         dist_dir = tmp_path / "dist"
         dist_dir.mkdir()
-        fake_wheel = dist_dir / "hivemind_test_plugin-0.2.0-py3-none-any.whl"
+        fake_wheel = dist_dir / "devsper_test_plugin-0.2.0-py3-none-any.whl"
         fake_wheel.write_bytes(b"fake wheel content")
 
         # Mock: package exists
-        respx.get(f"{TEST_REGISTRY}/api/v1/packages/hivemind-test-plugin").mock(
-            return_value=httpx.Response(200, json={"name": "hivemind-test-plugin"})
+        respx.get(f"{TEST_REGISTRY}/api/v1/packages/devsper-test-plugin").mock(
+            return_value=httpx.Response(200, json={"name": "devsper-test-plugin"})
         )
 
         # Mock: upload succeeds
-        respx.post(f"{TEST_REGISTRY}/api/v1/packages/hivemind-test-plugin/upload").mock(
+        respx.post(f"{TEST_REGISTRY}/api/v1/packages/devsper-test-plugin/upload").mock(
             return_value=httpx.Response(201, json={"ok": True})
         )
 
         # Mock: version status check (published)
         respx.get(
-            f"{TEST_REGISTRY}/api/v1/packages/hivemind-test-plugin/versions/0.2.0/status"
+            f"{TEST_REGISTRY}/api/v1/packages/devsper-test-plugin/versions/0.2.0/status"
         ).mock(
             return_value=httpx.Response(
                 200,
@@ -513,17 +513,17 @@ def load():
         self, tmp_path, mock_token, monkeypatch
     ):
         """If package doesn't exist, auto-creates it."""
-        from hivemind.cli.commands.reg import cmd_publish
+        from devsper.cli.commands.reg import cmd_publish
 
         pyproject_str = """
 [project]
-name = "hivemind-new-plugin"
+name = "devsper-new-plugin"
 version = "0.1.0"
 description = "Brand new plugin"
 license = "MIT"
 requires-python = ">=3.12"
 
-[project.entry-points."hivemind.plugins"]
+[project.entry-points."devsper.plugins"]
 test = "test_plugin:load"
 """
         (tmp_path / "pyproject.toml").write_text(pyproject_str)
@@ -542,24 +542,24 @@ def load():
         )
         dist_dir = tmp_path / "dist"
         dist_dir.mkdir()
-        fake_wheel = dist_dir / "hivemind_new_plugin-0.1.0-py3-none-any.whl"
+        fake_wheel = dist_dir / "devsper_new_plugin-0.1.0-py3-none-any.whl"
         fake_wheel.write_bytes(b"fake wheel content")
 
         # Package doesn't exist
-        respx.get(f"{TEST_REGISTRY}/api/v1/packages/hivemind-new-plugin").mock(
+        respx.get(f"{TEST_REGISTRY}/api/v1/packages/devsper-new-plugin").mock(
             return_value=httpx.Response(404, json={"error": "not found"})
         )
         # Create succeeds
         respx.post(f"{TEST_REGISTRY}/api/v1/packages").mock(
-            return_value=httpx.Response(201, json={"name": "hivemind-new-plugin"})
+            return_value=httpx.Response(201, json={"name": "devsper-new-plugin"})
         )
         # Upload succeeds
-        respx.post(f"{TEST_REGISTRY}/api/v1/packages/hivemind-new-plugin/upload").mock(
+        respx.post(f"{TEST_REGISTRY}/api/v1/packages/devsper-new-plugin/upload").mock(
             return_value=httpx.Response(201, json={"ok": True})
         )
         # Version check
         respx.get(
-            f"{TEST_REGISTRY}/api/v1/packages/hivemind-new-plugin/versions/0.1.0/status"
+            f"{TEST_REGISTRY}/api/v1/packages/devsper-new-plugin/versions/0.1.0/status"
         ).mock(
             return_value=httpx.Response(
                 200, json={"verification_status": "passed", "tool_count": 1}
@@ -572,17 +572,17 @@ def load():
     @respx.mock
     def test_publish_version_conflict(self, tmp_path, mock_token, monkeypatch):
         """Upload returns 409 -> version already exists."""
-        from hivemind.cli.commands.reg import cmd_publish
+        from devsper.cli.commands.reg import cmd_publish
 
         pyproject_str = """
 [project]
-name = "hivemind-test-plugin"
+name = "devsper-test-plugin"
 version = "0.1.0"
 description = "Test plugin"
 license = "MIT"
 requires-python = ">=3.12"
 
-[project.entry-points."hivemind.plugins"]
+[project.entry-points."devsper.plugins"]
 test = "test_plugin:load"
 """
         (tmp_path / "pyproject.toml").write_text(pyproject_str)
@@ -601,15 +601,15 @@ def load():
         )
         dist_dir = tmp_path / "dist"
         dist_dir.mkdir()
-        fake_wheel = dist_dir / "hivemind_test_plugin-0.1.0-py3-none-any.whl"
+        fake_wheel = dist_dir / "devsper_test_plugin-0.1.0-py3-none-any.whl"
         fake_wheel.write_bytes(b"fake wheel content")
 
         # Package exists
-        respx.get(f"{TEST_REGISTRY}/api/v1/packages/hivemind-test-plugin").mock(
-            return_value=httpx.Response(200, json={"name": "hivemind-test-plugin"})
+        respx.get(f"{TEST_REGISTRY}/api/v1/packages/devsper-test-plugin").mock(
+            return_value=httpx.Response(200, json={"name": "devsper-test-plugin"})
         )
         # Upload returns conflict
-        respx.post(f"{TEST_REGISTRY}/api/v1/packages/hivemind-test-plugin/upload").mock(
+        respx.post(f"{TEST_REGISTRY}/api/v1/packages/devsper-test-plugin/upload").mock(
             return_value=httpx.Response(409, text="version already exists")
         )
 
@@ -624,7 +624,7 @@ class TestLogin:
     @respx.mock
     def test_login_immediate_approval(self, mock_set_token, monkeypatch):
         """Device flow: request + immediate approval on first poll."""
-        from hivemind.cli.commands.reg import cmd_login
+        from devsper.cli.commands.reg import cmd_login
 
         # Mock device request
         respx.post(f"{TEST_REGISTRY}/api/v1/auth/device/request").mock(
@@ -648,7 +648,7 @@ class TestLogin:
         )
 
         # Patch time.sleep to avoid waiting, and Live to avoid Rich rendering issues
-        monkeypatch.setattr("hivemind.cli.commands.reg.time.sleep", lambda s: None)
+        monkeypatch.setattr("devsper.cli.commands.reg.time.sleep", lambda s: None)
 
         rc = cmd_login(_make_args())
         assert rc == 0
@@ -657,7 +657,7 @@ class TestLogin:
     @respx.mock
     def test_login_denied(self, monkeypatch):
         """Device flow: request + poll returns 400 (denied)."""
-        from hivemind.cli.commands.reg import cmd_login
+        from devsper.cli.commands.reg import cmd_login
 
         respx.post(f"{TEST_REGISTRY}/api/v1/auth/device/request").mock(
             return_value=httpx.Response(
@@ -674,7 +674,7 @@ class TestLogin:
         respx.post(f"{TEST_REGISTRY}/api/v1/auth/device/poll").mock(
             return_value=httpx.Response(400, json={"error": "denied"})
         )
-        monkeypatch.setattr("hivemind.cli.commands.reg.time.sleep", lambda s: None)
+        monkeypatch.setattr("devsper.cli.commands.reg.time.sleep", lambda s: None)
 
         with pytest.raises(SystemExit):
             cmd_login(_make_args())
@@ -682,7 +682,7 @@ class TestLogin:
     @respx.mock
     def test_login_registry_unreachable(self):
         """Device flow: cannot reach registry at all."""
-        from hivemind.cli.commands.reg import cmd_login
+        from devsper.cli.commands.reg import cmd_login
 
         respx.post(f"{TEST_REGISTRY}/api/v1/auth/device/request").mock(
             side_effect=httpx.ConnectError("Connection refused")
@@ -698,7 +698,7 @@ class TestLogin:
 class TestEnsurePackageExists:
     @respx.mock
     def test_package_already_exists(self, mock_token):
-        from hivemind.cli.commands.reg import _ensure_package_exists, RegistryClient
+        from devsper.cli.commands.reg import _ensure_package_exists, RegistryClient
 
         client = RegistryClient(mock_token)
         respx.get(f"{TEST_REGISTRY}/api/v1/packages/my-pkg").mock(
@@ -709,7 +709,7 @@ class TestEnsurePackageExists:
 
     @respx.mock
     def test_package_created(self, mock_token):
-        from hivemind.cli.commands.reg import _ensure_package_exists, RegistryClient
+        from devsper.cli.commands.reg import _ensure_package_exists, RegistryClient
 
         client = RegistryClient(mock_token)
         respx.get(f"{TEST_REGISTRY}/api/v1/packages/new-pkg").mock(
@@ -726,7 +726,7 @@ class TestEnsurePackageExists:
 
     @respx.mock
     def test_package_creation_fails(self, mock_token):
-        from hivemind.cli.commands.reg import _ensure_package_exists, RegistryClient
+        from devsper.cli.commands.reg import _ensure_package_exists, RegistryClient
 
         client = RegistryClient(mock_token)
         respx.get(f"{TEST_REGISTRY}/api/v1/packages/fail-pkg").mock(
@@ -744,7 +744,7 @@ class TestEnsurePackageExists:
 
 class TestReadPyproject:
     def test_read_existing(self, tmp_path):
-        from hivemind.cli.commands.reg import _read_pyproject
+        from devsper.cli.commands.reg import _read_pyproject
 
         (tmp_path / "pyproject.toml").write_text(
             '[project]\nname = "test"\nversion = "1.0.0"\n'
@@ -754,7 +754,7 @@ class TestReadPyproject:
         assert result["project"]["version"] == "1.0.0"
 
     def test_read_missing(self, tmp_path):
-        from hivemind.cli.commands.reg import _read_pyproject
+        from devsper.cli.commands.reg import _read_pyproject
 
         result = _read_pyproject(tmp_path)
         assert result == {}
@@ -765,7 +765,7 @@ class TestReadPyproject:
 
 class TestRegistryClient:
     def test_client_default_no_token(self):
-        from hivemind.plugins.registry import RegistryClient
+        from devsper.plugins.registry import RegistryClient
 
         client = RegistryClient()
         assert client.base == TEST_REGISTRY
@@ -775,7 +775,7 @@ class TestRegistryClient:
         client.close()
 
     def test_client_with_token(self):
-        from hivemind.plugins.registry import RegistryClient
+        from devsper.plugins.registry import RegistryClient
 
         client = RegistryClient("my-token")
         assert client.token == "my-token"
@@ -785,7 +785,7 @@ class TestRegistryClient:
 
     @respx.mock
     def test_client_get(self):
-        from hivemind.plugins.registry import RegistryClient
+        from devsper.plugins.registry import RegistryClient
 
         respx.get(f"{TEST_REGISTRY}/api/v1/health").mock(
             return_value=httpx.Response(200, json={"status": "ok"})
@@ -798,7 +798,7 @@ class TestRegistryClient:
 
     @respx.mock
     def test_client_post(self):
-        from hivemind.plugins.registry import RegistryClient
+        from devsper.plugins.registry import RegistryClient
 
         respx.post(f"{TEST_REGISTRY}/api/v1/test").mock(
             return_value=httpx.Response(201, json={"created": True})

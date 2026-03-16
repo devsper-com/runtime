@@ -1,4 +1,4 @@
-//! Hivemind worker node — bus, claim protocol, heartbeat, executor bridge.
+//! devsper worker node — bus, claim protocol, heartbeat, executor bridge.
 
 pub mod bus;
 pub mod claim;
@@ -20,5 +20,5 @@ pub mod types;
 pub mod worker_node;
 
 pub use config::{ExecutorMode, NodeConfig};
-pub use error::{HivemindError, Result};
+pub use error::{DevsperError, Result};
 pub use types::{AgentRequest, AgentResponse, BusMessage, NodeInfo, NodeRole, Task, TaskStatus};

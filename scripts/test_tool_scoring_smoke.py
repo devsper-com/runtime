@@ -8,15 +8,15 @@ import os
 import tempfile
 from pathlib import Path
 
-# Use temp DB so we don't touch ~/.config/hivemind/tool_scores.db
+# Use temp DB so we don't touch ~/.config/devsper/tool_scores.db
 with tempfile.TemporaryDirectory() as tmp:
     db_path = Path(tmp) / "tool_scores.db"
 
-    from hivemind.tools.scoring.store import ToolScoreStore, ToolScore
-    from hivemind.tools.scoring.scorer import compute_composite_score, score_label
-    from hivemind.tools.scoring.selector import select_tools_scored
-    from hivemind.tools.scoring.report import generate_tools_report
-    from hivemind.tools.base import Tool
+    from devsper.tools.scoring.store import ToolScoreStore, ToolScore
+    from devsper.tools.scoring.scorer import compute_composite_score, score_label
+    from devsper.tools.scoring.selector import select_tools_scored
+    from devsper.tools.scoring.report import generate_tools_report
+    from devsper.tools.base import Tool
 
     class _T(Tool):
         def __init__(self, name: str, desc: str):
@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory() as tmp:
     def mock_embed(t):
         if "a" in t: return v1
         return v2
-    with patch("hivemind.tools.scoring.selector.embed_text", side_effect=mock_embed):
+    with patch("devsper.tools.scoring.selector.embed_text", side_effect=mock_embed):
         tools = [_T("tool_a", "aaa"), _T("tool_b", "bbb")]
         sel = select_tools_scored("task a", tools, 1, store)
     assert len(sel) == 1
@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory() as tmp:
     print("   ok")
 
     print("6. record_tool_result / get_tool_score (default store not used; we used temp DB)")
-    from hivemind.tools.scoring import record_tool_result, get_tool_score
+    from devsper.tools.scoring import record_tool_result, get_tool_score
     record_tool_result("_smoke_tool", "general", True, 10)
     # Default store may have other data; we only check it doesn't crash
     get_tool_score("_smoke_tool")

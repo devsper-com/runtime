@@ -3,9 +3,9 @@
 import tempfile
 import pytest
 from pathlib import Path
-from hivemind.types.task import Task
-from hivemind.cache.hashing import task_hash
-from hivemind.cache.task_cache import TaskCache
+from devsper.types.task import Task
+from devsper.cache.hashing import task_hash
+from devsper.cache.task_cache import TaskCache
 
 
 def test_task_hash_stable():

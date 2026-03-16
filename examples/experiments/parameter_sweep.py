@@ -13,8 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-import hivemind.tools  # noqa: F401
-from hivemind.tools.tool_runner import run_tool
+import devsper.tools  # noqa: F401
+from devsper.tools.tool_runner import run_tool
 from examples._common import examples_output_dir, log
 
 

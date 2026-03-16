@@ -5,10 +5,10 @@ import tempfile
 import pytest
 import networkx as nx
 
-from hivemind.memory.memory_store import MemoryStore, generate_memory_id
-from hivemind.memory.memory_index import MemoryIndex
-from hivemind.memory.memory_types import MemoryRecord, MemoryType
-from hivemind.knowledge.knowledge_graph import KnowledgeGraph
+from devsper.memory.memory_store import MemoryStore, generate_memory_id
+from devsper.memory.memory_index import MemoryIndex
+from devsper.memory.memory_types import MemoryRecord, MemoryType
+from devsper.knowledge.knowledge_graph import KnowledgeGraph
 
 
 @pytest.fixture

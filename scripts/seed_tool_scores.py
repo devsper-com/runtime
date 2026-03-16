@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Seed the default tool score DB with sample data so 'hivemind tools' and
-'hivemind analytics' show a populated table. Optional: run before test_tool_scoring_full.sh.
+Seed the default tool score DB with sample data so 'devsper tools' and
+'devsper analytics' show a populated table. Optional: run before test_tool_scoring_full.sh.
 Usage: uv run python scripts/seed_tool_scores.py
 """
 
-from hivemind.tools.scoring import get_default_score_store
+from devsper.tools.scoring import get_default_score_store
 
 def main():
     store = get_default_score_store()
@@ -23,8 +23,8 @@ def main():
     for _ in range(3):
         store.record("list_directory", "general", False, 5, "PermissionError")
     print("Seeded: read_file, write_file, list_directory")
-    print("Run: hivemind tools")
-    print("Run: hivemind analytics")
+    print("Run: devsper tools")
+    print("Run: devsper analytics")
 
 if __name__ == "__main__":
     main()

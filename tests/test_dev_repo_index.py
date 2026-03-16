@@ -1,11 +1,11 @@
-"""Tests for repo index (hivemind.dev.repo_index)."""
+"""Tests for repo index (devsper.dev.repo_index)."""
 
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from hivemind.dev.repo_index import RepoIndex, SymbolInfo, DependencyEdge
+from devsper.dev.repo_index import RepoIndex, SymbolInfo, DependencyEdge
 
 
 def test_repo_index_build():

@@ -2,6 +2,6 @@
 title: "CLI: config"
 ---
 
-# hivemind config
+# devsper config
 
 Coming soon.

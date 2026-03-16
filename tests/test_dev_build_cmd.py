@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hivemind.cli.main import _run_build
+from devsper.cli.main import _run_build
 
 
 def test_build_command_creates_repo():

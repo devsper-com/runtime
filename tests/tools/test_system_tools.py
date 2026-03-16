@@ -2,10 +2,10 @@
 
 import pytest
 
-from hivemind.tools.system.system_info import SystemInfoTool
-from hivemind.tools.system.disk_usage import DiskUsageTool
-from hivemind.tools.system.environment_variables import EnvironmentVariablesTool
-from hivemind.tools.system.pip_search import PipSearchTool
+from devsper.tools.system.system_info import SystemInfoTool
+from devsper.tools.system.disk_usage import DiskUsageTool
+from devsper.tools.system.environment_variables import EnvironmentVariablesTool
+from devsper.tools.system.pip_search import PipSearchTool
 
 
 def test_system_info():

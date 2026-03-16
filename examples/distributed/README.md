@@ -2,13 +2,13 @@
 
 Run a **controller** and one or more **workers** on a single computer using Redis. Good for testing v1.4–v1.10 (bus, checkpoint, distributed nodes, leader election, task routing).
 
-**Provider:** Examples use the **GitHub provider** (Copilot API). Set `GITHUB_TOKEN` in the environment (or `hivemind credentials set github token`). Config uses `planner = "github:gpt-4o"` and `worker = "github:gpt-4o"`.
+**Provider:** Examples use the **GitHub provider** (Copilot API). Set `GITHUB_TOKEN` in the environment (or `devsper credentials set github token`). Config uses `planner = "github:gpt-4o"` and `worker = "github:gpt-4o"`.
 
 **Workers:** Controllers are configured with `deregister_stale_workers = false`, so workers are never removed from the registry.
 
 ## Prerequisites
 
-- Python 3.12+ with hivemind and **distributed** extras (Redis, FastAPI, Uvicorn)
+- Python 3.12+ with devsper and **distributed** extras (Redis, FastAPI, Uvicorn)
 - Docker (for Redis)
 - `GITHUB_TOKEN` (for real LLM calls; otherwise use `[models] planner = "mock"` / `worker = "mock"` in the TOML)
 
@@ -41,13 +41,13 @@ uv run python examples/distributed/run_worker.py
 
 Leave them running. You should see: `Worker running (run_id=distributed-demo). Ctrl+C to stop.`
 
-**Rust worker (optional)** — From project root, build and run the Rust worker. It must use the **project venv Python** so the subprocess can load `hivemind`. For **multiple workers on one machine**, set `HIVEMIND_RPC_PORT=0` so each gets a free port. Set **`HIVEMIND_WORKER_MODEL`** to match the controller’s worker model (e.g. `github:gpt-4o`) so tasks return real LLM results instead of `(none)`:
+**Rust worker (optional)** — From project root, build and run the Rust worker. It must use the **project venv Python** so the subprocess can load `devsper`. For **multiple workers on one machine**, set `DEVSPER_RPC_PORT=0` so each gets a free port. Set **`DEVSPER_WORKER_MODEL`** to match the controller’s worker model (e.g. `github:gpt-4o`) so tasks return real LLM results instead of `(none)`:
 
 ```bash
-cargo build --release -p hivemind-worker
-HIVEMIND_RUN_ID=distributed-demo HIVEMIND_REDIS_URL=redis://localhost:6379 \
-  HIVEMIND_PYTHON_BIN=.venv/bin/python HIVEMIND_RPC_PORT=0 \
-  HIVEMIND_WORKER_MODEL=github:gpt-4o ./worker/target/release/hivemind-worker
+cargo build --release -p devsper-worker
+DEVSPER_RUN_ID=distributed-demo DEVSPER_REDIS_URL=redis://localhost:6379 \
+  DEVSPER_PYTHON_BIN=.venv/bin/python DEVSPER_RPC_PORT=0 \
+  DEVSPER_WORKER_MODEL=github:gpt-4o ./worker/target/release/devsper-worker
 ```
 
 ## 3. Run the controller (submit a job)
@@ -85,7 +85,7 @@ Uses the same GitHub provider and config; workers are never deregistered.
 Both use `run_id = "distributed-demo"` so they form one cluster. To use a custom run ID:
 
 ```bash
-export HIVEMIND_RUN_ID=my-run-1
+export DEVSPER_RUN_ID=my-run-1
 # then start workers and controller (same value in both)
 ```
 
@@ -110,9 +110,9 @@ uv run python examples/distributed/run_worker.py --config /path/to/worker.toml
 - **Tasks claim but never complete (controller says "claim timed out" after 2 min)**  
   The worker was stuck in the LLM call. Workers now have a **90s execution timeout** (`nodes.task_execution_timeout_seconds`): if the model doesn’t respond in time, the worker publishes TASK_FAILED and the controller marks the task failed so the run can finish. Ensure `GITHUB_TOKEN` is set and the model endpoint is responsive; increase the timeout in `worker.toml` if needed.
 - **Rust worker: "empty response from agent"**  
-  Set `HIVEMIND_PYTHON_BIN` to the interpreter that has `hivemind` installed (e.g. `.venv/bin/python`).
+  Set `DEVSPER_PYTHON_BIN` to the interpreter that has `devsper` installed (e.g. `.venv/bin/python`).
 - **All results show (none)**  
-  Rust workers default to `HIVEMIND_WORKER_MODEL=mock`. Set `HIVEMIND_WORKER_MODEL` to match the controller’s worker model (e.g. `HIVEMIND_WORKER_MODEL=github:gpt-4o` when using the example config with `[models] worker = "github:gpt-4o"`) so the agent uses the real LLM and returns content. If you see `(Error: ...)` in results, fix that (e.g. missing `GITHUB_TOKEN` or keychain).
+  Rust workers default to `DEVSPER_WORKER_MODEL=mock`. Set `DEVSPER_WORKER_MODEL` to match the controller’s worker model (e.g. `DEVSPER_WORKER_MODEL=github:gpt-4o` when using the example config with `[models] worker = "github:gpt-4o"`) so the agent uses the real LLM and returns content. If you see `(Error: ...)` in results, fix that (e.g. missing `GITHUB_TOKEN` or keychain).
 - **Only one worker gets tasks**  
   Without `--parallel`, the planner creates a dependency chain so the router sends dependent tasks to the same worker (for affinity). Use `--parallel` to run subtasks independently and spread load: `uv run python examples/distributed/run_controller.py "Your prompt" --parallel`.
 - **Progress stuck at 2/5 (or similar)**  
@@ -120,7 +120,7 @@ uv run python examples/distributed/run_worker.py --config /path/to/worker.toml
 - **Next run doesn’t use workers**  
   Each time you run the controller it’s a new run: new tasks, fresh dispatch. Workers that were free from the previous run will get tasks. If you see “Restored scheduler from snapshot” with the wrong task count, that was a bug (now fixed: snapshot is only restored when task IDs match).
 - **More logs**
-  Controller and worker show dispatch/claim/execute/complete at INFO. Use `export HIVEMIND_LOG_LEVEL=DEBUG` for more detail.
+  Controller and worker show dispatch/claim/execute/complete at INFO. Use `export DEVSPER_LOG_LEVEL=DEBUG` for more detail.
 
 ## Stop
 

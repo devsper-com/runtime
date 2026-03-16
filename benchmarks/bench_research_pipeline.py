@@ -6,7 +6,7 @@ Uses mocked LLM so it is fast and deterministic.
 import time
 from unittest.mock import patch
 
-from hivemind.swarm.swarm import Swarm
+from devsper.swarm.swarm import Swarm
 
 MOCK_RESPONSE = "Summary of diffusion models: ..."
 
@@ -14,7 +14,7 @@ MOCK_RESPONSE = "Summary of diffusion models: ..."
 def run_benchmark(iterations: int = 2) -> float:
     """Run research-style task (triggers research strategy, 4 tasks) with mocked agent."""
     with (
-        patch("hivemind.agents.agent.generate", return_value=MOCK_RESPONSE),
+        patch("devsper.agents.agent.generate", return_value=MOCK_RESPONSE),
     ):
         swarm = Swarm(worker_count=2, worker_model="mock", planner_model="mock", use_tools=False)
         start = time.perf_counter()

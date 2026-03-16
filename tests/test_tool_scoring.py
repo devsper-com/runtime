@@ -7,10 +7,10 @@ from unittest.mock import patch
 
 import pytest
 
-from hivemind.tools.base import Tool
-from hivemind.tools.scoring.scorer import compute_composite_score, score_label
-from hivemind.tools.scoring.store import ToolScoreStore, ToolScore
-from hivemind.tools.scoring.selector import select_tools_scored
+from devsper.tools.base import Tool
+from devsper.tools.scoring.scorer import compute_composite_score, score_label
+from devsper.tools.scoring.store import ToolScoreStore, ToolScore
+from devsper.tools.scoring.selector import select_tools_scored
 
 
 # ---- Scorer ----
@@ -174,7 +174,7 @@ def test_selector_similarity_still_dominates():
                 return irr_vec
             return task_vec
 
-        with patch("hivemind.tools.scoring.selector.embed_text", side_effect=mock_embed):
+        with patch("devsper.tools.scoring.selector.embed_text", side_effect=mock_embed):
             selected = select_tools_scored("search papers", tools, 1, store)
         assert len(selected) == 1
         # 0.7*1 + 0.3*degraded > 0.7*0 + 0.3*excellent => relevant wins
@@ -182,8 +182,8 @@ def test_selector_similarity_still_dominates():
 
 
 def test_env_bypass():
-    """HIVEMIND_DISABLE_TOOL_SCORING=1 returns similarity-only ranking."""
-    os.environ["HIVEMIND_DISABLE_TOOL_SCORING"] = "1"
+    """DEVSPER_DISABLE_TOOL_SCORING=1 returns similarity-only ranking."""
+    os.environ["DEVSPER_DISABLE_TOOL_SCORING"] = "1"
     try:
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "scores.db"
@@ -201,4 +201,4 @@ def test_env_bypass():
             # With scoring disabled, similarity only -> tool_a should win (matches "search papers")
             assert selected[0].name == "tool_a"
     finally:
-        os.environ.pop("HIVEMIND_DISABLE_TOOL_SCORING", None)
+        os.environ.pop("DEVSPER_DISABLE_TOOL_SCORING", None)

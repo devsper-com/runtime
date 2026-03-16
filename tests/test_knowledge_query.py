@@ -1,7 +1,7 @@
 """Tests for knowledge graph query."""
 
-from hivemind.knowledge.knowledge_graph import KnowledgeGraph
-from hivemind.knowledge.query import entity_search, query, QueryResult
+from devsper.knowledge.knowledge_graph import KnowledgeGraph
+from devsper.knowledge.query import entity_search, query, QueryResult
 
 
 def test_entity_search_empty_graph():

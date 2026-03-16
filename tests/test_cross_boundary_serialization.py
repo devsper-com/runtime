@@ -2,7 +2,7 @@
 
 import json
 import pytest
-from hivemind.types.task import Task, TaskStatus
+from devsper.types.task import Task, TaskStatus
 
 
 def _task_fixtures():

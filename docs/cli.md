@@ -1,83 +1,83 @@
 # CLI Reference
 
-The Hivemind CLI is invoked as **`hivemind`** (installed with the `hivemind-ai` package). Run `hivemind --help` or `hivemind <command> --help` for usage and examples.
+The devsper CLI is invoked as **`devsper`** (installed with the `devsper` package). Run `devsper --help` or `devsper <command> --help` for usage and examples.
 
 ## Commands
 
-### `hivemind init`
+### `devsper init`
 
 Sets up a new project in the current directory.
 
 **Behavior:**
 
-- Creates `hivemind.toml` with sensible defaults (workers, models, memory, tools).
-- Optionally creates an example `workflow.hivemind.toml` and a `dataset/` folder for data workflows.
-- Use after cloning or starting a new project so `hivemind run` and other commands find config.
+- Creates `devsper.toml` with sensible defaults (workers, models, memory, tools).
+- Optionally creates an example `workflow.devsper.toml` and a `dataset/` folder for data workflows.
+- Use after cloning or starting a new project so `devsper run` and other commands find config.
 
 **Example:**
 
 ```bash
-hivemind init
+devsper init
 ```
 
 **Exit code:** 0 on success.
 
 ---
 
-### `hivemind doctor`
+### `devsper doctor`
 
 Verifies the environment and configuration.
 
 **Behavior:**
 
 - Checks for required API keys (e.g. `GITHUB_TOKEN`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` depending on provider).
-- Validates project config file (e.g. `hivemind.toml`) if present.
+- Validates project config file (e.g. `devsper.toml`) if present.
 - Reports tool registry status (built-in and plugin tools).
 - Use to debug "not configured" or missing-provider issues before running tasks.
 
 **Example:**
 
 ```bash
-hivemind doctor
+devsper doctor
 ```
 
 **Exit code:** 0 if checks pass, non-zero if something is missing or invalid.
 
 ---
 
-### `hivemind node` (v1.10, distributed)
+### `devsper node` (v1.10, distributed)
 
 Commands for distributed mode: start a node, query controller status, list workers, drain a worker, stream events.
 
 **Subcommands:**
 
-- **`hivemind node start [--role controller|worker|hybrid] [--port N] [--workers N] [--tags tag1,tag2]`** — Start a node in the foreground. Role and settings are typically set in TOML (`[nodes] mode = "distributed"`, `role`, `rpc_port`, etc.). Prints guidance if config is not set.
-- **`hivemind node status [--controller-url URL]`** — GET controller `/status`; prints run ID, leader, task counts, workers. Default URL from config `nodes.controller_url`.
-- **`hivemind node workers [--controller-url URL]`** — List workers from controller status (node ID, host, RPC URL).
-- **`hivemind node drain <node_id> [--controller-url URL]`** — POST `/control` with `command: drain`, `target: <node_id>` so that worker stops accepting new tasks (finish in-flight then idle).
-- **`hivemind node logs [--follow] [--controller-url URL]`** — Stream events from controller SSE endpoint.
+- **`devsper node start [--role controller|worker|hybrid] [--port N] [--workers N] [--tags tag1,tag2]`** — Start a node in the foreground. Role and settings are typically set in TOML (`[nodes] mode = "distributed"`, `role`, `rpc_port`, etc.). Prints guidance if config is not set.
+- **`devsper node status [--controller-url URL]`** — GET controller `/status`; prints run ID, leader, task counts, workers. Default URL from config `nodes.controller_url`.
+- **`devsper node workers [--controller-url URL]`** — List workers from controller status (node ID, host, RPC URL).
+- **`devsper node drain <node_id> [--controller-url URL]`** — POST `/control` with `command: drain`, `target: <node_id>` so that worker stops accepting new tasks (finish in-flight then idle).
+- **`devsper node logs [--follow] [--controller-url URL]`** — Stream events from controller SSE endpoint.
 
 **Examples:**
 
 ```bash
-hivemind node status
-hivemind node workers --controller-url http://my-controller:7700
-hivemind node drain abc12345
+devsper node status
+devsper node workers --controller-url http://my-controller:7700
+devsper node drain abc12345
 ```
 
 Requires controller and workers to be running with RPC enabled. See [Distributed mode](distributed.md).
 
 ---
 
-### `hivemind run "task description"`
+### `devsper run "task description"`
 
 Runs the swarm with the given task. The swarm plans subtasks, runs them with agents (with tools and memory if configured), and prints results.
 
 **Examples:**
 
 ```bash
-hivemind run "analyze diffusion models"
-hivemind run "Summarize swarm intelligence in one paragraph."
+devsper run "analyze diffusion models"
+devsper run "Summarize swarm intelligence in one paragraph."
 ```
 
 **Behavior:**
@@ -87,19 +87,19 @@ hivemind run "Summarize swarm intelligence in one paragraph."
 - Prints each task ID and its result (truncated if long).
 - Exit code: 0 on success.
 
-**Default task:** If you run `hivemind run` with no task, it may use a default prompt (e.g. “Summarize swarm intelligence in one paragraph.”). Check `hivemind run --help` for the exact default.
+**Default task:** If you run `devsper run` with no task, it may use a default prompt (e.g. “Summarize swarm intelligence in one paragraph.”). Check `devsper run --help` for the exact default.
 
 ---
 
-### `hivemind research papers/`
+### `devsper research papers/`
 
 Runs the **literature review** example on a directory of papers (e.g. PDF/DOCX).
 
 **Examples:**
 
 ```bash
-hivemind research papers/
-hivemind research .
+devsper research papers/
+devsper research .
 ```
 
 **Parameters:**
@@ -116,15 +116,15 @@ hivemind research .
 
 ---
 
-### `hivemind analyze repo/`
+### `devsper analyze repo/`
 
 Runs the **repository analysis** example on a codebase path.
 
 **Examples:**
 
 ```bash
-hivemind analyze path/to/repo
-hivemind analyze .
+devsper analyze path/to/repo
+devsper analyze .
 ```
 
 **Parameters:**
@@ -141,15 +141,15 @@ hivemind analyze .
 
 ---
 
-### `hivemind query "query text"`
+### `devsper query "query text"`
 
 Queries the **knowledge graph**: entity search and relationship traversal over stored memory.
 
 **Examples:**
 
 ```bash
-hivemind query "diffusion models"
-hivemind query "transformer"
+devsper query "diffusion models"
+devsper query "transformer"
 ```
 
 **Behavior:**
@@ -160,16 +160,16 @@ hivemind query "transformer"
 
 ---
 
-### `hivemind workflow` (list, validate, run)
+### `devsper workflow` (list, validate, run)
 
-Workflow definitions are read from `workflow.hivemind.toml` (or `hivemind.toml`) in the current or parent directory. As of v1.4, workflows support **branching**, **typed outputs**, and **explicit dependencies**.
+Workflow definitions are read from `workflow.devsper.toml` (or `devsper.toml`) in the current or parent directory. As of v1.4, workflows support **branching**, **typed outputs**, and **explicit dependencies**.
 
 **Subcommands / usage:**
 
-- **`hivemind workflow list`** — List all defined workflows (name, version, step count, description).
-- **`hivemind workflow validate <name>`** — Validate a workflow (references, DAG, conditions). Exit 0 if valid, 1 if errors. Uses Rich: ✓ for pass, ✗ for errors, ⚠ for warnings.
-- **`hivemind workflow run <name> [--input KEY=VALUE ...]`** — Run a workflow with optional runtime inputs. After completion prints a summary table (step id, status, duration) and step outputs.
-- **`hivemind workflow <name>`** — Same as `hivemind workflow run <name>` (backward compatible).
+- **`devsper workflow list`** — List all defined workflows (name, version, step count, description).
+- **`devsper workflow validate <name>`** — Validate a workflow (references, DAG, conditions). Exit 0 if valid, 1 if errors. Uses Rich: ✓ for pass, ✗ for errors, ⚠ for warnings.
+- **`devsper workflow run <name> [--input KEY=VALUE ...]`** — Run a workflow with optional runtime inputs. After completion prints a summary table (step id, status, duration) and step outputs.
+- **`devsper workflow <name>`** — Same as `devsper workflow run <name>` (backward compatible).
 
 **Example workflow file (v1.4 format):**
 
@@ -206,10 +206,10 @@ expression = "steps.classify.category == 'technical'"
 **Examples:**
 
 ```bash
-hivemind workflow list
-hivemind workflow validate summarize_and_route
-hivemind workflow run summarize_and_route --input text="Your document here."
-hivemind workflow research_pipeline
+devsper workflow list
+devsper workflow validate summarize_and_route
+devsper workflow run summarize_and_route --input text="Your document here."
+devsper workflow research_pipeline
 ```
 
 **Behavior:**
@@ -220,15 +220,15 @@ hivemind workflow research_pipeline
 
 ---
 
-### `hivemind memory [--limit N]`
+### `devsper memory [--limit N]`
 
 Lists memory entries from the default memory store.
 
 **Examples:**
 
 ```bash
-hivemind memory
-hivemind memory --limit 50
+devsper memory
+devsper memory --limit 50
 ```
 
 **Parameters:**
@@ -244,14 +244,14 @@ hivemind memory --limit 50
 
 ---
 
-### `hivemind tui`
+### `devsper tui`
 
 Launches the **terminal UI** (prompt + output, optional dashboard).
 
 **Example:**
 
 ```bash
-hivemind tui
+devsper tui
 ```
 
 **Behavior:**
@@ -264,13 +264,13 @@ hivemind tui
 
 ---
 
-### `hivemind credentials` (set | list | delete | migrate | export) {#credentials}
+### `devsper credentials` (set | list | delete | migrate | export) {#credentials}
 
 Manages API keys and secrets using the **OS keychain (keyring)** only. Credentials are never stored in config files.
 
 | Subcommand | Description |
 |------------|-------------|
-| `set <provider> <key>` | Prompt for a value and store it in the keyring (e.g. `hivemind credentials set openai api_key`). |
+| `set <provider> <key>` | Prompt for a value and store it in the keyring (e.g. `devsper credentials set openai api_key`). |
 | `list` | List stored credentials (provider and key only; values are never shown). |
 | `delete <provider> <key>` | Remove a credential from the keyring. |
 | `migrate` | Read credentials from the current project’s `.env` and TOML and store them in the keyring. Does not remove them from `.env`; you can do that manually afterward. |
@@ -281,19 +281,19 @@ Manages API keys and secrets using the **OS keychain (keyring)** only. Credentia
 **Examples:**
 
 ```bash
-hivemind credentials set openai api_key
-hivemind credentials list
-hivemind credentials migrate
-hivemind credentials export azure
-eval "$(hivemind credentials export azure)"
-hivemind credentials delete openai api_key
+devsper credentials set openai api_key
+devsper credentials list
+devsper credentials migrate
+devsper credentials export azure
+eval "$(devsper credentials export azure)"
+devsper credentials delete openai api_key
 ```
 
 Config resolution injects credentials from the keyring into the environment when not already set, so existing provider code works without changes.
 
 ---
 
-### `hivemind completion` (bash | zsh)
+### `devsper completion` (bash | zsh)
 
 Prints a shell completion script so you can use tab completion for commands and options.
 
@@ -301,95 +301,95 @@ Prints a shell completion script so you can use tab completion for commands and 
 
 ```bash
 # Bash: add to ~/.bashrc
-eval "$(hivemind completion bash)"
+eval "$(devsper completion bash)"
 
 # Zsh: add to ~/.zshrc
-eval "$(hivemind completion zsh)"
+eval "$(devsper completion zsh)"
 ```
 
-You can also use `hivemind --print-completion bash` (or `zsh`) for the same output.
+You can also use `devsper --print-completion bash` (or `zsh`) for the same output.
 
 ---
 
-### `hivemind graph` [run_id]
+### `devsper graph` [run_id]
 
 Exports the task dependency graph for a run as a **Mermaid** diagram. If `run_id` is omitted, uses the latest run.
 
 **Examples:**
 
 ```bash
-hivemind graph
-hivemind graph abc123-run-id
+devsper graph
+devsper graph abc123-run-id
 ```
 
 ---
 
-### `hivemind replay` [run_id]
+### `devsper replay` [run_id]
 
 Reconstructs swarm execution from the event log (deterministic replay). With no `run_id`, lists recent run IDs.
 
 **Examples:**
 
 ```bash
-hivemind replay
-hivemind replay abc123-run-id
+devsper replay
+devsper replay abc123-run-id
 ```
 
 ---
 
-### `hivemind cache` (stats | clear)
+### `devsper cache` (stats | clear)
 
 Shows or clears the task result cache.
 
 **Examples:**
 
 ```bash
-hivemind cache stats
-hivemind cache clear
+devsper cache stats
+devsper cache clear
 ```
 
 ---
 
-### `hivemind analytics`
+### `devsper analytics`
 
 Prints tool usage statistics (count, success rate, latency).
 
 ---
 
-### `hivemind build` ["app description"] [-o output_dir]
+### `devsper build` ["app description"] [-o output_dir]
 
 Autonomous application builder: generates a working repository from a short app description.
 
 **Examples:**
 
 ```bash
-hivemind build "fastapi todo app"
-hivemind build "CLI for CSV analysis" -o ./myapp
+devsper build "fastapi todo app"
+devsper build "CLI for CSV analysis" -o ./myapp
 ```
 
 ---
 
-### `hivemind upgrade` [--check | -y | --version VERSION]
+### `devsper upgrade` [--check | -y | --version VERSION]
 
-Checks for updates and optionally upgrades the `hivemind-ai` package from PyPI.
+Checks for updates and optionally upgrades the `devsper` package from PyPI.
 
 **Examples:**
 
 ```bash
-hivemind upgrade --check
-hivemind upgrade -y
-hivemind upgrade --version 1.2.0
+devsper upgrade --check
+devsper upgrade -y
+devsper upgrade --version 1.2.0
 ```
 
 ---
 
 ### Default: no command
 
-If you run **`hivemind`** with no subcommand, it starts the **TUI** (same as `hivemind tui`).
+If you run **`devsper`** with no subcommand, it starts the **TUI** (same as `devsper tui`).
 
 ---
 
 ## Global behavior
 
-- **Config:** The CLI uses Hivemind config (env > project TOML > user TOML > defaults). **Credentials** are loaded from the OS keyring (or env) and injected when config is resolved; do not put API keys in TOML. Use `hivemind credentials` to store and manage keys.
-- **Project root:** Commands that run example scripts (e.g. `research`, `analyze`) resolve the project root and set `PYTHONPATH` so examples can import `hivemind` and `examples._common` / `examples._config`.
+- **Config:** The CLI uses devsper config (env > project TOML > user TOML > defaults). **Credentials** are loaded from the OS keyring (or env) and injected when config is resolved; do not put API keys in TOML. Use `devsper credentials` to store and manage keys.
+- **Project root:** Commands that run example scripts (e.g. `research`, `analyze`) resolve the project root and set `PYTHONPATH` so examples can import `devsper` and `examples._common` / `examples._config`.

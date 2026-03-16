@@ -1,7 +1,7 @@
 """Tests for local embedding service (fallback when sentence-transformers not installed)."""
 
 import pytest
-from hivemind.embeddings.service import embed, _fallback_embed
+from devsper.embeddings.service import embed, _fallback_embed
 
 
 def test_embed_returns_list():

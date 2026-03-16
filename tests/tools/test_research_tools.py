@@ -2,12 +2,12 @@
 
 import pytest
 
-from hivemind.tools.research.wikipedia_lookup import WikipediaLookupTool
-from hivemind.tools.research.paper_summarizer import PaperSummarizerTool
-from hivemind.tools.research.citation_extractor import CitationExtractorTool
-from hivemind.tools.research.topic_cluster import TopicClusterTool
-from hivemind.tools.research.research_question_generator import ResearchQuestionGeneratorTool
-from hivemind.tools.research.paper_metadata_extractor import PaperMetadataExtractorTool
+from devsper.tools.research.wikipedia_lookup import WikipediaLookupTool
+from devsper.tools.research.paper_summarizer import PaperSummarizerTool
+from devsper.tools.research.citation_extractor import CitationExtractorTool
+from devsper.tools.research.topic_cluster import TopicClusterTool
+from devsper.tools.research.research_question_generator import ResearchQuestionGeneratorTool
+from devsper.tools.research.paper_metadata_extractor import PaperMetadataExtractorTool
 
 
 def test_wikipedia_lookup():

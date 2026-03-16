@@ -40,8 +40,8 @@ If something goes wrong, **task_failed** can be used; the scheduler may still ma
 ## Running a Swarm
 
 ```python
-from hivemind import Swarm
+from devsper import Swarm
 
-swarm = Swarm(config="hivemind.toml")
+swarm = Swarm(config="devsper.toml")
 results = swarm.run("Analyze diffusion models and write a one-page summary.")
 ```

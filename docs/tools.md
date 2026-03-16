@@ -28,7 +28,7 @@ The agent receives a list of tools and invokes them by outputting a fixed format
 
 ## Creating a New Tool
 
-1. Subclass `Tool` from `hivemind.tools.base`.
+1. Subclass `Tool` from `devsper.tools.base`.
 2. Set `name`, `description`, and `input_schema` (e.g. `properties`, `required`).
 3. Implement `run(self, **kwargs) -> str`.
 4. Register the tool so it’s loaded (e.g. in the package’s `__init__.py` or a category `__init__.py`): `register(MyTool())`.
@@ -37,8 +37,8 @@ The agent receives a list of tools and invokes them by outputting a fixed format
 
 ```python
 from pathlib import Path
-from hivemind.tools.base import Tool
-from hivemind.tools.registry import register
+from devsper.tools.base import Tool
+from devsper.tools.registry import register
 
 
 class WriteFileTool(Tool):
@@ -72,7 +72,7 @@ class WriteFileTool(Tool):
 register(WriteFileTool())
 ```
 
-Ensure the module is imported (e.g. in `hivemind.tools` or the right category `__init__.py`) so the tool is registered when the app loads.
+Ensure the module is imported (e.g. in `devsper.tools` or the right category `__init__.py`) so the tool is registered when the app loads.
 
 ## Tool Categories
 
@@ -91,28 +91,28 @@ Tools are grouped by domain; each category lives in its own subpackage and regis
 | **Knowledge** | document topic extractor, citation graph builder, knowledge graph extractor, timeline extractor |
 | **Flagship** | docproc corpus pipeline, research graph builder, repository semantic map, distributed document analysis |
 
-Use `list_tools()` or inspect the `hivemind.tools` package to see the full set (120+ tools).
+Use `list_tools()` or inspect the `devsper.tools` package to see the full set (120+ tools).
 
 ## Smart tool selection (v1)
 
 When config has `[tools] top_k > 0`, the agent does **not** receive all tools. Instead:
 
-- **Tool selector** (`hivemind.tools.selector`): embeds the task description and each tool’s name + description (using the same embedding function as memory), computes cosine similarity, and returns the **top_k** most relevant tools.
+- **Tool selector** (`devsper.tools.selector`): embeds the task description and each tool’s name + description (using the same embedding function as memory), computes cosine similarity, and returns the **top_k** most relevant tools.
 - **Category filter:** If `[tools] enabled` is set (e.g. `["research", "coding", "documents"]`), only tools in those categories are considered; then top_k is applied within that set.
-- **Tool category:** Each tool can set an optional `category` attribute (e.g. `"research"`, `"coding"`). If unset, the selector infers it from the tool’s module path (e.g. `hivemind.tools.research.*` → `research`).
+- **Tool category:** Each tool can set an optional `category` attribute (e.g. `"research"`, `"coding"`). If unset, the selector infers it from the tool’s module path (e.g. `devsper.tools.research.*` → `research`).
 
 This keeps the agent prompt smaller and focuses it on the most relevant tools for the task.
 
 ## Plugin system (v1)
 
-External packages can register tools without modifying the Hivemind codebase.
+External packages can register tools without modifying the devsper codebase.
 
-- **Entry point:** Declare a group `hivemind.plugins` in your package’s `pyproject.toml`:
+- **Entry point:** Declare a group `devsper.plugins` in your package’s `pyproject.toml`:
   ```toml
-  [project.entry-points."hivemind.plugins"]
-  bio = "hivemind_plugin_bio:register"
+  [project.entry-points."devsper.plugins"]
+  bio = "devsper_plugin_bio:register"
   ```
-- **Loader:** When `hivemind.tools` is imported, the **plugin loader** (`hivemind.plugins.plugin_loader`) discovers all entry points, loads each callable, and expects either a list of `Tool` instances or a function that registers tools with `hivemind.tools.registry.register`.
-- **Registry:** Loaded plugins are recorded in `hivemind.plugins.plugin_registry` (name, version, list of tool names registered).
+- **Loader:** When `devsper.tools` is imported, the **plugin loader** (`devsper.plugins.plugin_loader`) discovers all entry points, loads each callable, and expects either a list of `Tool` instances or a function that registers tools with `devsper.tools.registry.register`.
+- **Registry:** Loaded plugins are recorded in `devsper.plugins.plugin_registry` (name, version, list of tool names registered).
 
 Example plugin implementation: the callable can return `[Tool1(), Tool2()]` or call `register(tool)` for each tool and return nothing. See [Development](development.md) for project structure and adding plugins.

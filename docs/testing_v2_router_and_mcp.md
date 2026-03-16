@@ -8,25 +8,25 @@ Quick ways to verify the **2.0 LLM Router** and **MCP** integration.
 
 ### List and test (no run required)
 
-From the project root (where `hivemind.toml` can live):
+From the project root (where `devsper.toml` can live):
 
 ```bash
 # List configured MCP servers and tool counts
-hivemind mcp list
+devsper mcp list
 
 # Test a specific server (name must match [[mcp.servers]] entry)
-hivemind mcp test filesystem
+devsper mcp test filesystem
 ```
 
 ### Add an MCP server
 
 ```bash
-hivemind mcp add
+devsper mcp add
 ```
 
-Then follow prompts (e.g. name `filesystem`, transport `stdio`, command `npx -y @modelcontextprotocol/server-filesystem /tmp`). This appends to `hivemind.toml`.
+Then follow prompts (e.g. name `filesystem`, transport `stdio`, command `npx -y @modelcontextprotocol/server-filesystem /tmp`). This appends to `devsper.toml`.
 
-### Minimal `hivemind.toml` for MCP
+### Minimal `devsper.toml` for MCP
 
 ```toml
 [mcp]
@@ -39,10 +39,10 @@ command = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 
 ### Run a task that can use MCP tools
 
-After at least one MCP server is configured and listed by `hivemind mcp list`, run a task that uses tools (e.g. research/code). The agent will see MCP tools in the registry and can call them:
+After at least one MCP server is configured and listed by `devsper mcp list`, run a task that uses tools (e.g. research/code). The agent will see MCP tools in the registry and can call them:
 
 ```bash
-hivemind run "List files in /tmp and summarize what you see"
+devsper run "List files in /tmp and summarize what you see"
 ```
 
 Use a model that supports tools (e.g. set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`; with no keys the mock model is used and tool behavior is limited).
@@ -57,16 +57,16 @@ The v2 router is used for **non-streaming** `generate()` when at least one backe
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-hivemind run "Say hello in one sentence"
+devsper run "Say hello in one sentence"
 ```
 
 - If the v2 router is built (OpenAI backend registered), the request goes through `LLMRouter` and the OpenAI backend.
-- You can set `HIVEMIND_PLANNER_MODEL` / `HIVEMIND_WORKER_MODEL` to force a provider, e.g. `openai:gpt-4o-mini`.
+- You can set `DEVSPER_PLANNER_MODEL` / `DEVSPER_WORKER_MODEL` to force a provider, e.g. `openai:gpt-4o-mini`.
 
 ### B. With Ollama (no API key)
 
 1. Start Ollama and pull a model, e.g. `ollama run llama3`.
-2. Enable Ollama in config. In `hivemind.toml`:
+2. Enable Ollama in config. In `devsper.toml`:
 
 ```toml
 [providers.ollama]
@@ -78,7 +78,7 @@ base_url = "http://localhost:11434"
 
 ```bash
 # Use explicit provider:model so the v2 router selects Ollama
-HIVEMIND_WORKER_MODEL=ollama:llama3 HIVEMIND_PLANNER_MODEL=ollama:llama3 hivemind run "Say hello"
+DEVSPER_WORKER_MODEL=ollama:llama3 DEVSPER_PLANNER_MODEL=ollama:llama3 devsper run "Say hello"
 ```
 
 Or set in TOML:
@@ -103,13 +103,13 @@ python scripts/test_v2_router.py
 
 ## 3. MCP + v2 router together
 
-1. Configure MCP (e.g. `hivemind mcp add` or add `[[mcp.servers]]` to `hivemind.toml`).
+1. Configure MCP (e.g. `devsper mcp add` or add `[[mcp.servers]]` to `devsper.toml`).
 2. Configure a real model via env or TOML (OpenAI, Ollama, etc.) so the v2 router is used.
 3. Run a task that can use tools:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-hivemind run "Use the filesystem tool to list the contents of /tmp and summarize in one line"
+devsper run "Use the filesystem tool to list the contents of /tmp and summarize in one line"
 ```
 
 This exercises: v2 router for LLM calls + MCP tools in the agent loop.

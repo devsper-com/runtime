@@ -33,30 +33,30 @@ def _check_distributed_deps() -> None:
     try:
         import redis.asyncio  # noqa: F401
     except ImportError:
-        print("Redis required. Install: pip install 'hivemind-ai[distributed]'", file=sys.stderr)
+        print("Redis required. Install: pip install 'devsper[distributed]'", file=sys.stderr)
         sys.exit(1)
 
 
 async def run_worker_forever(config_path: str) -> None:
     _check_distributed_deps()
-    from hivemind.config import get_config
-    from hivemind.utils.event_logger import EventLog
-    from hivemind.bus.backends.redis import RedisBus
-    from hivemind.cluster.registry import ClusterRegistry
-    from hivemind.nodes.worker import WorkerNode
-    from hivemind.agents.agent import Agent
-    from hivemind.reasoning.store import ReasoningStore
-    from hivemind.memory.memory_router import MemoryRouter
-    from hivemind.memory.memory_store import get_default_store
-    from hivemind.memory.memory_index import MemoryIndex
+    from devsper.config import get_config
+    from devsper.utils.event_logger import EventLog
+    from devsper.bus.backends.redis import RedisBus
+    from devsper.cluster.registry import ClusterRegistry
+    from devsper.nodes.worker import WorkerNode
+    from devsper.agents.agent import Agent
+    from devsper.reasoning.store import ReasoningStore
+    from devsper.memory.memory_router import MemoryRouter
+    from devsper.memory.memory_store import get_default_store
+    from devsper.memory.memory_index import MemoryIndex
 
     cfg = get_config(config_path=config_path)
     run_id = (
         getattr(getattr(cfg, "nodes", None), "run_id", None)
-        or os.environ.get("HIVEMIND_RUN_ID")
+        or os.environ.get("DEVSPER_RUN_ID")
         or "distributed-demo"
     )
-    events_dir = getattr(cfg, "events_dir", ".hivemind/events")
+    events_dir = getattr(cfg, "events_dir", ".devsper/events")
     event_log = EventLog(events_folder_path=events_dir, run_id=run_id)
 
     redis_url = getattr(getattr(cfg, "bus", None), "redis_url", "redis://localhost:6379")
@@ -71,19 +71,19 @@ async def run_worker_forever(config_path: str) -> None:
         top_k=5,
     )
     try:
-        from hivemind.tools.selector import get_tools_for_task
+        from devsper.tools.selector import get_tools_for_task
         tool_selector = lambda desc, role=None, score_store=None: get_tools_for_task(
             desc or "", role=role, score_store=score_store
         )
     except Exception:
         tool_selector = lambda desc, role=None, score_store=None: []
     try:
-        from hivemind.tools.scoring import get_default_score_store
+        from devsper.tools.scoring import get_default_score_store
         score_store = get_default_score_store()
     except Exception:
         score_store = None
     try:
-        from hivemind.swarm.prefetcher import TaskPrefetcher
+        from devsper.swarm.prefetcher import TaskPrefetcher
         prefetcher = TaskPrefetcher(
             memory_router=memory_router,
             tool_selector=tool_selector,

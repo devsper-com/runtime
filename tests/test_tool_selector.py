@@ -2,9 +2,9 @@
 
 import pytest
 
-from hivemind.tools.selector import select_tools_for_task, get_tools_for_task, _tool_category
-from hivemind.tools.registry import list_tools
-from hivemind.tools.base import Tool
+from devsper.tools.selector import select_tools_for_task, get_tools_for_task, _tool_category
+from devsper.tools.registry import list_tools
+from devsper.tools.base import Tool
 
 
 def test_select_tools_for_task_top_k_zero_returns_all():
@@ -39,6 +39,6 @@ def test_tool_category_inferred_from_module():
         input_schema = {}
         def run(self, **kwargs): return ""
     t = FakeTool()
-    t.__class__.__module__ = "hivemind.tools.research.foo"
+    t.__class__.__module__ = "devsper.tools.research.foo"
     cat = _tool_category(t)
     assert cat == "research"

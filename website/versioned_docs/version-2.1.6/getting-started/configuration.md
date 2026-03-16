@@ -4,17 +4,17 @@ title: Configuration
 
 # Configuration
 
-Hivemind uses a **TOML-based configuration** system with Pydantic validation. Priority order: **env** > **project config** > **user config** > **defaults**.
+devsper uses a **TOML-based configuration** system with Pydantic validation. Priority order: **env** > **project config** > **user config** > **defaults**.
 
 **Do not put API keys or secrets in TOML.** Use the credential store (OS keychain) or environment variables. TOML is for non-secret settings only (models, workers, paths, feature flags).
 
 ## Config locations
 
-1. **Project:** `./hivemind.toml` or `./workflow.hivemind.toml` (in current or parent directory)
-2. **User:** `~/.config/hivemind/config.toml`
-3. **Legacy:** `.hivemind/config.toml` (still supported; mapped into the new schema)
+1. **Project:** `./devsper.toml` or `./workflow.devsper.toml` (in current or parent directory)
+2. **User:** `~/.config/devsper/config.toml`
+3. **Legacy:** `.devsper/config.toml` (still supported; mapped into the new schema)
 
-The first existing project file wins (hivemind.toml before workflow.hivemind.toml before .hivemind/config.toml).
+The first existing project file wins (devsper.toml before workflow.devsper.toml before .devsper/config.toml).
 
 ## Schema (v1 format)
 
@@ -59,7 +59,7 @@ The first existing project file wins (hivemind.toml before workflow.hivemind.tom
 | `enabled` | list[string] | (all) | Categories to allow (e.g. `["research", "coding", "documents"]`). Omit or empty = all. |
 | `top_k` | int | 0 | Max tools per task by similarity (0 = no limit, use all). |
 
-## Example: full `hivemind.toml`
+## Example: full `devsper.toml`
 
 ```toml
 [swarm]

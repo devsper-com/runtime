@@ -17,7 +17,7 @@ Run a **controller** and one or more **workers** across processes or machines. T
 1. **Redis** — Run Redis (e.g. `docker compose up -d` using the project `docker-compose.yml`).
 2. **Optional dependency group** — Install Redis and RPC deps:
    ```bash
-   pip install 'hivemind-ai[distributed]'
+   pip install 'devsper[distributed]'
    # or: uv sync --extra distributed
    ```
 
@@ -32,7 +32,7 @@ Run a **controller** and one or more **workers** across processes or machines. T
    ```bash
    uv run python examples/distributed/run_worker.py
    ```
-   Or use the **Rust worker** for higher throughput: `HIVEMIND_WORKER_MODEL=github:gpt-4o`, `HIVEMIND_PYTHON_BIN=.venv/bin/python`, `HIVEMIND_RPC_PORT=0` (see `examples/distributed/README.md`).
+   Or use the **Rust worker** for higher throughput: `DEVSPER_WORKER_MODEL=github:gpt-4o`, `DEVSPER_PYTHON_BIN=.venv/bin/python`, `DEVSPER_RPC_PORT=0` (see `examples/distributed/README.md`).
 
 3. **Run the controller** (submits a job):
    ```bash
@@ -57,12 +57,12 @@ Controller and workers use the same `run_id` (e.g. `"distributed-demo"` in the e
 
 ## CLI: node commands
 
-- **`hivemind node start [--role] [--port] [--workers] [--tags]`** — Start a node (config-driven).
-- **`hivemind node status [--controller-url]`** — GET controller `/status`.
-- **`hivemind node workers [--controller-url]`** — List workers.
-- **`hivemind node drain <node_id>`** — Stop that worker from taking new tasks.
-- **`hivemind node logs [--follow]`** — Stream events from controller.
+- **`devsper node start [--role] [--port] [--workers] [--tags]`** — Start a node (config-driven).
+- **`devsper node status [--controller-url]`** — GET controller `/status`.
+- **`devsper node workers [--controller-url]`** — List workers.
+- **`devsper node drain <node_id>`** — Stop that worker from taking new tasks.
+- **`devsper node logs [--follow]`** — Stream events from controller.
 
 ## Doctor
 
-When `[nodes] mode = "distributed"`, `hivemind doctor` checks Redis reachability, fastapi/uvicorn installation, and warns if `rpc_token` is not set. When mode is single, it reports "Running in single-node mode — no cluster checks needed."
+When `[nodes] mode = "distributed"`, `devsper doctor` checks Redis reachability, fastapi/uvicorn installation, and warns if `rpc_token` is not set. When mode is single, it reports "Running in single-node mode — no cluster checks needed."

@@ -5,12 +5,12 @@ import tempfile
 
 import pytest
 
-from hivemind.types.task import Task
-from hivemind.agents.agent import Agent
-from hivemind.utils.event_logger import EventLog
-from hivemind.memory.memory_router import MemoryRouter
-from hivemind.memory.memory_store import MemoryStore, get_default_store
-from hivemind.memory.memory_index import MemoryIndex
+from devsper.types.task import Task
+from devsper.agents.agent import Agent
+from devsper.utils.event_logger import EventLog
+from devsper.memory.memory_router import MemoryRouter
+from devsper.memory.memory_store import MemoryStore, get_default_store
+from devsper.memory.memory_index import MemoryIndex
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def test_agent_run_without_memory_router_unchanged():
     """Without memory_router, agent behavior is unchanged (no RELEVANT MEMORY in prompt)."""
     task = Task(id="t1", description="Do something.")
     log = EventLog()
-    with patch("hivemind.agents.agent.generate", return_value="Done.") as m:
+    with patch("devsper.agents.agent.generate", return_value="Done.") as m:
         agent = Agent(model_name="mock", event_log=log)
         result = agent.run_task(task)
     assert result == "Done."
@@ -42,7 +42,7 @@ def test_agent_run_with_memory_router_injects_context(temp_store):
     log = EventLog()
     index = MemoryIndex(temp_store)
     router = MemoryRouter(store=temp_store, index=index, top_k=5)
-    with patch("hivemind.agents.agent.generate", return_value="Analysis done.") as m:
+    with patch("devsper.agents.agent.generate", return_value="Analysis done.") as m:
         agent = Agent(model_name="mock", event_log=log, memory_router=router)
         result = agent.run_task(task)
     assert result == "Analysis done."
@@ -56,7 +56,7 @@ def test_agent_store_result_to_memory(temp_store):
     task = Task(id="t1", description="Compute 2+2.")
     log = EventLog()
     router = MemoryRouter(store=temp_store, index=MemoryIndex(temp_store))
-    with patch("hivemind.agents.agent.generate", return_value="4"):
+    with patch("devsper.agents.agent.generate", return_value="4"):
         agent = Agent(
             model_name="mock",
             event_log=log,

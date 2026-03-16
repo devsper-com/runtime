@@ -3,13 +3,13 @@
 import json
 import tempfile
 from pathlib import Path
-from hivemind.tools.flagship.docproc_corpus_pipeline import DocprocCorpusPipelineTool
-from hivemind.tools.flagship.research_graph_builder import ResearchGraphBuilderTool
-from hivemind.tools.flagship.repository_semantic_map import RepositorySemanticMapTool
-from hivemind.tools.flagship.swarm_experiment_runner import SwarmExperimentRunnerTool
-from hivemind.tools.flagship.distributed_document_analysis import DistributedDocumentAnalysisTool
-from hivemind.tools.registry import get
-from hivemind.tools.tool_runner import run_tool
+from devsper.tools.flagship.docproc_corpus_pipeline import DocprocCorpusPipelineTool
+from devsper.tools.flagship.research_graph_builder import ResearchGraphBuilderTool
+from devsper.tools.flagship.repository_semantic_map import RepositorySemanticMapTool
+from devsper.tools.flagship.swarm_experiment_runner import SwarmExperimentRunnerTool
+from devsper.tools.flagship.distributed_document_analysis import DistributedDocumentAnalysisTool
+from devsper.tools.registry import get
+from devsper.tools.tool_runner import run_tool
 
 
 def test_docproc_corpus_pipeline_missing_directory():
@@ -91,7 +91,7 @@ def test_distributed_document_analysis_missing_documents():
 
 
 def test_all_five_flagship_tools_registered():
-    from hivemind.tools.registry import list_tools
+    from devsper.tools.registry import list_tools
     names = {t.name for t in list_tools()}
     for name in [
         "docproc_corpus_pipeline",

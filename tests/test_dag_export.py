@@ -3,7 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
-from hivemind.visualization.dag_export import (
+from devsper.visualization.dag_export import (
     load_dag,
     export_mermaid,
     export_graphviz,

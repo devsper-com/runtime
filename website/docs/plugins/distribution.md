@@ -4,19 +4,19 @@ title: Distribution
 
 # Distributing Plugins
 
-Once you have authored a plugin, you can distribute it through PyPI, the hivemind plugin registry, or both.
+Once you have authored a plugin, you can distribute it through PyPI, the devsper plugin registry, or both.
 
 ## Package Naming
 
-Follow the convention `hivemind-plugin-<name>` for your distribution name. This makes plugins discoverable and establishes them as part of the hivemind ecosystem.
+Follow the convention `devsper-plugin-<name>` for your distribution name. This makes plugins discoverable and establishes them as part of the devsper ecosystem.
 
 ```
-hivemind-plugin-web-search
-hivemind-plugin-slack
-hivemind-plugin-postgres
+devsper-plugin-web-search
+devsper-plugin-slack
+devsper-plugin-postgres
 ```
 
-The Python package (import name) uses underscores: `hivemind_plugin_web_search`.
+The Python package (import name) uses underscores: `devsper_plugin_web_search`.
 
 ## Publishing to PyPI
 
@@ -43,35 +43,35 @@ uv publish
 Users install your plugin with:
 
 ```bash
-pip install hivemind-plugin-<name>
+pip install devsper-plugin-<name>
 ```
 
-## Publishing to the Hivemind Registry
+## Publishing to the devsper registry
 
-The hivemind registry at [registry.hivemind.rithul.dev](https://registry.hivemind.rithul.dev) provides plugin-specific features like server-side verification and tool discovery.
+The devsper registry at [registry.devsper.com](https://registry.devsper.com) provides plugin-specific features like server-side verification and tool discovery.
 
 ### Authenticate
 
 Log in using the device flow:
 
 ```bash
-hivemind reg login
+devsper reg login
 ```
 
-This opens your browser for authorization and stores the API key in your OS keychain. For CI environments, set the `HIVEMIND_API_KEY` environment variable instead.
+This opens your browser for authorization and stores the API key in your OS keychain. For CI environments, set the `DEVSPER_API_KEY` environment variable instead.
 
 ### Validate
 
 Before publishing, validate your plugin passes all checks:
 
 ```bash
-hivemind reg test
+devsper reg test
 ```
 
 This verifies:
 
 - `pyproject.toml` exists with required fields (version, description, license)
-- `hivemind.plugins` entry point is declared
+- `devsper.plugins` entry point is declared
 - `requires-python` allows 3.12+
 - Entry point loads without error and returns valid `Tool` objects
 
@@ -80,7 +80,7 @@ This verifies:
 Build and upload in one step:
 
 ```bash
-hivemind reg publish
+devsper reg publish
 ```
 
 The `publish` command runs validation, builds the package (using `python -m build` or `uv build`), uploads the distribution files, and waits for server-side verification to complete.
@@ -96,21 +96,21 @@ Options:
 Check your login status:
 
 ```bash
-hivemind reg whoami
+devsper reg whoami
 ```
 
 ### Search the Registry
 
 ```bash
-hivemind reg search "web scraping"
-hivemind reg search --verified "data"
+devsper reg search "web scraping"
+devsper reg search --verified "data"
 ```
 
 ### View Package Details
 
 ```bash
-hivemind reg info hivemind-plugin-<name>
-hivemind reg versions hivemind-plugin-<name>
+devsper reg info devsper-plugin-<name>
+devsper reg versions devsper-plugin-<name>
 ```
 
 ### Yank a Release
@@ -118,7 +118,7 @@ hivemind reg versions hivemind-plugin-<name>
 If a version has a critical issue, yank it to prevent new installs:
 
 ```bash
-hivemind reg yank hivemind-plugin-<name> 0.1.0 --reason "Critical bug in tool output"
+devsper reg yank devsper-plugin-<name> 0.1.0 --reason "Critical bug in tool output"
 ```
 
 Yanked versions are still available to existing dependents but hidden from new installs.
@@ -137,12 +137,12 @@ The registry rejects uploads with duplicate version numbers. Bump the version in
 
 ### Runtime Dependency
 
-Your plugin must depend on `hivemind-ai`:
+Your plugin must depend on `devsper`:
 
 ```toml
 [project]
 dependencies = [
-    "hivemind-ai",
+    "devsper",
 ]
 ```
 
@@ -150,13 +150,13 @@ Pin to a compatible range if your plugin relies on specific APIs:
 
 ```toml
 dependencies = [
-    "hivemind-ai>=0.9,<1.0",
+    "devsper>=0.9,<1.0",
 ]
 ```
 
 ### Python Version
 
-Hivemind requires Python 3.12+. Set `requires-python` accordingly:
+devsper requires Python 3.12+. Set `requires-python` accordingly:
 
 ```toml
 requires-python = ">=3.12"
@@ -182,11 +182,11 @@ The registry reads package metadata from `pyproject.toml` -- ensure `description
 
 Before publishing, verify:
 
-1. Package name follows `hivemind-plugin-<name>` convention
+1. Package name follows `devsper-plugin-<name>` convention
 2. `pyproject.toml` has version, description, license, and entry point
 3. `requires-python = ">=3.12"` is set
-4. `hivemind-ai` is listed as a dependency
-5. `hivemind reg test` passes all checks
+4. `devsper` is listed as a dependency
+5. `devsper reg test` passes all checks
 6. README documents the tools and their usage
 7. Version has been bumped since the last release
 

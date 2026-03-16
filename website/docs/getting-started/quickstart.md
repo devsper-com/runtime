@@ -4,26 +4,26 @@ title: Quickstart
 
 # Quickstart
 
-This guide walks you through running your first hivemind task, using the Python API, and exploring the core CLI commands.
+This guide walks you through running your first devsper task, using the Python API, and exploring the core CLI commands.
 
 ## Run your first task
 
-After [installing hivemind](/docs/getting-started/installation) and configuring at least one API key, run a task directly from the command line:
+After [installing devsper](/docs/getting-started/installation) and configuring at least one API key, run a task directly from the command line:
 
 ```bash
-hivemind run "Summarize swarm intelligence in one paragraph."
+devsper run "Summarize swarm intelligence in one paragraph."
 ```
 
-hivemind decomposes the task into a DAG of subtasks, executes them across parallel agents, and synthesizes a final result. Output is printed to stdout when complete.
+devsper decomposes the task into a DAG of subtasks, executes them across parallel agents, and synthesizes a final result. Output is printed to stdout when complete.
 
 ## Using the Python API
 
-You can also drive hivemind programmatically:
+You can also drive devsper programmatically:
 
 ```python
-from hivemind import Swarm
+from devsper import Swarm
 
-swarm = Swarm(config="hivemind.toml")
+swarm = Swarm(config="devsper.toml")
 results = swarm.run("Your task here")
 print(results)
 ```
@@ -32,10 +32,10 @@ The `Swarm` class accepts a path to a TOML config file or falls back to built-in
 
 ## Creating a config file
 
-Generate a starter `hivemind.toml` in the current directory:
+Generate a starter `devsper.toml` in the current directory:
 
 ```bash
-hivemind init
+devsper init
 ```
 
 ### Basic config example
@@ -55,14 +55,14 @@ enabled = true
 backend = "sqlite"
 ```
 
-All configuration is Pydantic-validated. hivemind will report clear errors if a field has an invalid type or value.
+All configuration is Pydantic-validated. devsper will report clear errors if a field has an invalid type or value.
 
 ## Running with tools and memory
 
 Enable tools and persistent memory so agents can research, write files, and recall previous results:
 
 ```bash
-hivemind run "Research recent advances in protein folding and write a summary." \
+devsper run "Research recent advances in protein folding and write a summary." \
   --tools research,filesystem \
   --memory
 ```
@@ -71,13 +71,13 @@ Agents select from 120+ built-in tools automatically based on the task. The `--t
 
 ## Using the TUI
 
-hivemind includes a terminal user interface for interactive exploration:
+devsper includes a terminal user interface for interactive exploration:
 
 ```bash
-hivemind tui
+devsper tui
 ```
 
-The TUI displays the live DAG, agent activity, streaming output, and memory contents. It is useful for understanding how hivemind decomposes and executes complex tasks.
+The TUI displays the live DAG, agent activity, streaming output, and memory contents. It is useful for understanding how devsper decomposes and executes complex tasks.
 
 ## Running a workflow
 
@@ -106,23 +106,23 @@ depends_on = ["analyze"]
 Execute it with:
 
 ```bash
-hivemind workflow run workflows/research.toml --vars topic="multi-agent systems"
+devsper workflow run workflows/research.toml --vars topic="multi-agent systems"
 ```
 
 Steps run in dependency order, with independent steps executing in parallel.
 
 ## Viewing run history
 
-hivemind logs every run. To list past runs:
+devsper logs every run. To list past runs:
 
 ```bash
-hivemind runs
+devsper runs
 ```
 
 To inspect a specific run in detail:
 
 ```bash
-hivemind runs show <run-id>
+devsper runs show <run-id>
 ```
 
 ## Querying results
@@ -130,7 +130,7 @@ hivemind runs show <run-id>
 Search across stored memory and past results:
 
 ```bash
-hivemind query "What did we learn about protein folding?"
+devsper query "What did we learn about protein folding?"
 ```
 
 This queries the knowledge graph and memory store, returning relevant context from previous runs.
@@ -138,6 +138,6 @@ This queries the knowledge graph and memory store, returning relevant context fr
 ## Next steps
 
 - [Key Concepts](/docs/getting-started/concepts) -- understand the architecture in depth
-- [Configuration](/docs/configuration) -- full reference for `hivemind.toml`
+- [Configuration](/docs/configuration) -- full reference for `devsper.toml`
 - [Tools](/docs/tools) -- browse the 120+ built-in tools
 - [Workflows](/docs/concepts/workflows) -- advanced pipeline definitions

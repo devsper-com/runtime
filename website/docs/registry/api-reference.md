@@ -4,12 +4,12 @@ title: API Reference
 
 # Registry API Reference
 
-The hivemind registry exposes a RESTful JSON API for managing packages, versions, and accounts. The CLI uses this API internally; you can also call it directly for automation and CI integration.
+The devsper registry exposes a RESTful JSON API for managing packages, versions, and accounts. The CLI uses this API internally; you can also call it directly for automation and CI integration.
 
 ## Base URL
 
 ```
-https://registry.hivemind.rithul.dev/api/v1
+https://registry.devsper.com/api/v1
 ```
 
 ## Authentication
@@ -39,7 +39,7 @@ Rate limits are configurable via `RATE_LIMIT_RPS`. Exceeding the limit returns `
 Query parameters: `namespace` (filter by org), `page` (default 1, 20 per page).
 
 ```json
-{ "packages": [{ "id": "uuid", "name": "hivemind-plugin-example", "description": "...", "total_downloads": 42 }], "page": 1 }
+{ "packages": [{ "id": "uuid", "name": "devsper-plugin-example", "description": "...", "total_downloads": 42 }], "page": 1 }
 ```
 
 ### Get Package -- `GET /api/v1/packages/:name` (public)
@@ -51,7 +51,7 @@ Returns full metadata for a single package. Names are normalized per PEP 503.
 Registers a new package. The CLI calls this automatically during publish if the package does not exist.
 
 ```json
-{ "Name": "hivemind-plugin-example", "DisplayName": "Example Plugin", "Description": "...", "Homepage": "https://...", "Repository": "https://...", "License": "MIT", "Keywords": ["example"] }
+{ "Name": "devsper-plugin-example", "DisplayName": "Example Plugin", "Description": "...", "Homepage": "https://...", "Repository": "https://...", "License": "MIT", "Keywords": ["example"] }
 ```
 
 Returns `201 Created` or `409 Conflict` if the name is taken.
@@ -119,7 +119,7 @@ Permanently removes a version. Returns `204 No Content`. Prefer yanking over del
 Full-text search using PostgreSQL `tsvector`. Query parameters: `q` (required), `page` (default 1).
 
 ```json
-{ "results": [{ "name": "hivemind-plugin-web", "description": "...", "total_downloads": 150, "verified": true }], "page": 1 }
+{ "results": [{ "name": "devsper-plugin-web", "description": "...", "total_downloads": 150, "verified": true }], "page": 1 }
 ```
 
 ## Other Endpoints

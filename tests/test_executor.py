@@ -1,13 +1,13 @@
 """Test executor: planner → tasks, scheduler → graph, executor runs tasks to completion."""
 from unittest.mock import patch
 
-from hivemind.types.task import Task, TaskStatus
-from hivemind.swarm.planner import Planner
-from hivemind.swarm.scheduler import Scheduler
-from hivemind.swarm.executor import Executor
-from hivemind.agents.agent import Agent
-from hivemind.utils.event_logger import EventLog
-from hivemind.types.event import events
+from devsper.types.task import Task, TaskStatus
+from devsper.swarm.planner import Planner
+from devsper.swarm.scheduler import Scheduler
+from devsper.swarm.executor import Executor
+from devsper.agents.agent import Agent
+from devsper.utils.event_logger import EventLog
+from devsper.types.event import events
 
 
 MOCK_NUMBERED_RESPONSE = """1. First step
@@ -24,8 +24,8 @@ def test_executor_completes_all_tasks():
     task = Task(id="root", description="Run a small pipeline")
 
     with (
-        patch("hivemind.swarm.planner.generate", return_value=MOCK_NUMBERED_RESPONSE),
-        patch("hivemind.agents.agent.generate", side_effect=["Completed."] * 5),
+        patch("devsper.swarm.planner.generate", return_value=MOCK_NUMBERED_RESPONSE),
+        patch("devsper.agents.agent.generate", side_effect=["Completed."] * 5),
     ):
         planner = Planner(model_name="gpt-4o", event_log=log)
         subtasks = planner.plan(task)

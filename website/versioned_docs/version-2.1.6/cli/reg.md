@@ -1,7 +1,7 @@
 ---
-title: "hivemind reg"
+title: "devsper reg"
 ---
 
-# hivemind reg
+# devsper reg
 
 Coming soon.

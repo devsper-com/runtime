@@ -32,13 +32,13 @@ The graph consists of **nodes** and **edges**.
 Nodes and edges are created from two sources:
 
 1. **Tool outputs** — tools that fetch documents, parse PDFs, or query APIs emit structured metadata that the KG ingestion pipeline converts into nodes and edges.
-2. **Document pipelines** — bulk ingestion jobs (e.g., `hivemind ingest ./papers/`) process files and populate the graph in batch.
+2. **Document pipelines** — bulk ingestion jobs (e.g., `devsper ingest ./papers/`) process files and populate the graph in batch.
 
 ## Auto-Extraction (v1.8+)
 
-After each run, hivemind automatically extracts entities and relationships from task results and inserts them into the KG. This runs in the **background** and is non-blocking — agents are not delayed while extraction completes.
+After each run, devsper automatically extracts entities and relationships from task results and inserts them into the KG. This runs in the **background** and is non-blocking — agents are not delayed while extraction completes.
 
-Enable or disable auto-extraction in `hivemind.toml`:
+Enable or disable auto-extraction in `devsper.toml`:
 
 ```toml
 [knowledge]
@@ -58,7 +58,7 @@ auto_extract = true
 
 ## Configuration
 
-All KG settings live under the `[knowledge]` section of `hivemind.toml`:
+All KG settings live under the `[knowledge]` section of `devsper.toml`:
 
 | Key              | Type    | Default | Description                                     |
 |------------------|---------|---------|-------------------------------------------------|
@@ -74,11 +74,11 @@ The graph is serialized to JSON and stored at:
 <data_dir>/knowledge_graph.json
 ```
 
-The default `data_dir` is `.hivemind/` in your project root. The file is updated after each extraction pass and can be checked into version control or shared across environments.
+The default `data_dir` is `.devsper/` in your project root. The file is updated after each extraction pass and can be checked into version control or shared across environments.
 
 ## Query Interface
 
-The query module at `hivemind/knowledge/query.py` exposes two primary operations:
+The query module at `devsper/knowledge/query.py` exposes two primary operations:
 
 - **Entity search** — matches a query string against node labels using fuzzy matching, returning ranked results.
 - **Relationship traversal** — given a node, walks 1-2 hops along edges and returns connected nodes and edge types.
@@ -87,7 +87,7 @@ The query module at `hivemind/knowledge/query.py` exposes two primary operations
 
 ```bash
 # Search for entities matching a query
-hivemind query "diffusion models"
+devsper query "diffusion models"
 
 # Example output:
 # Entities:
@@ -110,10 +110,10 @@ The KG complements the [memory](/docs/concepts/memory) system. A typical integra
 
 ## Diagnostics
 
-Run `hivemind doctor` to inspect the health of the knowledge graph:
+Run `devsper doctor` to inspect the health of the knowledge graph:
 
 ```bash
-hivemind doctor
+devsper doctor
 # Knowledge Graph
 #   Nodes: 342
 #   Edges: 587

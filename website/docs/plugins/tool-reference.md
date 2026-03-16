@@ -4,7 +4,7 @@ title: Tool Reference
 
 # Tool Reference
 
-hivemind ships with 120+ built-in tools organized into ten categories. This page provides an overview of each category and its key tools. For a full listing, run `hivemind doctor` or call `list_tools()` at runtime.
+devsper ships with 120+ built-in tools organized into ten categories. This page provides an overview of each category and its key tools. For a full listing, run `devsper doctor` or call `list_tools()` at runtime.
 
 ## Tool Architecture
 
@@ -18,7 +18,7 @@ Tools implement a single method: `run(**kwargs) -> str`.
 
 ## Smart Tool Selection
 
-When `top_k` is configured in the `[tools]` section, hivemind uses semantic matching to select the most relevant tools for a given task rather than loading all tools into context:
+When `top_k` is configured in the `[tools]` section, devsper uses semantic matching to select the most relevant tools for a given task rather than loading all tools into context:
 
 ```toml
 [tools]
@@ -132,7 +132,7 @@ Composite tools that orchestrate multiple steps for complex workflows.
 
 ## Configuration
 
-Enable or disable categories in your hivemind config:
+Enable or disable categories in your devsper config:
 
 ```toml
 [tools]
@@ -145,7 +145,7 @@ When `enabled` is omitted, all categories are active by default.
 ## Discovering Tools at Runtime
 
 ```python
-from hivemind.tools.registry import list_tools
+from devsper.tools.registry import list_tools
 
 for tool in list_tools():
     print(f"{tool.name}: {tool.description}")

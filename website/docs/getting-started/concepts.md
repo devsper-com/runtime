@@ -4,16 +4,16 @@ title: Key Concepts
 
 # Key Concepts
 
-hivemind is built around a pipeline that decomposes tasks into a dependency graph, executes them across parallel agents, and persists results into memory and a knowledge graph. This page covers the core abstractions.
+devsper is built around a pipeline that decomposes tasks into a dependency graph, executes them across parallel agents, and persists results into memory and a knowledge graph. This page covers the core abstractions.
 
 ## Swarm
 
 The `Swarm` is the top-level runtime. It owns the configuration, wires together every subsystem, and provides the public API:
 
 ```python
-from hivemind import Swarm
+from devsper import Swarm
 
-swarm = Swarm(config="hivemind.toml")
+swarm = Swarm(config="devsper.toml")
 results = swarm.run("Analyze the trade-offs of microservice architectures.")
 ```
 
@@ -25,7 +25,7 @@ Every user request is broken into a directed acyclic graph (DAG) of **tasks**. E
 
 ## Planner
 
-The **Planner** is responsible for decomposing a high-level objective into a DAG of subtasks. hivemind supports multiple planning strategies:
+The **Planner** is responsible for decomposing a high-level objective into a DAG of subtasks. devsper supports multiple planning strategies:
 
 - **LLM-based planning** -- an LLM generates the task graph given the objective and available tools.
 - **Strategy-based planning** -- deterministic decomposition using predefined templates for common patterns (research, analysis, code generation).
@@ -38,7 +38,7 @@ The **Scheduler** maintains the DAG at runtime. It tracks task states (pending, 
 
 ## Executor
 
-The **Executor** drives the run loop. It pulls ready tasks from the scheduler, dispatches them to agents subject to a configurable concurrency limit (`workers` in `hivemind.toml`), and collects results. The executor handles retries, timeouts, and error propagation.
+The **Executor** drives the run loop. It pulls ready tasks from the scheduler, dispatches them to agents subject to a configurable concurrency limit (`workers` in `devsper.toml`), and collects results. The executor handles retries, timeouts, and error propagation.
 
 ## Agents
 
@@ -48,7 +48,7 @@ Supported LLM providers include OpenAI, Anthropic, Gemini, Azure, and GitHub Mod
 
 ## Tools
 
-Agents interact with the outside world through **tools**. hivemind ships 120+ built-in tools organized by domain:
+Agents interact with the outside world through **tools**. devsper ships 120+ built-in tools organized by domain:
 
 - **Research** -- web search, URL fetching, academic paper retrieval
 - **Coding** -- file read/write, shell execution, linting, test runners
@@ -60,7 +60,7 @@ Tools are registered in a central catalog. You can restrict which tools are avai
 
 ## Memory
 
-hivemind persists information across runs in a SQLite-backed **memory** store. Memory is divided into four types:
+devsper persists information across runs in a SQLite-backed **memory** store. Memory is divided into four types:
 
 | Type | Purpose |
 |------|---------|
@@ -78,10 +78,10 @@ The **Knowledge Graph** stores structured relationships between entities discove
 The knowledge graph is queryable via:
 
 ```bash
-hivemind query "What methods have been compared on ImageNet?"
+devsper query "What methods have been compared on ImageNet?"
 ```
 
-It grows incrementally across runs, forming a persistent, navigable map of everything hivemind has learned.
+It grows incrementally across runs, forming a persistent, navigable map of everything devsper has learned.
 
 ## Workflows
 
@@ -105,10 +105,10 @@ See the [Workflows](/docs/concepts/workflows) documentation for the full specifi
 The **plugin system** allows external packages to register additional tools, planners, or memory backends. Plugins use Python entry points, so installing a package is enough to make its extensions available:
 
 ```bash
-pip install hivemind-plugin-jira
+pip install devsper-plugin-jira
 ```
 
-hivemind discovers and loads plugins automatically at startup via the plugin registry.
+devsper discovers and loads plugins automatically at startup via the plugin registry.
 
 ## Events
 
@@ -118,11 +118,11 @@ Every action during a run is recorded as an **event** in a JSONL log. Events cap
 - **Telemetry** -- aggregate metrics like token usage, latency, and error rates.
 - **Debugging** -- trace failures back to the specific agent and tool call.
 
-Event logs are stored per-run and can be inspected with `hivemind runs show <run-id>`.
+Event logs are stored per-run and can be inspected with `devsper runs show <run-id>`.
 
 ## Next steps
 
-- [Installation](/docs/getting-started/installation) -- set up hivemind
+- [Installation](/docs/getting-started/installation) -- set up devsper
 - [Quickstart](/docs/getting-started/quickstart) -- run your first task
-- [Configuration](/docs/configuration) -- full `hivemind.toml` reference
+- [Configuration](/docs/configuration) -- full `devsper.toml` reference
 - [Tools](/docs/tools) -- browse the built-in tool catalog

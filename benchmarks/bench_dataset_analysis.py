@@ -6,7 +6,7 @@ Uses mocked LLM.
 import time
 from unittest.mock import patch
 
-from hivemind.swarm.swarm import Swarm
+from devsper.swarm.swarm import Swarm
 
 MOCK_RESPONSE = "Dataset profile: ..."
 
@@ -14,7 +14,7 @@ MOCK_RESPONSE = "Dataset profile: ..."
 def run_benchmark(iterations: int = 2) -> float:
     """Run dataset analysis-style task with mocked agent."""
     with (
-        patch("hivemind.agents.agent.generate", return_value=MOCK_RESPONSE),
+        patch("devsper.agents.agent.generate", return_value=MOCK_RESPONSE),
     ):
         swarm = Swarm(worker_count=2, worker_model="mock", planner_model="mock", use_tools=False)
         start = time.perf_counter()

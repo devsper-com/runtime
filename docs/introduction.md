@@ -1,12 +1,12 @@
 # Introduction
 
-## What is Hivemind?
+## What is devsper?
 
-**Hivemind** is a distributed AI swarm runtime for coordinating large numbers of AI agents across complex tasks. It is an open-source framework that lets you run coordinated multi-agent systems using a **swarm execution model**: tasks are decomposed into subtasks, executed by multiple agents in parallel, and coordinated through a scheduler and dependency graph.
+**devsper** is a distributed AI swarm runtime for coordinating large numbers of AI agents across complex tasks. It is an open-source framework that lets you run coordinated multi-agent systems using a **swarm execution model**: tasks are decomposed into subtasks, executed by multiple agents in parallel, and coordinated through a scheduler and dependency graph.
 
 ## What Problem It Solves
 
-- **Complex task handling** — Single agents often struggle with multi-step, branching work. Hivemind breaks high-level goals into a directed acyclic graph (DAG) of subtasks and runs them with dependency-aware scheduling.
+- **Complex task handling** — Single agents often struggle with multi-step, branching work. devsper breaks high-level goals into a directed acyclic graph (DAG) of subtasks and runs them with dependency-aware scheduling.
 - **Parallelism** — Independent subtasks run concurrently (configurable worker count), so total wall-clock time stays low.
 - **Context and memory** — Agents can use a shared memory store (episodic, semantic, research, artifact) and a knowledge graph so later tasks benefit from earlier results.
 - **Observability** — A structured event log supports replay, telemetry, and debugging without changing runtime behavior.
@@ -36,4 +36,4 @@
 5. Optionally, **adaptive planning** adds new subtasks when a task completes.
 6. **Results** are collected; optionally **swarm memory** and **knowledge graph** are updated for future runs.
 
-All of this runs **locally** with minimal setup—no distributed cluster required. Configuration is via environment variables and/or TOML: use `hivemind.toml` or `workflow.hivemind.toml` in the project, or `~/.config/hivemind/config.toml`, or legacy `.hivemind/config.toml`. You can also run predefined **workflows** from `workflow.hivemind.toml` with `hivemind workflow <name>`, and use the **SDK** with `Swarm(config="hivemind.toml")` for a config-driven swarm. From **v1.7**, a **critic** can request one retry for low-scoring results, agents can **broadcast** discoveries to each other, **speculative prefetching** reduces standing-up time, and workflow steps with **structured output** get self-correction when JSON parsing fails.
+All of this runs **locally** with minimal setup—no distributed cluster required. Configuration is via environment variables and/or TOML: use `devsper.toml` or `workflow.devsper.toml` in the project, or `~/.config/devsper/config.toml`, or legacy `.devsper/config.toml`. You can also run predefined **workflows** from `workflow.devsper.toml` with `devsper workflow <name>`, and use the **SDK** with `Swarm(config="devsper.toml")` for a config-driven swarm. From **v1.7**, a **critic** can request one retry for low-scoring results, agents can **broadcast** discoveries to each other, **speculative prefetching** reduces standing-up time, and workflow steps with **structured output** get self-correction when JSON parsing fails.

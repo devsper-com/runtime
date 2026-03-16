@@ -1,8 +1,8 @@
 """Tests for strategy selector."""
 import pytest
 
-from hivemind.types.task import Task
-from hivemind.intelligence.strategy_selector import StrategySelector, ExecutionStrategy
+from devsper.types.task import Task
+from devsper.intelligence.strategy_selector import StrategySelector, ExecutionStrategy
 
 
 def test_select_research():

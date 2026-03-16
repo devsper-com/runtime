@@ -18,17 +18,17 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-import hivemind.tools  # noqa: F401
-from hivemind.utils.event_logger import EventLog
-from hivemind.swarm.swarm import Swarm
-from hivemind.memory.memory_router import MemoryRouter
-from hivemind.memory.memory_store import get_default_store
-from hivemind.memory.memory_index import MemoryIndex
+import devsper.tools  # noqa: F401
+from devsper.utils.event_logger import EventLog
+from devsper.swarm.swarm import Swarm
+from devsper.memory.memory_router import MemoryRouter
+from devsper.memory.memory_store import get_default_store
+from devsper.memory.memory_index import MemoryIndex
 
 
 def get_worker_model() -> str:
-    if os.environ.get("HIVEMIND_WORKER_MODEL"):
-        return os.environ["HIVEMIND_WORKER_MODEL"]
+    if os.environ.get("DEVSPER_WORKER_MODEL"):
+        return os.environ["DEVSPER_WORKER_MODEL"]
     if os.environ.get("GITHUB_TOKEN"):
         return "github:gpt-4o"
     if os.environ.get("OPENAI_API_KEY"):
@@ -41,8 +41,8 @@ def get_worker_model() -> str:
 
 
 def get_planner_model() -> str:
-    if os.environ.get("HIVEMIND_PLANNER_MODEL"):
-        return os.environ["HIVEMIND_PLANNER_MODEL"]
+    if os.environ.get("DEVSPER_PLANNER_MODEL"):
+        return os.environ["DEVSPER_PLANNER_MODEL"]
     return get_worker_model()
 
 
@@ -52,7 +52,7 @@ def main() -> None:
         if len(sys.argv) > 1
         else "What is swarm intelligence? Summarize in one short paragraph."
     )
-    print("=== Hivemind Demo ===\n")
+    print("=== devsper Demo ===\n")
     print("Task:", task)
     print()
 

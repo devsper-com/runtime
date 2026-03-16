@@ -3,22 +3,22 @@
 import asyncio
 import pytest
 
-from hivemind.cluster.node_info import NodeInfo, NodeRole, ClusterState
-from hivemind.cluster.local import InMemoryRegistry, LocalLeaderElector
-from hivemind.cluster.state_backend import FilesystemStateBackend
-from hivemind.cluster.router import TaskRouter
-from hivemind.types.task import Task, TaskStatus
+from devsper.cluster.node_info import NodeInfo, NodeRole, ClusterState
+from devsper.cluster.local import InMemoryRegistry, LocalLeaderElector
+from devsper.cluster.state_backend import FilesystemStateBackend
+from devsper.cluster.router import TaskRouter
+from devsper.types.task import Task, TaskStatus
 
 
 def test_single_node_no_redis_required():
     """Swarm with config nodes.mode=single runs without Redis installed or configured."""
-    from hivemind.swarm.swarm import Swarm
-    from hivemind.utils.event_logger import EventLog
-    from hivemind.memory.memory_router import MemoryRouter
-    from hivemind.memory.memory_store import get_default_store
-    from hivemind.memory.memory_index import MemoryIndex
-    from hivemind.config import get_config
-    event_log = EventLog(events_folder_path=".hivemind/events")
+    from devsper.swarm.swarm import Swarm
+    from devsper.utils.event_logger import EventLog
+    from devsper.memory.memory_router import MemoryRouter
+    from devsper.memory.memory_store import get_default_store
+    from devsper.memory.memory_index import MemoryIndex
+    from devsper.config import get_config
+    event_log = EventLog(events_folder_path=".devsper/events")
     memory_router = MemoryRouter(
         store=get_default_store(),
         index=MemoryIndex(get_default_store()),
@@ -44,13 +44,13 @@ def test_single_node_no_redis_required():
 
 def test_single_node_results_identical():
     """Same task on single-node produces same structure as pre-v1.10 result dict."""
-    from hivemind.swarm.swarm import Swarm
-    from hivemind.utils.event_logger import EventLog
-    from hivemind.memory.memory_router import MemoryRouter
-    from hivemind.memory.memory_store import get_default_store
-    from hivemind.memory.memory_index import MemoryIndex
-    from hivemind.config import get_config
-    event_log = EventLog(events_folder_path=".hivemind/events")
+    from devsper.swarm.swarm import Swarm
+    from devsper.utils.event_logger import EventLog
+    from devsper.memory.memory_router import MemoryRouter
+    from devsper.memory.memory_store import get_default_store
+    from devsper.memory.memory_index import MemoryIndex
+    from devsper.config import get_config
+    event_log = EventLog(events_folder_path=".devsper/events")
     memory_router = MemoryRouter(
         store=get_default_store(),
         index=MemoryIndex(get_default_store()),

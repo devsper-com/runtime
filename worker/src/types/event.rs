@@ -42,7 +42,7 @@ impl BusMessage {
 /// Payload as map for handlers that need dict-like access.
 pub type BusMessagePayload = serde_json::Map<String, serde_json::Value>;
 
-// Topic constants (must match hivemind/bus/topics.py)
+// Topic constants (must match devsper/bus/topics.py)
 pub mod topics {
     pub const TASK_READY: &str = "task.ready";
     pub const TASK_STARTED: &str = "task.started";

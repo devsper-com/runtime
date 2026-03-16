@@ -16,5 +16,5 @@ We will acknowledge receipt and work with you to understand and address the issu
 
 ## Best Practices for Users
 
-- Do not commit API keys, secrets, or credentials to the repository. Use environment variables or secure config (e.g. `~/.config/hivemind/config.toml` with restricted permissions: `chmod 600`).
+- Do not commit API keys, secrets, or credentials to the repository. Use environment variables or secure config (e.g. `~/.config/devsper/config.toml` with restricted permissions: `chmod 600`).
 - When running tools that execute shell commands or external code, ensure inputs are validated and that you trust the task descriptions and tool outputs in your environment.

@@ -3,22 +3,22 @@
 use std::sync::Arc;
 
 use clap::Parser;
-use hivemind_worker::bus::RedisBus;
-use hivemind_worker::config::NodeConfig;
-use hivemind_worker::registry::ClusterRegistry;
-use hivemind_worker::rpc;
-use hivemind_worker::types::event::topics;
-use hivemind_worker::types::{NodeInfo, NodeRole};
-use hivemind_worker::worker_node::WorkerNode;
+use devsper_worker::bus::RedisBus;
+use devsper_worker::config::NodeConfig;
+use devsper_worker::registry::ClusterRegistry;
+use devsper_worker::rpc;
+use devsper_worker::types::event::topics;
+use devsper_worker::types::{NodeInfo, NodeRole};
+use devsper_worker::worker_node::WorkerNode;
 use tracing::info;
 
 #[derive(Parser, Debug)]
-#[command(name = "hivemind-worker")]
-#[command(about = "Hivemind distributed worker node")]
+#[command(name = "devsper-worker")]
+#[command(about = "devsper distributed worker node")]
 struct Args {
-    #[arg(long, env = "HIVEMIND_NODE_ROLE", default_value = "worker")]
+    #[arg(long, env = "DEVSPER_NODE_ROLE", default_value = "worker")]
     role: String,
-    #[arg(long, env = "HIVEMIND_RPC_PORT", default_value = "7700")]
+    #[arg(long, env = "DEVSPER_RPC_PORT", default_value = "7700")]
     port: u16,
 }
 

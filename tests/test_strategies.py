@@ -1,9 +1,9 @@
 """Tests for strategy-based planning: each strategy returns valid DAG."""
 
-from hivemind.intelligence.strategy_selector import ExecutionStrategy, StrategySelector
-from hivemind.intelligence.strategies import get_strategy_for
-from hivemind.intelligence.strategies.research_strategy import ResearchStrategy
-from hivemind.types.task import Task
+from devsper.intelligence.strategy_selector import ExecutionStrategy, StrategySelector
+from devsper.intelligence.strategies import get_strategy_for
+from devsper.intelligence.strategies.research_strategy import ResearchStrategy
+from devsper.types.task import Task
 
 
 def test_research_strategy_returns_four_tasks():

@@ -1,8 +1,8 @@
 """Tests for scheduler DAG visualization."""
 
-from hivemind.types.task import Task
-from hivemind.swarm.scheduler import Scheduler
-from hivemind.runtime.visualize import visualize_scheduler_dag
+from devsper.types.task import Task
+from devsper.swarm.scheduler import Scheduler
+from devsper.runtime.visualize import visualize_scheduler_dag
 
 
 def test_visualize_empty_scheduler():

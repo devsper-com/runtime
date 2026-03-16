@@ -1,6 +1,6 @@
 """Test scheduler: task DAG, get_ready_tasks, mark_completed, is_finished."""
-from hivemind.types.task import Task, TaskStatus
-from hivemind.swarm.scheduler import Scheduler
+from devsper.types.task import Task, TaskStatus
+from devsper.swarm.scheduler import Scheduler
 
 
 def _make_chain() -> list[Task]:

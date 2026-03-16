@@ -77,7 +77,7 @@ async fn control(
 ) -> (StatusCode, Json<serde_json::Value>) {
     if let Some(ref token) = s.rpc_token {
         let auth = headers
-            .get("x-hivemind-token")
+            .get("x-devsper-token")
             .or_else(|| headers.get("authorization"));
         let valid = auth
             .and_then(|v| v.to_str().ok())

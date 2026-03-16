@@ -4,9 +4,9 @@ title: Registry Overview
 
 # Registry Overview
 
-The hivemind plugin registry is a package registry for distributing and installing hivemind plugins. It serves a similar role to PyPI for Python or npm for Node.js, but is purpose-built for the hivemind ecosystem. Plugins published to the registry can be discovered, installed, and managed through both the web interface and the CLI.
+The devsper plugin registry is a package registry for distributing and installing devsper plugins. It serves a similar role to PyPI for Python or npm for Node.js, but is purpose-built for the devsper ecosystem. Plugins published to the registry can be discovered, installed, and managed through both the web interface and the CLI.
 
-The public registry is hosted at [registry.hivemind.rithul.dev](https://registry.hivemind.rithul.dev).
+The public registry is hosted at [registry.devsper.com](https://registry.devsper.com).
 
 ## Architecture
 
@@ -41,29 +41,29 @@ Authentication is handled through Bearer tokens (JWT via Better Auth) or API key
 
 ## CLI Integration
 
-The `hivemind reg` command provides full access to registry operations from your terminal:
+The `devsper reg` command provides full access to registry operations from your terminal:
 
 ```bash
 # Authenticate with the registry
-hivemind reg login
+devsper reg login
 
 # Search for plugins
-hivemind reg search "web scraping"
+devsper reg search "web scraping"
 
 # View plugin details
-hivemind reg info hivemind-plugin-example
+devsper reg info devsper-plugin-example
 
 # List versions of a plugin
-hivemind reg versions hivemind-plugin-example
+devsper reg versions devsper-plugin-example
 
 # Install a plugin (uses pip under the hood)
-hivemind reg install hivemind-plugin-example
+devsper reg install devsper-plugin-example
 
 # Publish your plugin
-hivemind reg publish
+devsper reg publish
 
 # Yank a published version
-hivemind reg yank hivemind-plugin-example 0.1.0 --reason "critical bug"
+devsper reg yank devsper-plugin-example 0.1.0 --reason "critical bug"
 ```
 
 ## Installing Plugins
@@ -71,13 +71,13 @@ hivemind reg yank hivemind-plugin-example 0.1.0 --reason "critical bug"
 Plugins from the registry can be installed using `pip` or `uv` directly, since the registry exposes a PEP 503-compatible Simple Repository API:
 
 ```bash
-pip install --index-url https://registry.hivemind.rithul.dev/simple/ hivemind-plugin-example
+pip install --index-url https://registry.devsper.com/simple/ devsper-plugin-example
 ```
 
 Or use the CLI shorthand:
 
 ```bash
-hivemind reg install hivemind-plugin-example
+devsper reg install devsper-plugin-example
 ```
 
 ## Features

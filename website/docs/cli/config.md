@@ -2,28 +2,28 @@
 title: "CLI: config"
 ---
 
-# hivemind config
+# devsper config
 
-Hivemind uses TOML-based configuration files to control swarm behavior, model selection, memory, tools, caching, and more.
+devsper uses TOML-based configuration files to control swarm behavior, model selection, memory, tools, caching, and more.
 
 ## Config File Locations
 
-Hivemind loads configuration from multiple sources, merged in priority order (highest first):
+devsper loads configuration from multiple sources, merged in priority order (highest first):
 
-1. **Environment variables** — `HIVEMIND_*` overrides
-2. **Project config** — `./hivemind.toml` in the current directory
-3. **User config** — `~/.config/hivemind/config.toml`
+1. **Environment variables** — `DEVSPER_*` overrides
+2. **Project config** — `./devsper.toml` in the current directory
+3. **User config** — `~/.config/devsper/config.toml`
 4. **Defaults** — built-in defaults shipped with the package
 
-A project config is created automatically when you run `hivemind init`.
+A project config is created automatically when you run `devsper init`.
 
 ## Creating a Config
 
 ```bash
-hivemind init
+devsper init
 ```
 
-This generates a `hivemind.toml` in the current directory with sensible defaults. Edit it to match your project's needs.
+This generates a `devsper.toml` in the current directory with sensible defaults. Edit it to match your project's needs.
 
 ## Schema Reference
 
@@ -36,7 +36,7 @@ Controls the core swarm runtime.
 worker_model = "gpt-4o"
 planner_model = "gpt-4o"
 max_workers = 4
-events_dir = ".hivemind/events"
+events_dir = ".devsper/events"
 timeout = 300
 ```
 
@@ -63,7 +63,7 @@ Configure the memory backend.
 ```toml
 [memory]
 backend = "sqlite"
-path = ".hivemind/memory.db"
+path = ".devsper/memory.db"
 ```
 
 ### [tools]
@@ -94,7 +94,7 @@ Knowledge graph configuration.
 ```toml
 [knowledge]
 backend = "sqlite"
-path = ".hivemind/knowledge.db"
+path = ".devsper/knowledge.db"
 ```
 
 ### [telemetry]
@@ -118,7 +118,7 @@ backend = "local"
 
 ### [nodes]
 
-Distributed mode settings. See [hivemind node](/docs/cli/overview) for CLI commands.
+Distributed mode settings. See [devsper node](/docs/cli/overview) for CLI commands.
 
 ```toml
 [nodes]
@@ -140,42 +140,42 @@ deployment = "gpt-4o"
 
 ## Environment Variable Overrides
 
-Any config value can be overridden with an environment variable using the `HIVEMIND_` prefix and underscore-separated section paths:
+Any config value can be overridden with an environment variable using the `DEVSPER_` prefix and underscore-separated section paths:
 
 ```bash
-export HIVEMIND_WORKER_MODEL="gpt-4o-mini"
-export HIVEMIND_PLANNER_MODEL="claude-sonnet-4-20250514"
-export HIVEMIND_MAX_WORKERS=8
-export HIVEMIND_CACHE_ENABLED=true
+export DEVSPER_WORKER_MODEL="gpt-4o-mini"
+export DEVSPER_PLANNER_MODEL="claude-sonnet-4-20250514"
+export DEVSPER_MAX_WORKERS=8
+export DEVSPER_CACHE_ENABLED=true
 ```
 
 Environment variables always take the highest priority.
 
 ## Credentials Management
 
-API keys are stored securely in the OS keychain, not in config files. Use the `hivemind credentials` command to manage them:
+API keys are stored securely in the OS keychain, not in config files. Use the `devsper credentials` command to manage them:
 
 ```bash
-hivemind credentials set openai        # prompt for API key
-hivemind credentials list              # list stored credentials
-hivemind credentials delete openai     # remove a credential
-hivemind credentials export --env      # export as env vars
+devsper credentials set openai        # prompt for API key
+devsper credentials list              # list stored credentials
+devsper credentials delete openai     # remove a credential
+devsper credentials export --env      # export as env vars
 ```
 
 See the [CLI overview](/docs/cli/overview) for all credential subcommands.
 
-## Example hivemind.toml
+## Example devsper.toml
 
 ```toml
 [swarm]
 worker_model = "gpt-4o"
 planner_model = "gpt-4o"
 max_workers = 4
-events_dir = ".hivemind/events"
+events_dir = ".devsper/events"
 
 [memory]
 backend = "sqlite"
-path = ".hivemind/memory.db"
+path = ".devsper/memory.db"
 
 [tools]
 enabled = ["web_search", "file_reader"]
@@ -191,7 +191,7 @@ ttl = 86400
 You can load the resolved configuration programmatically:
 
 ```python
-from hivemind.config import load_config
+from devsper.config import load_config
 
 config = load_config()
 print(config.swarm.worker_model)
@@ -203,7 +203,7 @@ The `load_config()` function applies the full priority chain (env > project > us
 Verify your configuration at any time with:
 
 ```bash
-hivemind doctor
+devsper doctor
 ```
 
 This checks config validity, credential availability, model access, and tool loading.

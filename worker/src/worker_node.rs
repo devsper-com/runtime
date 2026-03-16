@@ -75,7 +75,7 @@ impl WorkerNode {
 
     async fn publish_node_joined(&self) -> Result<()> {
         let payload =
-            serde_json::to_value(&self.node_info).map_err(crate::error::HivemindError::Json)?;
+            serde_json::to_value(&self.node_info).map_err(crate::error::DevsperError::Json)?;
         let msg = BusMessage {
             id: uuid::Uuid::new_v4().to_string(),
             topic: topics::NODE_JOINED.to_string(),
@@ -102,7 +102,7 @@ impl WorkerNode {
         let payload =
             msg.payload
                 .as_object()
-                .ok_or(crate::error::HivemindError::InvalidPayload(
+                .ok_or(crate::error::DevsperError::InvalidPayload(
                     "no payload".to_string(),
                 ))?;
         let target = payload.get("target_worker_id").and_then(|v| v.as_str());
@@ -119,7 +119,7 @@ impl WorkerNode {
             Err(_) => return Ok(()),
         };
         let task: Task = serde_json::from_value(serde_json::Value::Object(payload.clone()))
-            .map_err(|e| crate::error::HivemindError::InvalidPayload(e.to_string()))?;
+            .map_err(|e| crate::error::DevsperError::InvalidPayload(e.to_string()))?;
         let task_id_short = task.id.chars().take(12).collect::<String>();
         tracing::info!(worker = %self.node_info.node_id[..8.min(self.node_info.node_id.len())], task = %task_id_short, "received TASK_READY");
         let claim_msg = make_claim_message(
@@ -215,7 +215,7 @@ impl WorkerNode {
         let msg = BusMessage {
             id: uuid::Uuid::new_v4().to_string(),
             topic: topics::TASK_COMPLETED.to_string(),
-            payload: serde_json::to_value(&response).map_err(crate::error::HivemindError::Json)?,
+            payload: serde_json::to_value(&response).map_err(crate::error::DevsperError::Json)?,
             sender_id: self.node_info.node_id.clone(),
             timestamp: chrono::Utc::now().to_rfc3339(),
             run_id: self.run_id.clone(),

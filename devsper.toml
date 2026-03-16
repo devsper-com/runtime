@@ -1,0 +1,50 @@
+[swarm]
+workers = 4
+speculative_execution = true
+cache_enabled = true
+adaptive_planning = true
+adaptive_execution = true
+max_iterations = 10
+critic_enabled = true
+critic_threshold = 0.70
+critic_roles = ["research", "analysis", "code"]
+message_bus_enabled = true
+prefetch_enabled = true
+prefetch_max_age_seconds = 30
+
+[models]
+planner = "azure:gpt-5-mini"
+worker = "azure:gpt-5-mini"
+
+[memory]
+enabled = true
+
+[tools]
+top_k = 12
+
+[[mcp.servers]]
+name = "filesystem"
+transport = "stdio"
+command = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+
+[[mcp.servers]]
+name = "time"
+transport = "stdio"
+command = ["npx", "-y", "@modelcontextprotocol/server-time"]
+
+[hitl]
+enabled = true
+
+[[hitl.policies]]
+name = "high-cost"
+on_timeout = "auto_approve"
+timeout_seconds = 1800
+approvers = ["webhook://https://hooks.example.com/devsper"]
+
+[[hitl.policies.triggers]]
+type = "cost_above"
+threshold = 0.01
+
+[[hitl.policies.triggers]]
+type = "critic_score_below"
+threshold = 0.50

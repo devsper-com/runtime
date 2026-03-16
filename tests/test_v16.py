@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from hivemind.cache.task_cache import SemanticTaskCache, CacheHit
-from hivemind.cache.store import DefaultCacheStore
-from hivemind.providers.complexity_router import TaskComplexityRouter, TIERS
-from hivemind.types.task import Task, TaskStatus
-from hivemind.swarm.scheduler import Scheduler
-from hivemind.swarm.executor import Executor
-from hivemind.agents.agent import Agent
-from hivemind.types.event import events
+from devsper.cache.task_cache import SemanticTaskCache, CacheHit
+from devsper.cache.store import DefaultCacheStore
+from devsper.providers.complexity_router import TaskComplexityRouter, TIERS
+from devsper.types.task import Task, TaskStatus
+from devsper.swarm.scheduler import Scheduler
+from devsper.swarm.executor import Executor
+from devsper.agents.agent import Agent
+from devsper.types.event import events
 
 
 # ---- Semantic cache ----
@@ -115,7 +115,7 @@ def test_parallel_tools_all_called() -> None:
         called.append(name)
         return "ok"
 
-    with patch("hivemind.tools.tool_runner.run_tool", record_tool):
+    with patch("devsper.tools.tool_runner.run_tool", record_tool):
         agent = Agent(model_name="mock", use_tools=False, parallel_tools=True)
         tool_calls = [("tool_a", {}), ("tool_b", {}), ("tool_c", {})]
         task = Task(id="x", description="y", dependencies=[])
@@ -133,7 +133,7 @@ def test_parallel_tools_failure_isolation() -> None:
             raise ValueError("expected failure")
         return "ok"
 
-    with patch("hivemind.tools.tool_runner.run_tool", fail_second):
+    with patch("devsper.tools.tool_runner.run_tool", fail_second):
         agent = Agent(model_name="mock", use_tools=False, parallel_tools=True)
         tool_calls = [("ok1", {}), ("fail", {}), ("ok2", {})]
         task = Task(id="x", description="y", dependencies=[])

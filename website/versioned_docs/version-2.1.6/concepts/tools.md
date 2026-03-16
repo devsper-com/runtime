@@ -17,15 +17,15 @@ The agent receives a list of tools and invokes them by outputting a fixed format
 
 ## Creating a New Tool
 
-1. Subclass `Tool` from `hivemind.tools.base`.
+1. Subclass `Tool` from `devsper.tools.base`.
 2. Set `name`, `description`, and `input_schema`.
 3. Implement `run(self, **kwargs) -> str`.
 4. Register the tool in the package's `__init__.py`: `register(MyTool())`.
 
 ```python
 from pathlib import Path
-from hivemind.tools.base import Tool
-from hivemind.tools.registry import register
+from devsper.tools.base import Tool
+from devsper.tools.registry import register
 
 class WriteFileTool(Tool):
     name = "write_file"
@@ -62,4 +62,4 @@ register(WriteFileTool())
 | **Filesystem** | read_file, write_file, list_directory, search_files |
 | **System** | run_shell_command, environment variables |
 
-Use `list_tools()` or inspect the `hivemind.tools` package to see the full set (120+ tools).
+Use `list_tools()` or inspect the `devsper.tools` package to see the full set (120+ tools).

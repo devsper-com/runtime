@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 from datetime import datetime, timezone
 
-from hivemind.types.event import Event, events
-from hivemind.runtime.replay_engine import (
+from devsper.types.event import Event, events
+from devsper.runtime.replay_engine import (
     replay_run,
     list_run_ids,
     _find_log_path,

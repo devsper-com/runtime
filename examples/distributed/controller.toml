@@ -25,7 +25,7 @@ prefetch_enabled = true
 checkpoint_enabled = true
 checkpoint_interval = 5
 
-# GitHub provider: set GITHUB_TOKEN in env or use hivemind credentials set github token
+# GitHub provider: set GITHUB_TOKEN in env or use devsper credentials set github token
 [models]
 planner = "github:gpt-4o"
 worker = "github:gpt-4o"

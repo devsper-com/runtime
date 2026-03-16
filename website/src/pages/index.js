@@ -33,7 +33,7 @@ const cardVariant = {
 /*  Section 1 — Hero                                                   */
 /* ------------------------------------------------------------------ */
 const terminalText =
-  '$ hivemind run "Research the top 5 AI papers this week,\n' +
+  '$ devsper run "Research the top 5 AI papers this week,\n' +
   '    summarize each, and draft a newsletter"\n' +
   '\u28FE Planning... spawning 6 agents\n' +
   '\u2713 research_agent_1  found 847 papers (2.1s)\n' +
@@ -122,7 +122,7 @@ function Hero() {
             animate="visible"
             custom={2}
           >
-            hivemind breaks any task into a DAG of agents,
+            devsper breaks any task into a DAG of agents,
             runs them in parallel, and synthesizes the results.
           </motion.p>
 
@@ -140,7 +140,7 @@ function Hero() {
               Get started
             </Link>
             <Link
-              to="https://github.com/rithulkamesh/hivemind"
+              to="https://github.com/devsper-com/runtime"
               className="hm-btn hm-btn-ghost"
             >
               View on GitHub
@@ -248,9 +248,9 @@ const codeTabs = [
     id: 'run',
     label: 'Run a task',
     lang: 'python',
-    code: `import hivemind
+    code: `import devsper
 
-result = hivemind.run(
+result = devsper.run(
     "Analyze this CSV and write a report with charts",
     files=["sales_data.csv"],
     model="claude-sonnet-4",
@@ -283,8 +283,8 @@ depends_on = ["summarize"]`,
     id: 'plugin',
     label: 'Build a plugin',
     lang: 'python',
-    code: `from hivemind.tools.base import Tool
-from hivemind.tools.registry import register
+    code: `from devsper.tools.base import Tool
+from devsper.tools.registry import register
 
 class SearchTool(Tool):
     name = "web_search"
@@ -378,11 +378,11 @@ function RegistryCallout() {
         <div className="hm-registry-text">
           <h2>Share tools with the ecosystem</h2>
           <p>
-            Publish plugins to the hivemind registry. One command to install,
+            Publish plugins to the devsper registry. One command to install,
             one command to publish. pip-compatible.
           </p>
           <div className="hm-registry-links">
-            <Link to="https://registry.hivemind.rithul.dev" className="hm-link-arrow">
+            <Link to="https://registry.devsper.com" className="hm-link-arrow">
               Browse registry &rarr;
             </Link>
             <Link to="/docs/plugins/publishing" className="hm-link-arrow">
@@ -404,14 +404,14 @@ function RegistryCallout() {
             </div>
             <div className="hero-terminal-body">
               <div className="term-line term-prompt">
-                $ hivemind reg install hivemind-plugin-browseruse
+                $ devsper reg install devsper-plugin-browseruse
               </div>
               <div className="term-line term-success">
                 {'\u2713'} Installed 3 tools: browse, click, extract_text
               </div>
               <div className="term-line" />
               <div className="term-line term-prompt">
-                $ hivemind run "Book me a flight to Tokyo next Friday"
+                $ devsper run "Book me a flight to Tokyo next Friday"
               </div>
               <div className="term-line term-dim">
                 {'\u28FE'} Planning...
@@ -442,9 +442,9 @@ function Footer() {
     >
       <div className="hm-footer-inner">
         <div className="hm-footer-col hm-footer-brand">
-          <h4>hivemind</h4>
+          <h4>devsper</h4>
           <p>The AI swarm runtime for complex tasks.</p>
-          <Link to="https://github.com/rithulkamesh/hivemind">
+          <Link to="https://github.com/devsper-com/runtime">
             GitHub
           </Link>
         </div>
@@ -457,7 +457,7 @@ function Footer() {
         </div>
         <div className="hm-footer-col">
           <h4>Registry</h4>
-          <Link to="https://registry.hivemind.rithul.dev">Browse</Link>
+          <Link to="https://registry.devsper.com">Browse</Link>
           <Link to="/docs/registry/publishing">Publish</Link>
           <Link to="/docs/registry/api-reference">API Reference</Link>
         </div>
@@ -479,8 +479,8 @@ function Footer() {
 export default function Home() {
   return (
     <Layout
-      title="hivemind — The AI swarm runtime for complex tasks"
-      description="hivemind breaks any task into a DAG of agents, runs them in parallel, and synthesizes the results."
+      title="devsper — The AI swarm runtime for complex tasks"
+      description="devsper breaks any task into a DAG of agents, runs them in parallel, and synthesizes the results."
       noFooter
     >
       <main className="hm-landing">

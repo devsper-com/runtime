@@ -1,15 +1,15 @@
 [package]
-name = "hivemind-worker"
+name = "devsper-worker"
 version = "1.10.0"
 edition = "2021"
 rust-version = "1.78"
-description = "Rust worker node for hivemind distributed AI swarm runtime"
+description = "Rust worker node for devsper distributed AI swarm runtime"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/rithulkamesh/hivemind"
+repository = "https://github.com/devsper-com/runtime"
 readme = "README.md"
 
 [[bin]]
-name = "hivemind-worker"
+name = "devsper-worker"
 path = "src/main.rs"
 
 [dependencies]

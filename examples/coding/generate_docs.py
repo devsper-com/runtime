@@ -15,8 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from examples._common import build_report_from_swarm, get_memory_router, log, run_tool_safe, save_markdown, store_in_memory
 from examples._config import get_planner_model, get_worker_model
 
-from hivemind.swarm.swarm import Swarm
-from hivemind.utils.event_logger import EventLog
+from devsper.swarm.swarm import Swarm
+from devsper.utils.event_logger import EventLog
 
 
 def main() -> None:

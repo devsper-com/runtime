@@ -8,15 +8,15 @@ from unittest.mock import patch
 
 import pytest
 
-from hivemind.types.task import Task, TaskStatus
-from hivemind.types.event import Event, events
-from hivemind.types.exceptions import EventSerializationError, TaskNotFoundError
-from hivemind.agents.agent import Agent, AgentRequest, AgentResponse
-from hivemind.bus.message import BusMessage, create_bus_message
-from hivemind.bus.backends.memory import InMemoryBus
-from hivemind.swarm.scheduler import Scheduler
-from hivemind.swarm.checkpointer import SchedulerCheckpointer
-from hivemind.runtime.health import HealthChecker, HealthReport
+from devsper.types.task import Task, TaskStatus
+from devsper.types.event import Event, events
+from devsper.types.exceptions import EventSerializationError, TaskNotFoundError
+from devsper.agents.agent import Agent, AgentRequest, AgentResponse
+from devsper.bus.message import BusMessage, create_bus_message
+from devsper.bus.backends.memory import InMemoryBus
+from devsper.swarm.scheduler import Scheduler
+from devsper.swarm.checkpointer import SchedulerCheckpointer
+from devsper.runtime.health import HealthChecker, HealthReport
 
 
 def test_task_serialization_roundtrip():
@@ -136,16 +136,16 @@ def test_inmemory_bus_publish_order():
 
 
 def test_executor_holds_no_state():
-    from hivemind.swarm.executor import Executor
-    from hivemind.agents.agent import Agent
-    from hivemind.utils.event_logger import EventLog
-    from hivemind.types.task import Task
+    from devsper.swarm.executor import Executor
+    from devsper.agents.agent import Agent
+    from devsper.utils.event_logger import EventLog
+    from devsper.types.task import Task
 
     log = EventLog()
     task = Task(id="root", description="Quick task", dependencies=[])
     scheduler = Scheduler()
     scheduler.add_tasks([task])
-    with patch("hivemind.agents.agent.generate", return_value="Done."):
+    with patch("devsper.agents.agent.generate", return_value="Done."):
         agent = Agent(model_name="mock", event_log=log)
         executor = Executor(scheduler=scheduler, agent=agent, worker_count=1, event_log=log)
         executor.run_sync()
@@ -234,8 +234,8 @@ def test_checkpointer_atomic_write():
 
 
 def test_health_check_all_pass():
-    from hivemind.config.schema import HivemindConfigModel
-    cfg = HivemindConfigModel()
+    from devsper.config.schema import devsperConfigModel
+    cfg = devsperConfigModel()
     checker = HealthChecker()
     report = asyncio.run(checker.check(cfg))
     assert isinstance(report, HealthReport)
@@ -248,8 +248,8 @@ def test_health_check_all_pass():
 
 
 def test_health_check_partial_fail():
-    from hivemind.config.schema import HivemindConfigModel
-    cfg = HivemindConfigModel()
+    from devsper.config.schema import devsperConfigModel
+    cfg = devsperConfigModel()
     checker = HealthChecker()
     report = asyncio.run(checker.check(cfg))
     if not all(report.checks.values()):

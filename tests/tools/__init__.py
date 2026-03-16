@@ -1,1 +1,1 @@
-"""Tests for the Hivemind tool system."""
+"""Tests for the devsper tool system."""

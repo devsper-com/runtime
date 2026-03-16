@@ -19,7 +19,7 @@ Each stored record has: `id`, `memory_type`, `timestamp`, `source_task`, `conten
 
 ## Memory Store
 
-- **Backend:** SQLite (e.g. `.hivemind/memory.db` or path from config).
+- **Backend:** SQLite (e.g. `.devsper/memory.db` or path from config).
 - **Operations:** `store(record)`, `retrieve(memory_id)`, `list_memory(limit=...)`, `delete(memory_id)`.
 
 ## Embedding Search
@@ -38,5 +38,5 @@ Each stored record has: `id`, `memory_type`, `timestamp`, `source_task`, `conten
 Clusters records by embedding similarity, summarizes each cluster with an LLM, stores one new record per cluster, and marks originals as archived.
 
 ```bash
-hivemind memory consolidate [--dry-run] [--min-cluster-size 3]
+devsper memory consolidate [--dry-run] [--min-cluster-size 3]
 ```

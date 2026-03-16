@@ -2,9 +2,9 @@
 
 ## Provider Routing
 
-Hivemind uses a **provider router** to map **model names** to the correct LLM provider. The agent and planner call `generate(model_name, prompt)`; the router selects the provider and the provider performs the API call.
+devsper uses a **provider router** to map **model names** to the correct LLM provider. The agent and planner call `generate(model_name, prompt)`; the router selects the provider and the provider performs the API call.
 
-**Model selection:** Configure `worker` and `planner` in `[models]` (or legacy `worker_model` / `planner_model`) in config or environment (e.g. `HIVEMIND_WORKER_MODEL`, `HIVEMIND_PLANNER_MODEL`). The router infers the vendor from the model name (e.g. `gpt-*` → OpenAI, `claude-*` → Anthropic, `gemini-*` → Google).
+**Model selection:** Configure `worker` and `planner` in `[models]` (or legacy `worker_model` / `planner_model`) in config or environment (e.g. `DEVSPER_WORKER_MODEL`, `DEVSPER_PLANNER_MODEL`). The router infers the vendor from the model name (e.g. `gpt-*` → OpenAI, `claude-*` → Anthropic, `gemini-*` → Google).
 
 ## Automatic model routing
 
@@ -13,7 +13,7 @@ You can set **`planner = "auto"`** and **`worker = "auto"`** in `[models]`. The 
 - **Planner** — Prefers higher-quality models for planning and DAG generation.
 - **Worker** — Balances cost, latency, and quality for task execution.
 
-This avoids hard-coding model names while keeping runs predictable. You still need at least one provider configured: set API keys via **environment variables** or the **credential store** (`hivemind credentials set ...` or `hivemind credentials migrate`). See [Configuration](configuration#credentials-api-keys).
+This avoids hard-coding model names while keeping runs predictable. You still need at least one provider configured: set API keys via **environment variables** or the **credential store** (`devsper credentials set ...` or `devsper credentials migrate`). See [Configuration](configuration#credentials-api-keys).
 
 ## Model Spec Format
 
@@ -50,7 +50,7 @@ So you configure models like:
 
 ## GitHub Models (Copilot)
 
-Hivemind can use **GitHub Models** (Copilot API) as a provider. Set **`GITHUB_TOKEN`** in the environment (or in config) and use the **`github:model`** spec:
+devsper can use **GitHub Models** (Copilot API) as a provider. Set **`GITHUB_TOKEN`** in the environment (or in config) and use the **`github:model`** spec:
 
 - **Examples:** `github:gpt-4o`, `github:claude-3.5-sonnet`, `github:phi-3`
 - The router maps these to the GitHub Models API; model names follow the same conventions as other providers.
@@ -63,8 +63,8 @@ Hivemind can use **GitHub Models** (Copilot API) as a provider. Set **`GITHUB_TO
 
 **Where to set credentials:**
 
-- **Credential store (recommended):** `hivemind credentials set azure api_key`, etc. Keys are stored in the OS keychain and injected into the environment when config is resolved. Use `hivemind credentials export azure` to print env-style lines.
+- **Credential store (recommended):** `devsper credentials set azure api_key`, etc. Keys are stored in the OS keychain and injected into the environment when config is resolved. Use `devsper credentials export azure` to print env-style lines.
 - **Environment variables:** Set `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, etc., in your shell or `.env`.
-- **TOML (not recommended for secrets):** You can still put non-secret values (e.g. `endpoint`, `deployment`) in `[providers.azure]` in `~/.config/hivemind/config.toml` or project TOML; they are applied to the environment when not already set. Prefer the credential store or env for API keys.
+- **TOML (not recommended for secrets):** You can still put non-secret values (e.g. `endpoint`, `deployment`) in `[providers.azure]` in `~/.config/devsper/config.toml` or project TOML; they are applied to the environment when not already set. Prefer the credential store or env for API keys.
 
 See [Configuration](configuration#credentials-api-keys) and [CLI](cli#credentials).

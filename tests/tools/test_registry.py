@@ -2,8 +2,8 @@
 
 import pytest
 
-from hivemind.tools.base import Tool
-from hivemind.tools.registry import register, get, list_tools
+from devsper.tools.base import Tool
+from devsper.tools.registry import register, get, list_tools
 
 
 class _DummyTool(Tool):

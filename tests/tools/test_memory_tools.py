@@ -4,9 +4,9 @@ import tempfile
 
 import pytest
 
-from hivemind.tools.tool_runner import run_tool
-from hivemind.tools.registry import get
-from hivemind.memory.memory_store import MemoryStore, get_default_store
+from devsper.tools.tool_runner import run_tool
+from devsper.tools.registry import get
+from devsper.memory.memory_store import MemoryStore, get_default_store
 
 
 @pytest.fixture(autouse=True)
@@ -14,7 +14,7 @@ def isolated_store(monkeypatch, tmp_path):
     """Use a temp DB for memory tools so tests don't share state."""
     path = str(tmp_path / "memory.db")
     store = MemoryStore(db_path=path)
-    import hivemind.memory.memory_store as mod
+    import devsper.memory.memory_store as mod
     monkeypatch.setattr(mod, "_default_store", store)
     yield store
 

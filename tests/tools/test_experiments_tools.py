@@ -3,17 +3,17 @@
 import json
 import pytest
 
-from hivemind.tools.experiments.parameter_sweep_runner import ParameterSweepRunnerTool
-from hivemind.tools.experiments.grid_search_runner import GridSearchRunnerTool
-from hivemind.tools.experiments.experiment_tracker import ExperimentTrackerTool
-from hivemind.tools.experiments.result_comparator import ResultComparatorTool
-from hivemind.tools.experiments.model_benchmark_runner import ModelBenchmarkRunnerTool
-from hivemind.tools.experiments.simulation_runner import SimulationRunnerTool
-from hivemind.tools.experiments.monte_carlo_experiment import MonteCarloExperimentTool
-from hivemind.tools.experiments.statistical_significance_test import StatisticalSignificanceTestTool
-from hivemind.tools.experiments.bootstrap_estimator import BootstrapEstimatorTool
-from hivemind.tools.experiments.experiment_report_generator import ExperimentReportGeneratorTool
-from hivemind.tools.experiments.swarm_map_reduce import SwarmMapReduceTool
+from devsper.tools.experiments.parameter_sweep_runner import ParameterSweepRunnerTool
+from devsper.tools.experiments.grid_search_runner import GridSearchRunnerTool
+from devsper.tools.experiments.experiment_tracker import ExperimentTrackerTool
+from devsper.tools.experiments.result_comparator import ResultComparatorTool
+from devsper.tools.experiments.model_benchmark_runner import ModelBenchmarkRunnerTool
+from devsper.tools.experiments.simulation_runner import SimulationRunnerTool
+from devsper.tools.experiments.monte_carlo_experiment import MonteCarloExperimentTool
+from devsper.tools.experiments.statistical_significance_test import StatisticalSignificanceTestTool
+from devsper.tools.experiments.bootstrap_estimator import BootstrapEstimatorTool
+from devsper.tools.experiments.experiment_report_generator import ExperimentReportGeneratorTool
+from devsper.tools.experiments.swarm_map_reduce import SwarmMapReduceTool
 
 
 def test_parameter_sweep_runner():

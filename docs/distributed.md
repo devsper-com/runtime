@@ -12,7 +12,7 @@ Run a **controller** and one or more **workers** across processes or machines. T
 1. **Redis** — Run Redis (e.g. `docker compose up -d` using the project `docker-compose.yml`).
 2. **Optional dependency group** — Install Redis and RPC deps:
    ```bash
-   pip install 'hivemind-ai[distributed]'
+   pip install 'devsper[distributed]'
    # or: uv sync --extra distributed
    ```
 
@@ -77,11 +77,11 @@ Same `run_id` and `redis_url` on both. For multiple workers, use the same worker
 ```
 
 - **Controller** — Plans the task DAG, wins leader election, runs the dispatch loop, saves scheduler snapshots to the state backend, tracks worker heartbeats and reclaims tasks from lost workers.
-- **Workers** — Register with the cluster, subscribe to TASK_READY, claim tasks (one claim granted per task), execute via the agent, publish TASK_COMPLETED/FAILED, send heartbeats (load, cached tools, completed task IDs for affinity). Can run as **Python** (`run_worker.py`) or **Rust** (`hivemind-worker` binary / Docker image).
-- **Redis** — Message bus (pub/sub), cluster registry (`hivemind:cluster:{run_id}:nodes`), leader lock (`hivemind:leader:{run_id}`), snapshot store (`hivemind:snapshot:{run_id}`).
+- **Workers** — Register with the cluster, subscribe to TASK_READY, claim tasks (one claim granted per task), execute via the agent, publish TASK_COMPLETED/FAILED, send heartbeats (load, cached tools, completed task IDs for affinity). Can run as **Python** (`run_worker.py`) or **Rust** (`devsper-worker` binary / Docker image).
+- **Redis** — Message bus (pub/sub), cluster registry (`devsper:cluster:{run_id}:nodes`), leader lock (`devsper:leader:{run_id}`), snapshot store (`devsper:snapshot:{run_id}`).
 - **Task routing** — Controller uses `TaskRouter` to pick a worker by memory affinity, tool cache affinity, and load; workers with a different major.minor version are excluded.
 
-## Rust worker (hivemind-worker)
+## Rust worker (devsper-worker)
 
 For higher throughput and lower memory use, run workers as the Rust binary or Docker image.
 
@@ -92,7 +92,7 @@ For higher throughput and lower memory use, run workers as the Rust binary or Do
 docker compose up -d
 
 # Worker (Rust image; replace rithulkamesh with your GitHub org or username)
-docker run -e HIVEMIND_RUN_ID=distributed-demo -e HIVEMIND_REDIS_URL=redis://host.docker.internal:6379 -p 7700:7700 ghcr.io/rithulkamesh/hivemind-worker:latest
+docker run -e DEVSPER_RUN_ID=distributed-demo -e DEVSPER_REDIS_URL=redis://host.docker.internal:6379 -p 7700:7700 ghcr.io/rithulkamesh/devsper-worker:latest
 ```
 
 **Docker Compose example** (controller + 3 Rust workers + Redis):
@@ -107,33 +107,33 @@ services:
     build: .
     command: ["uv", "run", "python", "examples/distributed/run_controller.py", "Your task here."]
     environment:
-      HIVEMIND_RUN_ID: distributed-demo
-      HIVEMIND_REDIS_URL: redis://redis:6379
+      DEVSPER_RUN_ID: distributed-demo
+      DEVSPER_REDIS_URL: redis://redis:6379
     depends_on: { redis: { condition: service_healthy } }
   worker:
-    image: ghcr.io/rithulkamesh/hivemind-worker:latest
+    image: ghcr.io/rithulkamesh/devsper-worker:latest
     environment:
-      HIVEMIND_RUN_ID: distributed-demo
-      HIVEMIND_REDIS_URL: redis://redis:6379
-      HIVEMIND_RPC_PORT: 7700
+      DEVSPER_RUN_ID: distributed-demo
+      DEVSPER_REDIS_URL: redis://redis:6379
+      DEVSPER_RPC_PORT: 7700
     depends_on: { redis: { condition: service_healthy } }
     deploy: { replicas: 3 }
 ```
 
-**Configuration (environment)** — Rust worker reads 12-factor env vars; see `worker/README.md` for the full list. Key ones: `HIVEMIND_RUN_ID`, `HIVEMIND_REDIS_URL`, `HIVEMIND_RPC_PORT` (use `0` for any free port when running multiple workers on one host), `HIVEMIND_WORKER_MODEL` (default `mock`; set to `github:gpt-4o` etc. for real LLM results), `HIVEMIND_MAX_WORKERS`, `HIVEMIND_PYTHON_BIN` (venv Python so subprocess loads hivemind), `HIVEMIND_EXECUTOR_MODE` (subprocess | pyo3). Credentials (e.g. `GITHUB_TOKEN`) are injected from the keychain into the subprocess automatically.
+**Configuration (environment)** — Rust worker reads 12-factor env vars; see `worker/README.md` for the full list. Key ones: `DEVSPER_RUN_ID`, `DEVSPER_REDIS_URL`, `DEVSPER_RPC_PORT` (use `0` for any free port when running multiple workers on one host), `DEVSPER_WORKER_MODEL` (default `mock`; set to `github:gpt-4o` etc. for real LLM results), `DEVSPER_MAX_WORKERS`, `DEVSPER_PYTHON_BIN` (venv Python so subprocess loads devsper), `DEVSPER_EXECUTOR_MODE` (subprocess | pyo3). Credentials (e.g. `GITHUB_TOKEN`) are injected from the keychain into the subprocess automatically.
 
-**Executor modes** — **subprocess** (default): spawns `python -m hivemind.agents.run_agent` per task; no Python version coupling. **pyo3**: embeds Python via PyO3 for lower latency; build with `--features pyo3-executor`.
+**Executor modes** — **subprocess** (default): spawns `python -m devsper.agents.run_agent` per task; no Python version coupling. **pyo3**: embeds Python via PyO3 for lower latency; build with `--features pyo3-executor`.
 
-**Upgrading from Python worker (v1.9)** — Replace `uv run python examples/distributed/run_worker.py` with `hivemind-worker` (or the Docker image). Use the same `run_id` and `redis_url` as the controller. No change to controller or bus protocol.
+**Upgrading from Python worker (v1.9)** — Replace `uv run python examples/distributed/run_worker.py` with `devsper-worker` (or the Docker image). Use the same `run_id` and `redis_url` as the controller. No change to controller or bus protocol.
 
 ## CLI: node commands
 
-- **`hivemind node start [--role controller|worker|hybrid] [--port N] [--workers N] [--tags tag1,tag2]`** — Start a node (config-driven; set `nodes.mode` and `nodes.role` in TOML).
-- **`hivemind node status [--controller-url URL]`** — GET controller `/status`; shows run, leader, task counts, workers.
-- **`hivemind node workers [--controller-url URL]`** — List workers from controller status.
-- **`hivemind node drain <node_id>`** — POST `/control` with `command: drain` to stop that worker from taking new tasks.
-- **`hivemind node logs [--follow]`** — Stream events from controller (SSE).
+- **`devsper node start [--role controller|worker|hybrid] [--port N] [--workers N] [--tags tag1,tag2]`** — Start a node (config-driven; set `nodes.mode` and `nodes.role` in TOML).
+- **`devsper node status [--controller-url URL]`** — GET controller `/status`; shows run, leader, task counts, workers.
+- **`devsper node workers [--controller-url URL]`** — List workers from controller status.
+- **`devsper node drain <node_id>`** — POST `/control` with `command: drain` to stop that worker from taking new tasks.
+- **`devsper node logs [--follow]`** — Stream events from controller (SSE).
 
 ## Doctor
 
-When `[nodes] mode = "distributed"`, `hivemind doctor` checks Redis reachability, fastapi/uvicorn installation, and warns if `rpc_token` is not set. When mode is single, it reports "Running in single-node mode — no cluster checks needed."
+When `[nodes] mode = "distributed"`, `devsper doctor` checks Redis reachability, fastapi/uvicorn installation, and warns if `rpc_token` is not set. When mode is single, it reports "Running in single-node mode — no cluster checks needed."

@@ -1,8 +1,8 @@
 """Tests for tool pipeline engine."""
 
-from hivemind.tools.base import Tool
-from hivemind.tools.registry import register, get
-from hivemind.tools.pipelines import ToolPipeline, build_pipeline, PIPELINE_INPUT_KEY
+from devsper.tools.base import Tool
+from devsper.tools.registry import register, get
+from devsper.tools.pipelines import ToolPipeline, build_pipeline, PIPELINE_INPUT_KEY
 
 
 class _EchoTool(Tool):
@@ -25,7 +25,7 @@ def test_tool_pipeline_single_tool():
         assert out == "hello"
     finally:
         if get("test_echo") is tool:
-            from hivemind.tools import registry
+            from devsper.tools import registry
             registry._tools.pop("test_echo", None)
 
 
@@ -42,7 +42,7 @@ def test_tool_pipeline_chains_output():
         out = pipeline.run(input="chain")
         assert out == "chain"
     finally:
-        from hivemind.tools import registry
+        from devsper.tools import registry
         registry._tools.pop("test_echo_1", None)
         registry._tools.pop("test_echo_2", None)
 

@@ -4,7 +4,7 @@ title: Publishing Plugins
 
 # Publishing Plugins
 
-Once your plugin is working locally, you can share it by publishing to PyPI, the hivemind registry, or both.
+Once your plugin is working locally, you can share it by publishing to PyPI, the devsper registry, or both.
 
 ## Preparing for Publication
 
@@ -25,25 +25,25 @@ Include complete metadata so users can find and evaluate your plugin:
 
 ```toml
 [project]
-name = "hivemind-plugin-example"
+name = "devsper-plugin-example"
 version = "1.0.0"
 description = "A brief description of what your plugin does"
 license = {text = "MIT"}
 authors = [{name = "Your Name", email = "you@example.com"}]
-keywords = ["hivemind", "plugin"]
+keywords = ["devsper", "plugin"]
 requires-python = ">=3.10"
-dependencies = ["hivemind-ai"]
+dependencies = ["devsper"]
 
 [project.urls]
-Homepage = "https://github.com/you/hivemind-plugin-example"
+Homepage = "https://github.com/you/devsper-plugin-example"
 
-[project.entry-points."hivemind.plugins"]
+[project.entry-points."devsper.plugins"]
 example = "example_plugin:register_tools"
 ```
 
 ### README
 
-Include a `README.md` that describes the plugin, lists the tools it provides, and shows basic usage. PyPI and the hivemind registry both render this file on your package page.
+Include a `README.md` that describes the plugin, lists the tools it provides, and shows basic usage. PyPI and the devsper registry both render this file on your package page.
 
 ### Tests
 
@@ -91,20 +91,20 @@ You will be prompted for your PyPI credentials. For automation, configure a PyPI
 After uploading, confirm the package is available:
 
 ```bash
-pip install hivemind-plugin-example
-hivemind doctor
+pip install devsper-plugin-example
+devsper doctor
 ```
 
-## Publishing to the Hivemind Registry
+## Publishing to the devsper registry
 
-The hivemind registry is a curated index of plugins. Publishing here makes your plugin discoverable via the `hivemind reg` CLI.
+The devsper registry is a curated index of plugins. Publishing here makes your plugin discoverable via the `devsper reg` CLI.
 
 ### Login
 
 Authenticate with the registry:
 
 ```bash
-hivemind reg login
+devsper reg login
 ```
 
 ### Test Before Publishing
@@ -112,7 +112,7 @@ hivemind reg login
 Run a pre-publish check to catch common issues:
 
 ```bash
-hivemind reg test
+devsper reg test
 ```
 
 This validates your entry point configuration, schema definitions, and package metadata.
@@ -120,7 +120,7 @@ This validates your entry point configuration, schema definitions, and package m
 ### Publish
 
 ```bash
-hivemind reg publish
+devsper reg publish
 ```
 
 The command packages your plugin and uploads it to the registry. It requires that the package is already published to PyPI.
@@ -130,30 +130,30 @@ The command packages your plugin and uploads it to the registry. It requires tha
 Search for your plugin to confirm it appears:
 
 ```bash
-hivemind reg search example
+devsper reg search example
 ```
 
 Users can then install it with:
 
 ```bash
-hivemind reg install hivemind-plugin-example
+devsper reg install devsper-plugin-example
 ```
 
 ## CLI Reference
 
 | Command | Description |
 |---------|-------------|
-| `hivemind reg login` | Authenticate with the hivemind registry |
-| `hivemind reg test` | Validate plugin before publishing |
-| `hivemind reg publish` | Publish plugin to the registry |
-| `hivemind reg search <query>` | Search for plugins by name or keyword |
-| `hivemind reg install <name>` | Install a plugin from the registry |
+| `devsper reg login` | Authenticate with the devsper registry |
+| `devsper reg test` | Validate plugin before publishing |
+| `devsper reg publish` | Publish plugin to the registry |
+| `devsper reg search <query>` | Search for plugins by name or keyword |
+| `devsper reg install <name>` | Install a plugin from the registry |
 
 ## Post-Publish Checklist
 
 1. Install the published package in a clean virtual environment.
-2. Run `hivemind doctor` and confirm your tools are registered.
-3. Test the tools end-to-end in a hivemind task.
+2. Run `devsper doctor` and confirm your tools are registered.
+3. Test the tools end-to-end in a devsper task.
 4. Tag the release in your version control system.
 5. Update your README if the tool set has changed.
 
@@ -165,7 +165,7 @@ To publish an update, increment the version in `pyproject.toml`, rebuild, and re
 # Update version in pyproject.toml, then:
 python -m build
 twine upload dist/*
-hivemind reg publish
+devsper reg publish
 ```
 
 ## Further Reading

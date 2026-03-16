@@ -2,6 +2,6 @@
 title: "CLI: plugins"
 ---
 
-# hivemind plugins
+# devsper plugins
 
 Coming soon.

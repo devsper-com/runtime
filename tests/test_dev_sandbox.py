@@ -1,11 +1,11 @@
-"""Tests for code sandbox (hivemind.dev.sandbox)."""
+"""Tests for code sandbox (devsper.dev.sandbox)."""
 
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from hivemind.dev.sandbox import Sandbox, SandboxLimits, SandboxResult
+from devsper.dev.sandbox import Sandbox, SandboxLimits, SandboxResult
 
 
 def test_sandbox_write_file():

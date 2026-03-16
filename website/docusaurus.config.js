@@ -1,12 +1,12 @@
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: 'hivemind',
-  tagline: 'The AI swarm runtime for complex tasks',
+  title: 'devsper',
+  tagline: 'The AI swarm platform for developers',
   favicon: 'img/favicon.svg',
-  url: 'https://hivemind.rithul.dev',
+  url: 'https://docs.devsper.com',
   baseUrl: '/',
-  organizationName: 'rithulkamesh',
-  projectName: 'hivemind',
+  organizationName: 'devsper-com',
+  projectName: 'runtime',
   trailingSlash: false,
   onBrokenLinks: 'warn',
 
@@ -51,7 +51,7 @@ const config = {
       attributes: {
         name: 'description',
         content:
-          'Hivemind is a distributed AI swarm runtime. Orchestrate multi-agent systems with a swarm execution model: tasks become a DAG, then run in parallel. pip install hivemind-ai',
+          'devsper is a distributed AI swarm runtime. Orchestrate multi-agent systems with a swarm execution model: tasks become a DAG, then run in parallel. pip install devsper',
       },
     },
     {
@@ -59,7 +59,7 @@ const config = {
       attributes: {
         property: 'og:description',
         content:
-          'Hivemind is a distributed AI swarm runtime. Orchestrate multi-agent systems with a swarm execution model: tasks become a DAG, then run in parallel. pip install hivemind-ai',
+          'devsper is a distributed AI swarm runtime. Orchestrate multi-agent systems with a swarm execution model: tasks become a DAG, then run in parallel. pip install devsper',
       },
     },
     {
@@ -70,20 +70,20 @@ const config = {
         '@graph': [
           {
             '@type': 'Organization',
-            name: 'hivemind',
-            url: 'https://hivemind.rithul.dev',
-            logo: 'https://hivemind.rithul.dev/img/logo.svg',
-            description: 'The AI swarm runtime for complex tasks',
+            name: 'devsper',
+            url: 'https://devsper.com',
+            logo: 'https://docs.devsper.com/img/logo.svg',
+            description: 'The AI swarm platform for developers',
           },
           {
             '@type': 'SoftwareApplication',
-            name: 'hivemind',
+            name: 'devsper',
             applicationCategory: 'DeveloperApplication',
             operatingSystem: 'Windows, macOS, Linux',
             description:
-              'Orchestrate multi-agent AI systems with a swarm execution model. Tasks become a DAG and run in parallel. Install: pip install hivemind-ai',
-            url: 'https://hivemind.rithul.dev',
-            downloadUrl: 'https://pypi.org/project/hivemind-ai/',
+              'Orchestrate multi-agent AI systems with a swarm execution model. Tasks become a DAG and run in parallel. Install: pip install devsper',
+            url: 'https://docs.devsper.com',
+            downloadUrl: 'https://pypi.org/project/devsper/',
           },
         ],
       }),
@@ -91,7 +91,7 @@ const config = {
   ],
 
   customFields: {
-    registryUrl: 'https://registry.hivemind.rithul.dev',
+    registryUrl: 'https://registry.devsper.com',
   },
 
   presets: [
@@ -101,7 +101,7 @@ const config = {
         docs: {
           routeBasePath: 'docs',
           sidebarPath: './sidebars.js',
-          editUrl: 'https://github.com/rithulkamesh/hivemind/edit/main/website/',
+          editUrl: 'https://github.com/devsper-com/runtime/edit/main/website/',
           showLastUpdateTime: true,
           lastVersion: 'current',
           versions: {
@@ -128,18 +128,17 @@ const config = {
 
     image: 'img/banner.png',
     metadata: [
-      { name: 'keywords', content: 'hivemind, AI, multi-agent, swarm, distributed AI, LLM, agents, Python, DAG, orchestration, plugins, registry' },
+      { name: 'keywords', content: 'devsper, AI, multi-agent, swarm, distributed AI, LLM, agents, Python, DAG, orchestration, plugins, registry' },
       { name: 'twitter:card', content: 'summary_large_image' },
-      { name: 'twitter:site', content: '@rithulkamesh' },
       { property: 'og:type', content: 'website' },
       { property: 'og:locale', content: 'en_US' },
     ],
 
     navbar: {
-      title: 'hivemind',
+      title: 'devsper',
       hideOnScroll: true,
       logo: {
-        alt: 'Hivemind',
+        alt: 'devsper',
         src: 'img/logo.svg',
         srcDark: 'img/logo_dark.svg',
       },
@@ -155,12 +154,12 @@ const config = {
           label: 'Plugins',
         },
         {
-          href: 'https://registry.hivemind.rithul.dev',
+          href: 'https://registry.devsper.com',
           position: 'left',
           label: 'Registry',
         },
         {
-          href: 'https://github.com/rithulkamesh/hivemind',
+          href: 'https://github.com/devsper-com/runtime',
           position: 'right',
           label: 'GitHub',
           className: 'header-github-link',

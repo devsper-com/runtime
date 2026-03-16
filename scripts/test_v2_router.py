@@ -4,7 +4,7 @@ Quick test for the v2 LLM Router.
 
 Run from repo root. Requires at least one backend:
   - OPENAI_API_KEY set, or
-  - Ollama running + [providers.ollama] enabled = true in hivemind.toml
+  - Ollama running + [providers.ollama] enabled = true in devsper.toml
 """
 import asyncio
 import os
@@ -16,8 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def main() -> int:
     try:
-        from hivemind.providers.router.factory import get_llm_router
-        from hivemind.providers.router.base import LLMRequest
+        from devsper.providers.router.factory import get_llm_router
+        from devsper.providers.router.base import LLMRequest
     except ImportError as e:
         print(f"Import error: {e}", file=sys.stderr)
         return 1
@@ -26,7 +26,7 @@ def main() -> int:
     if router is None:
         print(
             "v2 router not used: no backends registered. Set OPENAI_API_KEY (or similar) "
-            "or enable [providers.ollama] in hivemind.toml with Ollama running.",
+            "or enable [providers.ollama] in devsper.toml with Ollama running.",
             file=sys.stderr,
         )
         return 0  # not a failure; legacy router will be used

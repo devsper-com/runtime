@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from hivemind.tools.documents.extract_document_text import ExtractDocumentTextTool
-from hivemind.tools.documents.document_to_markdown import DocumentToMarkdownTool
-from hivemind.tools.documents.summarize_document import SummarizeDocumentTool
+from devsper.tools.documents.extract_document_text import ExtractDocumentTextTool
+from devsper.tools.documents.document_to_markdown import DocumentToMarkdownTool
+from devsper.tools.documents.summarize_document import SummarizeDocumentTool
 
 
 def test_extract_document_text_nonexistent():

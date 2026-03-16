@@ -11,7 +11,7 @@ import pytest
 
 def test_mcp_stdio_connect():
     """Mock MCP server (HTTP): connect, list tools."""
-    from hivemind.tools.mcp.client import MCPClient, MCPToolDefinition
+    from devsper.tools.mcp.client import MCPClient, MCPToolDefinition
     import asyncio
 
     client = MCPClient("test", "http", url="http://localhost:9999")
@@ -36,9 +36,9 @@ def test_mcp_stdio_connect():
 
 def test_mcp_tool_adapter_registered():
     """Adapter appears in tool registry after discover."""
-    from hivemind.tools.registry import list_tools, get
-    from hivemind.tools.mcp.adapter import MCPToolAdapter
-    from hivemind.tools.mcp.client import MCPClient, MCPToolDefinition
+    from devsper.tools.registry import list_tools, get
+    from devsper.tools.mcp.adapter import MCPToolAdapter
+    from devsper.tools.mcp.client import MCPClient, MCPToolDefinition
 
     mock_client = MagicMock(spec=MCPClient)
     defn = MCPToolDefinition("proto_fake_tool", "Fake MCP tool", {"type": "object"})
@@ -52,8 +52,8 @@ def test_mcp_tool_adapter_registered():
 
 def test_mcp_tool_run():
     """adapter.run() calls client.call_tool with correct args."""
-    from hivemind.tools.mcp.client import MCPClient, MCPToolDefinition
-    from hivemind.tools.mcp.adapter import MCPToolAdapter
+    from devsper.tools.mcp.client import MCPClient, MCPToolDefinition
+    from devsper.tools.mcp.adapter import MCPToolAdapter
 
     mock_client = MagicMock(spec=MCPClient)
     mock_client.call_tool = AsyncMock(return_value="file contents here")
@@ -72,8 +72,8 @@ def test_mcp_tool_run():
 
 def test_a2a_agent_card_fetch():
     """Mock HTTP server returns AgentCard; client parses correctly."""
-    from hivemind.agents.a2a.client import A2AClient, _parse_agent_card
-    from hivemind.agents.a2a.types import AgentCard
+    from devsper.agents.a2a.client import A2AClient, _parse_agent_card
+    from devsper.agents.a2a.types import AgentCard
     import asyncio
 
     payload = {
@@ -112,8 +112,8 @@ def test_a2a_agent_card_fetch():
 
 def test_a2a_task_send_and_poll():
     """Send task; mock server returns completed; response parsed."""
-    from hivemind.agents.a2a.client import A2AClient
-    from hivemind.agents.a2a.types import A2ATaskRequest
+    from devsper.agents.a2a.client import A2AClient
+    from devsper.agents.a2a.types import A2ATaskRequest
     import asyncio
 
     client = A2AClient()
@@ -139,9 +139,9 @@ def test_a2a_task_send_and_poll():
 
 def test_a2a_tool_adapter_registered():
     """A2AAgentTool in registry after discovery."""
-    from hivemind.agents.a2a.types import AgentSkill
-    from hivemind.agents.a2a.tool_adapter import A2AAgentTool
-    from hivemind.tools.registry import list_tools
+    from devsper.agents.a2a.types import AgentSkill
+    from devsper.agents.a2a.tool_adapter import A2AAgentTool
+    from devsper.tools.registry import list_tools
 
     skill = AgentSkill("proto_review", "Review", "Review code", ["text"], ["text"])
     A2AAgentTool("proto_code_reviewer", skill, "http://localhost:8080")
@@ -154,7 +154,7 @@ def test_a2a_server_agent_card_endpoint():
     """GET /.well-known/agent.json returns valid AgentCard."""
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
-    from hivemind.agents.a2a.server import create_a2a_app
+    from devsper.agents.a2a.server import create_a2a_app
 
     app = create_a2a_app(host="localhost", port=8080, swarm_name="test-swarm")
     client = TestClient(app)
@@ -170,11 +170,11 @@ def test_a2a_server_task_endpoint():
     """POST /tasks/send runs swarm, returns result."""
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
-    from hivemind.agents.a2a.server import create_a2a_app
+    from devsper.agents.a2a.server import create_a2a_app
 
-    app = create_a2a_app(host="localhost", port=8080, swarm_name="hivemind")
+    app = create_a2a_app(host="localhost", port=8080, swarm_name="devsper")
     client = TestClient(app)
-    with patch("hivemind.swarm.swarm.Swarm") as mock_swarm:
+    with patch("devsper.swarm.swarm.Swarm") as mock_swarm:
         mock_swarm.return_value.run.return_value = {"root": "Done."}
         r = client.post("/tasks/send", json={"id": "t1", "message": {"text": "Hello"}})
     assert r.status_code == 200

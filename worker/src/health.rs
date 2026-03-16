@@ -9,7 +9,7 @@ impl HealthChecker {
         let s: String = redis::cmd("PING")
             .query_async(redis)
             .await
-            .map_err(crate::error::HivemindError::from)?;
+            .map_err(crate::error::DevsperError::from)?;
         Ok(s == "PONG")
     }
 }

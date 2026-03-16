@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hivemind.providers.github import GitHubProvider
-from hivemind.providers.router import ProviderRouter, _parse_model_spec
+from devsper.providers.github import GitHubProvider
+from devsper.providers.router import ProviderRouter, _parse_model_spec
 
 
 def test_parse_model_spec_github():
@@ -28,7 +28,7 @@ def test_github_provider_requires_token():
 def test_github_provider_strips_prefix_in_generate():
     """When model is 'github:gpt-4o', API receives 'gpt-4o'."""
     token = "test-token"
-    with patch("hivemind.providers.github.httpx.Client") as mock_client:
+    with patch("devsper.providers.github.httpx.Client") as mock_client:
         mock_post = mock_client.return_value.__enter__.return_value.post
         mock_post.return_value.raise_for_status = lambda: None
         mock_post.return_value.json.return_value = {"choices": [{"message": {"content": "Hi"}}]}

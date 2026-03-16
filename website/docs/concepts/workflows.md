@@ -8,7 +8,7 @@ Workflows are predefined, repeatable multi-step pipelines defined in TOML. They 
 
 ## Defining a Workflow
 
-Workflow definitions live in `workflow.hivemind.toml` or inline in your project's `hivemind.toml`.
+Workflow definitions live in `workflow.devsper.toml` or inline in your project's `devsper.toml`.
 
 ### v1.4 Format
 
@@ -111,25 +111,25 @@ if = "steps.classify.confidence > 0.8"
 ### List available workflows
 
 ```bash
-hivemind workflow list
+devsper workflow list
 ```
 
 ### Validate a workflow definition
 
 ```bash
-hivemind workflow validate research_report
+devsper workflow validate research_report
 ```
 
 ### Run a workflow
 
 ```bash
-hivemind workflow run research_report --input topic="diffusion models" --input enable_review=true
+devsper workflow run research_report --input topic="diffusion models" --input enable_review=true
 ```
 
 Inputs are passed as `KEY=VALUE` pairs. Multiple `--input` flags are supported.
 
 ## Next Steps
 
-- [Swarm Runtime](/docs/swarm_runtime) — how hivemind schedules parallel task waves
+- [Swarm Runtime](/docs/swarm_runtime) — how devsper schedules parallel task waves
 - [Agents](/docs/concepts/agents) — the workers that execute each step
-- [CLI Reference](/docs/cli) — full command documentation for `hivemind workflow`
+- [CLI Reference](/docs/cli) — full command documentation for `devsper workflow`

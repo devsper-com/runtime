@@ -36,16 +36,16 @@ If something goes wrong, **task_failed** can be used; the scheduler may still ma
    - Call LLM; if tools are enabled, parse tool calls, run tools via the tool runner, append results to the conversation, and repeat until the agent returns a final answer.  
    - Set `task.result` and emit `task_completed`.  
    - **(v1.7) Critic:** For eligible roles, a critic (on the fast model) scores the result and can request one retry; the task is re-queued with a retry prompt and run again.  
-   - **Parallel tools (v1.6):** When multiple tool calls appear in one turn, independent tools run in parallel (config `swarm.parallel_tools`; bypass with `HIVEMIND_DISABLE_PARALLEL_TOOLS=1`).
+   - **Parallel tools (v1.6):** When multiple tool calls appear in one turn, independent tools run in parallel (config `swarm.parallel_tools`; bypass with `DEVSPER_DISABLE_PARALLEL_TOOLS=1`).
 
 ## Running a Swarm (Code Snippets)
 
 **With config file (v1):**
 
 ```python
-from hivemind import Swarm
+from devsper import Swarm
 
-swarm = Swarm(config="hivemind.toml")
+swarm = Swarm(config="devsper.toml")
 results = swarm.run("Analyze diffusion models and write a one-page summary.")
 # results: dict[task_id, result_text]
 ```
@@ -53,7 +53,7 @@ results = swarm.run("Analyze diffusion models and write a one-page summary.")
 **Minimal (explicit parameters):**
 
 ```python
-from hivemind import Swarm
+from devsper import Swarm
 
 swarm = Swarm(
     worker_count=4,
@@ -67,11 +67,11 @@ results = swarm.run("Analyze diffusion models and write a one-page summary.")
 **With event log, memory, and tools:**
 
 ```python
-from hivemind.swarm.swarm import Swarm
-from hivemind.utils.event_logger import EventLog
-from hivemind.memory.memory_router import MemoryRouter
-from hivemind.memory.memory_store import get_default_store
-from hivemind.memory.memory_index import MemoryIndex
+from devsper.swarm.swarm import Swarm
+from devsper.utils.event_logger import EventLog
+from devsper.memory.memory_router import MemoryRouter
+from devsper.memory.memory_store import get_default_store
+from devsper.memory.memory_index import MemoryIndex
 
 event_log = EventLog()
 memory_router = MemoryRouter(
@@ -109,7 +109,7 @@ Events are written to the path in `event_log.log_path` (e.g. for replay or telem
 The swarm runtime includes a **map-reduce** primitive for batch processing over a dataset without using the task DAG:
 
 ```python
-from hivemind import Swarm
+from devsper import Swarm
 
 swarm = Swarm(worker_count=4)
 # Process each item in parallel, then reduce

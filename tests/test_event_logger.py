@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
-from hivemind.utils.event_logger import EventLog
-from hivemind.types.event import Event, events
+from devsper.utils.event_logger import EventLog
+from devsper.types.event import Event, events
 
 log = EventLog()
 log.clear()

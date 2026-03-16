@@ -1,12 +1,12 @@
 # Introduction
 
-## What is Hivemind?
+## What is devsper?
 
-**Hivemind** is a distributed AI swarm runtime. It coordinates many AI agents on complex tasks. You run multi-agent systems with a **swarm execution model**: the system breaks a task into subtasks, runs them in parallel with multiple agents, and coordinates them through a scheduler and a dependency graph.
+**devsper** is a distributed AI swarm runtime. It coordinates many AI agents on complex tasks. You run multi-agent systems with a **swarm execution model**: the system breaks a task into subtasks, runs them in parallel with multiple agents, and coordinates them through a scheduler and a dependency graph.
 
 ## What Problem It Solves
 
-- **Complex task handling** — A single agent often struggles with multi-step, branching work. Hivemind breaks a high-level goal into a DAG of subtasks and runs them with dependency-aware scheduling.
+- **Complex task handling** — A single agent often struggles with multi-step, branching work. devsper breaks a high-level goal into a DAG of subtasks and runs them with dependency-aware scheduling.
 - **Parallelism** — Independent subtasks run at the same time. You set the worker count. Wall-clock time stays low.
 - **Context and memory** — Agents share a memory store (episodic, semantic, research, artifact) and a knowledge graph. Later tasks use what earlier tasks learned.
 - **Observability** — A structured event log supports replay, telemetry, and debugging. You don’t change runtime behavior to inspect it.
@@ -36,4 +36,4 @@
 5. Optionally, **adaptive planning** adds new subtasks when a task completes.
 6. **Results** are collected. Optionally, swarm memory and the knowledge graph are updated for future runs.
 
-Everything runs **locally** with minimal setup. No distributed cluster. You configure via environment variables and/or TOML: `hivemind.toml` or `workflow.hivemind.toml` in the project, or `~/.config/hivemind/config.toml`, or legacy `.hivemind/config.toml`. Run predefined **workflows** from `workflow.hivemind.toml` with `hivemind workflow <name>`. Use the **SDK** with `Swarm(config="hivemind.toml")` for a config-driven swarm.
+Everything runs **locally** with minimal setup. No distributed cluster. You configure via environment variables and/or TOML: `devsper.toml` or `workflow.devsper.toml` in the project, or `~/.config/devsper/config.toml`, or legacy `.devsper/config.toml`. Run predefined **workflows** from `workflow.devsper.toml` with `devsper workflow <name>`. Use the **SDK** with `Swarm(config="devsper.toml")` for a config-driven swarm.

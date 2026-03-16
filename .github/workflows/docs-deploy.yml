@@ -1,9 +1,9 @@
-# Deploy docs to EC2 (hivemind.rithul.dev)
+# Deploy docs to EC2 (docs.devsper.com)
 # Builds Docusaurus from website/, rsyncs to EC2, reloads Caddy.
 #
 # Prerequisite on EC2:
-#   sudo mkdir -p /opt/hivemind-docs && sudo chown ubuntu:ubuntu /opt/hivemind-docs
-#   Caddy must have a server block for hivemind.rithul.dev (see deploy/Caddyfile).
+#   sudo mkdir -p /opt/devsper-docs && sudo chown ubuntu:ubuntu /opt/devsper-docs
+#   Caddy must have a server block for docs.devsper.com (see deploy/Caddyfile).
 
 name: Docs Deploy
 
@@ -46,7 +46,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/hivemind-registry-deploy
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/devsper-deploy
           aws-region: us-east-1
 
       - name: Deploy to EC2 via Instance Connect
@@ -62,13 +62,13 @@ jobs:
           rsync -azP --delete \
             -e "ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no" \
             website/build/ \
-            ubuntu@"$EC2_HOST":/opt/hivemind-docs/
+            ubuntu@"$EC2_HOST":/opt/devsper-docs/
 
           rm -f /tmp/deploy_key /tmp/deploy_key.pub
 
       - name: Verify deployment
         run: |
           sleep 3
-          curl -sf --retry 3 --retry-delay 5 "https://hivemind.rithul.dev/" || \
+          curl -sf --retry 3 --retry-delay 5 "https://docs.devsper.com/" || \
             { echo "FAIL: docs site not responding"; exit 1; }
           echo "Docs deployment verified"

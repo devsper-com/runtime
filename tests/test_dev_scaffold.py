@@ -1,11 +1,11 @@
-"""Tests for repo scaffolding (hivemind.dev.scaffold)."""
+"""Tests for repo scaffolding (devsper.dev.scaffold)."""
 
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from hivemind.dev.scaffold import ArchitecturePlan, scaffold_repo
+from devsper.dev.scaffold import ArchitecturePlan, scaffold_repo
 
 
 def test_scaffold_repo_creates_structure():

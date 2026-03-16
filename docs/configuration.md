@@ -1,16 +1,16 @@
 # Configuration
 
-Hivemind uses a **TOML-based configuration** system with Pydantic validation. Priority order: **env** > **project config** > **user config** > **defaults**.
+devsper uses a **TOML-based configuration** system with Pydantic validation. Priority order: **env** > **project config** > **user config** > **defaults**.
 
 **Do not put API keys or secrets in TOML.** Use the [credential store](#credentials-api-keys) (OS keychain) or environment variables. TOML is for non-secret settings only (models, workers, paths, feature flags).
 
 ## Config locations
 
-1. **Project:** `./hivemind.toml` or `./workflow.hivemind.toml` (in current or parent directory)
-2. **User:** `~/.config/hivemind/config.toml`
-3. **Legacy:** `.hivemind/config.toml` (still supported; mapped into the new schema)
+1. **Project:** `./devsper.toml` or `./workflow.devsper.toml` (in current or parent directory)
+2. **User:** `~/.config/devsper/config.toml`
+3. **Legacy:** `.devsper/config.toml` (still supported; mapped into the new schema)
 
-The first existing project file wins (hivemind.toml before workflow.hivemind.toml before .hivemind/config.toml).
+The first existing project file wins (devsper.toml before workflow.devsper.toml before .devsper/config.toml).
 
 ## Schema (v1 format)
 
@@ -87,7 +87,7 @@ Values are applied to `os.environ` when not already set, so existing provider co
 | `role` | string | `"hybrid"` | `"controller"`, `"worker"`, or `"hybrid"` (controller + worker in one process). |
 | `run_id` | string | (none) | Shared run ID for distributed demo; optional. |
 | `rpc_port` | int | 7700 | HTTP port for RPC (health, status, snapshot, control). |
-| `rpc_token` | string | (none) | Optional token for `/snapshot` and `/control` (header `X-Hivemind-Token`). |
+| `rpc_token` | string | (none) | Optional token for `/snapshot` and `/control` (header `X-devsper-Token`). |
 | `max_workers_per_node` | int | 8 | Max concurrent tasks per worker node. |
 | `node_tags` | list[string] | [] | Capability tags (e.g. `["gpu", "high-mem"]`) for routing. |
 | `controller_url` | string | `"http://localhost:7700"` | Controller RPC URL (used by workers and CLI `node status`). |
@@ -98,23 +98,23 @@ See [Distributed mode](distributed.md) for multi-node setup.
 
 ### Top-level (legacy / overrides)
 
-- `events_dir` — Directory for event log files (e.g. `.hivemind/events`).
-- `data_dir` — Base directory for data (e.g. `.hivemind`); memory store path is derived from this.
+- `events_dir` — Directory for event log files (e.g. `.devsper/events`).
+- `data_dir` — Base directory for data (e.g. `.devsper`); memory store path is derived from this.
 
 ## Credentials (API keys)
 
 API keys and secrets are **not** stored in config files. They are managed in one of two ways:
 
-1. **Credential store (recommended)** — OS keychain via the `hivemind credentials` CLI. Stored keys are injected into the environment when config is resolved, so all providers (OpenAI, Anthropic, Azure, GitHub, Gemini) work without code changes.
+1. **Credential store (recommended)** — OS keychain via the `devsper credentials` CLI. Stored keys are injected into the environment when config is resolved, so all providers (OpenAI, Anthropic, Azure, GitHub, Gemini) work without code changes.
 2. **Environment variables** — Set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, etc., in your shell or `.env` (loaded by the CLI before commands run).
 
 **CLI commands:**
 
-- `hivemind credentials set <provider> <key>` — Store a value (prompts; uses keyring).
-- `hivemind credentials list` — List stored entries (no values shown).
-- `hivemind credentials migrate` — Copy credentials from `.env` / TOML into the keyring.
-- `hivemind credentials export <provider>` — Print `KEY=value` lines for that provider (e.g. for `eval` or `.env`).
-- `hivemind credentials delete <provider> <key>` — Remove a credential.
+- `devsper credentials set <provider> <key>` — Store a value (prompts; uses keyring).
+- `devsper credentials list` — List stored entries (no values shown).
+- `devsper credentials migrate` — Copy credentials from `.env` / TOML into the keyring.
+- `devsper credentials export <provider>` — Print `KEY=value` lines for that provider (e.g. for `eval` or `.env`).
+- `devsper credentials delete <provider> <key>` — Remove a credential.
 
 **Supported providers:** `openai`, `anthropic`, `github`, `gemini`, `azure`, `azure_anthropic`. Keys vary (e.g. `api_key`, `token`, `endpoint`, `deployment`, `api_version`). See [CLI](cli.md#credentials) for full usage.
 
@@ -124,14 +124,14 @@ API keys and secrets are **not** stored in config files. They are managed in one
 
 These override any TOML value:
 
-- `HIVEMIND_WORKER_MODEL` — Same as `[models] worker`.
-- `HIVEMIND_PLANNER_MODEL` — Same as `[models] planner`.
-- `HIVEMIND_EVENTS_DIR` — Same as `events_dir`.
-- `HIVEMIND_DATA_DIR` — Same as `data_dir`.
+- `DEVSPER_WORKER_MODEL` — Same as `[models] worker`.
+- `DEVSPER_PLANNER_MODEL` — Same as `[models] planner`.
+- `DEVSPER_EVENTS_DIR` — Same as `events_dir`.
+- `DEVSPER_DATA_DIR` — Same as `data_dir`.
 
 Provider keys (e.g. `OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT_NAME`) can be set in the environment or via the credential store; see [Providers](providers.md).
 
-## Example: full `hivemind.toml`
+## Example: full `devsper.toml`
 
 ```toml
 [swarm]
@@ -167,7 +167,7 @@ deployment = "gpt-4o"
 ## Using config in code
 
 ```python
-from hivemind import get_config, Swarm
+from devsper import get_config, Swarm
 
 # Load global config (all locations + env)
 cfg = get_config()
@@ -175,7 +175,7 @@ print(cfg.worker_model, cfg.planner_model)
 print(cfg.swarm.workers, cfg.tools.top_k)
 
 # Swarm from config file
-swarm = Swarm(config="hivemind.toml")
+swarm = Swarm(config="devsper.toml")
 results = swarm.run("Your task")
 
 # Swarm from config object
@@ -184,5 +184,5 @@ swarm = Swarm(config=cfg)
 
 ## Backward compatibility
 
-- **Legacy paths:** `.hivemind/config.toml` and `~/.config/hivemind/config.toml` are still read. A `[default]` section or top-level keys like `worker_model`, `planner_model`, `events_dir`, `data_dir` are mapped into the new schema.
+- **Legacy paths:** `.devsper/config.toml` and `~/.config/devsper/config.toml` are still read. A `[default]` section or top-level keys like `worker_model`, `planner_model`, `events_dir`, `data_dir` are mapped into the new schema.
 - **API:** `get_config()` returns an object that still has `worker_model`, `planner_model`, `events_dir`, `data_dir` (as properties or fields), so existing code using these names continues to work.

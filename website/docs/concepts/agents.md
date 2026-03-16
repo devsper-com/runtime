@@ -4,7 +4,7 @@ title: Agents
 
 # Agents
 
-Agents are the core execution unit in hivemind. Each agent is a **stateless LLM worker** that receives a single task, calls a language model, optionally runs tools in a loop, and returns a result. Agents do not maintain state between tasks — all persistent state lives in [memory](/docs/concepts/memory), the [knowledge graph](/docs/concepts/knowledge-graph), and the event log.
+Agents are the core execution unit in devsper. Each agent is a **stateless LLM worker** that receives a single task, calls a language model, optionally runs tools in a loop, and returns a result. Agents do not maintain state between tasks — all persistent state lives in [memory](/docs/concepts/memory), the [knowledge graph](/docs/concepts/knowledge-graph), and the event log.
 
 ## Lifecycle
 
@@ -31,7 +31,7 @@ The provider router maps model names to the correct backend. Supported providers
 | Azure     | `azure/gpt-4o`           |
 | GitHub    | `github/gpt-4o`          |
 
-Configure the default model and provider in `hivemind.toml`:
+Configure the default model and provider in `devsper.toml`:
 
 ```toml
 [llm]

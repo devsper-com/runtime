@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from hivemind.intelligence.learning_engine import LearningEngine
-from hivemind.memory.memory_store import MemoryStore, get_default_store, generate_memory_id
-from hivemind.memory.memory_types import MemoryRecord, MemoryType
+from devsper.intelligence.learning_engine import LearningEngine
+from devsper.memory.memory_store import MemoryStore, get_default_store, generate_memory_id
+from devsper.memory.memory_types import MemoryRecord, MemoryType
 
 
 @pytest.fixture

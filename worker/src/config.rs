@@ -2,7 +2,7 @@
 
 use std::env;
 
-use crate::error::{HivemindError, Result};
+use crate::error::{DevsperError, Result};
 use crate::types::NodeRole;
 
 fn env_or(key: &str, default: &str) -> String {
@@ -50,12 +50,12 @@ pub enum ExecutorMode {
 }
 
 impl std::str::FromStr for ExecutorMode {
-    type Err = HivemindError;
+    type Err = DevsperError;
     fn from_str(s: &str) -> Result<Self> {
         match s.to_lowercase().as_str() {
             "subprocess" => Ok(ExecutorMode::Subprocess),
             "pyo3" => Ok(ExecutorMode::PyO3),
-            _ => Err(HivemindError::Config(format!(
+            _ => Err(DevsperError::Config(format!(
                 "Unknown executor mode: {}",
                 s
             ))),
@@ -65,7 +65,7 @@ impl std::str::FromStr for ExecutorMode {
 
 impl NodeConfig {
     pub fn from_env() -> Result<Self> {
-        let role_str = env_or("HIVEMIND_NODE_ROLE", "hybrid");
+        let role_str = env_or("DEVSPER_NODE_ROLE", "hybrid");
         let node_role = match role_str.to_lowercase().as_str() {
             "controller" => NodeRole::Controller,
             "worker" => NodeRole::Worker,
@@ -73,14 +73,14 @@ impl NodeConfig {
             _ => NodeRole::Hybrid,
         };
 
-        let node_id = env_or("HIVEMIND_NODE_ID", "");
+        let node_id = env_or("DEVSPER_NODE_ID", "");
         let node_id = if node_id.is_empty() {
             uuid::Uuid::new_v4().to_string()
         } else {
             node_id
         };
 
-        let tags_str = env_or("HIVEMIND_NODE_TAGS", "");
+        let tags_str = env_or("DEVSPER_NODE_TAGS", "");
         let node_tags = if tags_str.is_empty() {
             vec![]
         } else {
@@ -91,32 +91,32 @@ impl NodeConfig {
                 .collect()
         };
 
-        let run_id = env_or("HIVEMIND_RUN_ID", "");
+        let run_id = env_or("DEVSPER_RUN_ID", "");
         if run_id.is_empty() {
-            return Err(HivemindError::Config(
-                "HIVEMIND_RUN_ID is required".to_string(),
+            return Err(DevsperError::Config(
+                "DEVSPER_RUN_ID is required".to_string(),
             ));
         }
 
-        let executor_str = env_or("HIVEMIND_EXECUTOR_MODE", "subprocess");
+        let executor_str = env_or("DEVSPER_EXECUTOR_MODE", "subprocess");
         let executor_mode = executor_str.parse()?;
 
         Ok(Self {
             node_role,
             node_id,
             node_tags,
-            max_workers: env_u32("HIVEMIND_MAX_WORKERS", 4),
-            rpc_port: env_u16("HIVEMIND_RPC_PORT", 7700),
-            rpc_token: env::var("HIVEMIND_RPC_TOKEN").ok(),
-            redis_url: env_or("HIVEMIND_REDIS_URL", "redis://localhost:6379"),
+            max_workers: env_u32("DEVSPER_MAX_WORKERS", 4),
+            rpc_port: env_u16("DEVSPER_RPC_PORT", 7700),
+            rpc_token: env::var("DEVSPER_RPC_TOKEN").ok(),
+            redis_url: env_or("DEVSPER_REDIS_URL", "redis://localhost:6379"),
             run_id,
-            heartbeat_interval_secs: env_u32("HIVEMIND_HEARTBEAT_INTERVAL", 10) as u64,
-            claim_timeout_secs: env_u32("HIVEMIND_CLAIM_TIMEOUT", 30) as u64,
-            log_level: env_or("HIVEMIND_LOG_LEVEL", "info"),
-            log_format: env_or("HIVEMIND_LOG_FORMAT", "text"),
-            python_bin: env_or("HIVEMIND_PYTHON_BIN", "python3"),
+            heartbeat_interval_secs: env_u32("DEVSPER_HEARTBEAT_INTERVAL", 10) as u64,
+            claim_timeout_secs: env_u32("DEVSPER_CLAIM_TIMEOUT", 30) as u64,
+            log_level: env_or("DEVSPER_LOG_LEVEL", "info"),
+            log_format: env_or("DEVSPER_LOG_FORMAT", "text"),
+            python_bin: env_or("DEVSPER_PYTHON_BIN", "python3"),
             executor_mode,
-            worker_model: env_or("HIVEMIND_WORKER_MODEL", "mock"),
+            worker_model: env_or("DEVSPER_WORKER_MODEL", "mock"),
         })
     }
 }

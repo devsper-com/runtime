@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from hivemind.reasoning.nodes import ReasoningNode
-from hivemind.reasoning.graph import ReasoningGraph
-from hivemind.reasoning.store import ReasoningStore
+from devsper.reasoning.nodes import ReasoningNode
+from devsper.reasoning.graph import ReasoningGraph
+from devsper.reasoning.store import ReasoningStore
 
 
 def test_reasoning_node_has_required_fields():

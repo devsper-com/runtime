@@ -4,8 +4,8 @@ import tempfile
 import os
 from datetime import datetime, timezone, timedelta
 
-from hivemind.types.event import Event, events
-from hivemind.runtime.telemetry import collect_telemetry, print_telemetry_summary
+from devsper.types.event import Event, events
+from devsper.runtime.telemetry import collect_telemetry, print_telemetry_summary
 
 
 def test_telemetry_empty_path():

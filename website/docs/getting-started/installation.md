@@ -4,7 +4,7 @@ title: Installation
 
 # Installation
 
-This guide covers how to install hivemind, configure API keys, and verify your setup.
+This guide covers how to install devsper, configure API keys, and verify your setup.
 
 ## Prerequisites
 
@@ -13,40 +13,40 @@ This guide covers how to install hivemind, configure API keys, and verify your s
 
 ## Install from PyPI
 
-The recommended way to install hivemind:
+The recommended way to install devsper:
 
 ```bash
-pip install hivemind-ai
+pip install devsper
 ```
 
 Or using uv:
 
 ```bash
-uv pip install hivemind-ai
+uv pip install devsper
 ```
 
 ### Optional extras
 
-hivemind ships optional dependency groups for specialized features:
+devsper ships optional dependency groups for specialized features:
 
 ```bash
 # Data science tools (scikit-learn for result consolidation)
-pip install 'hivemind-ai[data]'
+pip install 'devsper[data]'
 
 # Distributed mode (Redis and RPC dependencies)
-pip install 'hivemind-ai[distributed]'
+pip install 'devsper[distributed]'
 
 # Both extras at once
-pip install 'hivemind-ai[data,distributed]'
+pip install 'devsper[data,distributed]'
 ```
 
 ## Development install
 
-To work on hivemind itself or run from the latest source:
+To work on devsper itself or run from the latest source:
 
 ```bash
-git clone https://github.com/hivemind-ai/hivemind.git
-cd hivemind
+git clone https://github.com/devsper/devsper.git
+cd devsper
 ```
 
 Then install in editable mode using uv (preferred):
@@ -63,21 +63,21 @@ pip install -e .
 
 ## Setting up API keys
 
-hivemind needs credentials for at least one LLM provider. Supported providers include OpenAI, Anthropic, Gemini, Azure, and GitHub Models.
+devsper needs credentials for at least one LLM provider. Supported providers include OpenAI, Anthropic, Gemini, Azure, and GitHub Models.
 
 ### Using the credential store (recommended)
 
-hivemind stores API keys in your OS keychain so they never appear in config files or shell history:
+devsper stores API keys in your OS keychain so they never appear in config files or shell history:
 
 ```bash
-hivemind credentials set openai
+devsper credentials set openai
 # You will be prompted to enter your API key securely
 ```
 
 To list stored credentials:
 
 ```bash
-hivemind credentials list
+devsper credentials list
 ```
 
 ### Using environment variables
@@ -93,11 +93,11 @@ Environment variables take the highest priority and override any stored credenti
 
 ### Configuration priority
 
-hivemind resolves configuration in this order (highest to lowest):
+devsper resolves configuration in this order (highest to lowest):
 
 1. Environment variables
-2. Project config (`./hivemind.toml`)
-3. User config (`~/.config/hivemind/config.toml`)
+2. Project config (`./devsper.toml`)
+3. User config (`~/.config/devsper/config.toml`)
 4. Built-in defaults
 
 ## Verifying the installation
@@ -105,17 +105,17 @@ hivemind resolves configuration in this order (highest to lowest):
 Run the built-in diagnostic command to confirm everything is working:
 
 ```bash
-hivemind doctor
+devsper doctor
 ```
 
 This checks your Python version, installed dependencies, credential availability, and network connectivity to configured providers.
 
 ## Initializing a new project
 
-To scaffold a new hivemind project with a default `hivemind.toml` config file:
+To scaffold a new devsper project with a default `devsper.toml` config file:
 
 ```bash
-hivemind init
+devsper init
 ```
 
 This creates a minimal configuration file in the current directory that you can customize. See the [Quickstart](/docs/getting-started/quickstart) for next steps.

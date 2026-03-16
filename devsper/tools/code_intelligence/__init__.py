@@ -1,0 +1,13 @@
+"""Codebase intelligence tools: indexing, dependencies, architecture, API, patterns."""
+
+from devsper.tools.code_intelligence.codebase_indexer import CodebaseIndexerTool
+from devsper.tools.code_intelligence.repository_semantic_index import RepositorySemanticIndexTool
+from devsper.tools.code_intelligence.dependency_graph_builder import DependencyGraphBuilderTool
+from devsper.tools.code_intelligence.architecture_analyzer import ArchitectureAnalyzerTool
+from devsper.tools.code_intelligence.api_surface_extractor import ApiSurfaceExtractorTool
+from devsper.tools.code_intelligence.test_coverage_estimator import TestCoverageEstimatorTool
+from devsper.tools.code_intelligence.module_responsibility_mapper import ModuleResponsibilityMapperTool
+from devsper.tools.code_intelligence.design_pattern_detector import DesignPatternDetectorTool
+from devsper.tools.code_intelligence.refactor_candidate_detector import RefactorCandidateDetectorTool
+from devsper.tools.code_intelligence.large_function_detector import LargeFunctionDetectorTool
+from devsper.tools.code_intelligence.parallel_codebase_analysis import ParallelCodebaseAnalysisTool

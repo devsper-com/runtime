@@ -1,6 +1,6 @@
 """Tests for dev agent roles (architect, backend, frontend, test, review)."""
 
-from hivemind.agents.roles import (
+from devsper.agents.roles import (
     get_role_config,
     ARCHITECT_AGENT,
     BACKEND_AGENT,

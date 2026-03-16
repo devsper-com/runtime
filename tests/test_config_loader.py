@@ -1,13 +1,13 @@
 """Tests for config loader, schema, resolver."""
 
-from hivemind.config import get_config
-from hivemind.config.config_loader import normalize_toml_to_flat
-from hivemind.config.schema import HivemindConfigModel, SwarmConfig, ToolsConfig
+from devsper.config import get_config
+from devsper.config.config_loader import normalize_toml_to_flat
+from devsper.config.schema import devsperConfigModel, SwarmConfig, ToolsConfig
 
 
 def test_get_config_returns_model():
     cfg = get_config()
-    assert isinstance(cfg, HivemindConfigModel)
+    assert isinstance(cfg, devsperConfigModel)
     assert hasattr(cfg, "worker_model")
     assert hasattr(cfg, "planner_model")
     assert hasattr(cfg, "events_dir")
@@ -25,10 +25,10 @@ def test_config_has_swarm_and_tools():
 
 
 def test_env_override_worker_model(monkeypatch):
-    monkeypatch.setenv("HIVEMIND_WORKER_MODEL", "test-worker")
+    monkeypatch.setenv("DEVSPER_WORKER_MODEL", "test-worker")
     cfg = get_config()
     assert cfg.worker_model == "test-worker"
-    monkeypatch.delenv("HIVEMIND_WORKER_MODEL", raising=False)
+    monkeypatch.delenv("DEVSPER_WORKER_MODEL", raising=False)
 
 
 def test_normalize_toml_legacy():

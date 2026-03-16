@@ -32,7 +32,7 @@ def _check_deps() -> None:
     try:
         import redis.asyncio  # noqa: F401
     except ImportError:
-        print("Redis required. Install: pip install 'hivemind-ai[distributed]'", file=sys.stderr)
+        print("Redis required. Install: pip install 'devsper[distributed]'", file=sys.stderr)
         sys.exit(1)
 
 
@@ -50,20 +50,20 @@ def _default_questions() -> list[tuple[str, str]]:
 async def main_async(config_path: str) -> dict:
     _check_deps()
     from uuid import uuid4
-    from hivemind.config import get_config
-    from hivemind.types.task import Task, TaskStatus
-    from hivemind.utils.event_logger import EventLog
-    from hivemind.swarm.scheduler import Scheduler
-    from hivemind.bus.backends.redis import RedisBus
-    from hivemind.cluster.registry import ClusterRegistry
-    from hivemind.cluster.election import LeaderElector
-    from hivemind.cluster.state_backend import RedisStateBackend
-    from hivemind.cluster.router import TaskRouter
-    from hivemind.nodes.controller import ControllerNode
+    from devsper.config import get_config
+    from devsper.types.task import Task, TaskStatus
+    from devsper.utils.event_logger import EventLog
+    from devsper.swarm.scheduler import Scheduler
+    from devsper.bus.backends.redis import RedisBus
+    from devsper.cluster.registry import ClusterRegistry
+    from devsper.cluster.election import LeaderElector
+    from devsper.cluster.state_backend import RedisStateBackend
+    from devsper.cluster.router import TaskRouter
+    from devsper.nodes.controller import ControllerNode
 
     cfg = get_config(config_path=config_path)
-    run_id = getattr(getattr(cfg, "nodes", None), "run_id", None) or os.environ.get("HIVEMIND_RUN_ID") or "parallel-survey"
-    events_dir = getattr(cfg, "events_dir", ".hivemind/events")
+    run_id = getattr(getattr(cfg, "nodes", None), "run_id", None) or os.environ.get("DEVSPER_RUN_ID") or "parallel-survey"
+    events_dir = getattr(cfg, "events_dir", ".devsper/events")
     event_log = EventLog(events_folder_path=events_dir, run_id=run_id)
 
     # Fixed parallel tasks: all independent (no dependencies) — all ready at once
@@ -83,8 +83,8 @@ async def main_async(config_path: str) -> dict:
     registry = ClusterRegistry(redis_client, run_id)
     elector = LeaderElector(redis_client, run_id)
     try:
-        import hivemind
-        version = getattr(hivemind, "__version__", "1.10.0")
+        import devsper
+        version = getattr(devsper, "__version__", "1.10.0")
     except Exception:
         version = "1.10.0"
     router = TaskRouter(controller_version=version)

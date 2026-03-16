@@ -1,6 +1,6 @@
 """Tests for specialized agent roles."""
 
-from hivemind.agents.roles import (
+from devsper.agents.roles import (
     get_role_config,
     infer_role_from_description,
     RESEARCH_AGENT,

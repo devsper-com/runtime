@@ -5,7 +5,7 @@ use redis::AsyncCommands;
 use crate::error::Result;
 use crate::types::NodeInfo;
 
-const REGISTRY_KEY_PREFIX: &str = "hivemind:cluster:";
+const REGISTRY_KEY_PREFIX: &str = "devsper:cluster:";
 const REGISTRY_NODES_SUFFIX: &str = ":nodes";
 const REGISTRY_TTL: u64 = 60;
 

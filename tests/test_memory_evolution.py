@@ -2,16 +2,16 @@
 
 from datetime import datetime, timezone, timedelta
 
-from hivemind.memory.memory_types import MemoryRecord, MemoryType
-from hivemind.memory.summarizer import summarize_extractive, summarize
-from hivemind.memory.namespaces import (
+from devsper.memory.memory_types import MemoryRecord, MemoryType
+from devsper.memory.summarizer import summarize_extractive, summarize
+from devsper.memory.namespaces import (
     add_namespace,
     record_namespace,
     filter_by_namespace,
     RESEARCH_MEMORY,
     namespace_tag,
 )
-from hivemind.memory.scoring import recency_score, score_and_sort
+from devsper.memory.scoring import recency_score, score_and_sort
 
 
 def test_summarize_extractive_empty():

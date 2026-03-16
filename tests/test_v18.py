@@ -7,20 +7,20 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from hivemind.knowledge.query import (
+from devsper.knowledge.query import (
     query_for_planning,
     format_planning_context,
     PlanningContext,
 )
-from hivemind.knowledge.knowledge_graph import KnowledgeGraph, NODE_CONCEPT, NODE_METHOD
-from hivemind.knowledge.extractor import KnowledgeExtractor, KGNode, KGEdge
-from hivemind.memory.memory_store import MemoryStore, generate_memory_id
-from hivemind.memory.memory_types import MemoryRecord, MemoryType
-from hivemind.memory.memory_index import MemoryIndex
-from hivemind.memory.consolidation import MemoryConsolidator, ConsolidationReport
-from hivemind.types.task import Task, TaskStatus
-from hivemind.types.event import events
-from hivemind.utils.event_logger import EventLog
+from devsper.knowledge.knowledge_graph import KnowledgeGraph, NODE_CONCEPT, NODE_METHOD
+from devsper.knowledge.extractor import KnowledgeExtractor, KGNode, KGEdge
+from devsper.memory.memory_store import MemoryStore, generate_memory_id
+from devsper.memory.memory_types import MemoryRecord, MemoryType
+from devsper.memory.memory_index import MemoryIndex
+from devsper.memory.consolidation import MemoryConsolidator, ConsolidationReport
+from devsper.types.task import Task, TaskStatus
+from devsper.types.event import events
+from devsper.utils.event_logger import EventLog
 
 
 # --- Planning context ---
@@ -35,7 +35,7 @@ def test_planning_context_injected_when_confident():
     kg.add_or_update_node("method:BERT", NODE_METHOD, "BERT")
     kg.save = MagicMock()
 
-    planner = __import__("hivemind.swarm.planner", fromlist=["Planner"]).Planner(
+    planner = __import__("devsper.swarm.planner", fromlist=["Planner"]).Planner(
         model_name="mock",
         event_log=EventLog(),
         knowledge_graph=kg,
@@ -43,7 +43,7 @@ def test_planning_context_injected_when_confident():
         min_confidence=0.30,
     )
     task = Task(id="root", description="Analyze diffusion and transformer models")
-    with patch("hivemind.swarm.planner.generate", return_value="1. Step one\n2. Step two"):
+    with patch("devsper.swarm.planner.generate", return_value="1. Step one\n2. Step two"):
         subtasks = planner.plan(task)
     assert len(subtasks) >= 1
     # Prompt should have been built with KG section (we can't easily assert prompt content without capturing generate call)
@@ -62,7 +62,7 @@ def test_planning_context_skipped_when_low_confidence():
     store = MemoryStore(db_path=tempfile.mktemp(suffix=".db"))
     kg = KnowledgeGraph(store=store)
     # Empty graph → confidence 0
-    planner = __import__("hivemind.swarm.planner", fromlist=["Planner"]).Planner(
+    planner = __import__("devsper.swarm.planner", fromlist=["Planner"]).Planner(
         model_name="mock",
         event_log=EventLog(),
         knowledge_graph=kg,
@@ -70,7 +70,7 @@ def test_planning_context_skipped_when_low_confidence():
         min_confidence=0.30,
     )
     task = Task(id="root", description="Analyze quantum computing")
-    with patch("hivemind.swarm.planner.generate", return_value="1. Step one\n2. Step two"):
+    with patch("devsper.swarm.planner.generate", return_value="1. Step one\n2. Step two"):
         planner.plan(task)
     log = planner.event_log.read_events()
     injected = [e for e in log if e.type == events.PLANNER_KG_CONTEXT_INJECTED]
@@ -86,7 +86,7 @@ def test_planning_context_skipped_when_low_confidence():
 
 def test_synthesizer_deduplicates_similar_memories():
     """Near-duplicate records merged before prompt (by embedding similarity)."""
-    from hivemind.intelligence.synthesis import _deduplicate_by_similarity
+    from devsper.intelligence.synthesis import _deduplicate_by_similarity
 
     emb = [0.1] * 64
     emb2 = [0.11] * 64
@@ -98,7 +98,7 @@ def test_synthesizer_deduplicates_similar_memories():
 
 def test_synthesizer_cites_run_ids():
     """_build_synthesis_prompt includes [run:SHORT_ID] in memory block."""
-    from hivemind.intelligence.synthesis import CrossRunSynthesizer
+    from devsper.intelligence.synthesis import CrossRunSynthesizer
 
     store = MemoryStore(db_path=tempfile.mktemp(suffix=".db"))
     index = MemoryIndex(store=store)
@@ -171,7 +171,7 @@ def store_with_records():
 def test_consolidation_clusters_similar(store_with_records):
     """5 similar records → 1 summary + 5 archived (or dry_run report)."""
     pytest.importorskip("sklearn")
-    from hivemind.memory.embeddings import embed_text
+    from devsper.memory.embeddings import embed_text
 
     store = store_with_records
     emb = embed_text("Rate limiting in APIs is important.")
@@ -199,7 +199,7 @@ def test_consolidation_clusters_similar(store_with_records):
 def test_consolidation_dry_run_no_writes(store_with_records):
     """dry_run=True → nothing written to store (archived count in report only)."""
     pytest.importorskip("sklearn")
-    from hivemind.memory.embeddings import embed_text
+    from devsper.memory.embeddings import embed_text
 
     store = store_with_records
     emb = embed_text("Same topic here.")
@@ -245,7 +245,7 @@ def test_consolidation_archived_excluded_from_query(store_with_records):
 
 def test_cross_run_query(store_with_records):
     """Memories from 3 different run_ids all returned by query_across_runs."""
-    from hivemind.memory.embeddings import embed_text
+    from devsper.memory.embeddings import embed_text
 
     store = store_with_records
     index = MemoryIndex(store=store)

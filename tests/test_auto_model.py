@@ -1,6 +1,6 @@
 """Tests for auto model selection (config planner/worker = 'auto')."""
 
-from hivemind.utils.models import resolve_model
+from devsper.utils.models import resolve_model
 
 
 def test_resolve_model_auto_planning():

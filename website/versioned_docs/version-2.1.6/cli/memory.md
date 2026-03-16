@@ -2,23 +2,23 @@
 title: "CLI: memory"
 ---
 
-# hivemind memory
+# devsper memory
 
 List and manage memory entries from the default memory store.
 
 ## Usage
 
 ```bash
-hivemind memory [--limit N]
-hivemind memory consolidate [--dry-run] [--min-cluster-size 3]
+devsper memory [--limit N]
+devsper memory consolidate [--dry-run] [--min-cluster-size 3]
 ```
 
 ## Examples
 
 ```bash
-hivemind memory
-hivemind memory --limit 50
-hivemind memory consolidate --dry-run
+devsper memory
+devsper memory --limit 50
+devsper memory consolidate --dry-run
 ```
 
 ## Behavior

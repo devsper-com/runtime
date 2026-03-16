@@ -1,8 +1,8 @@
 """Test Swarm entrypoint: run(user_task) returns dict[task_id -> result]."""
 from unittest.mock import patch
 
-from hivemind.swarm.swarm import Swarm
-from hivemind.types.event import events
+from devsper.swarm.swarm import Swarm
+from devsper.types.event import events
 
 
 MOCK_NUMBERED_RESPONSE = """1. First step
@@ -17,8 +17,8 @@ def test_swarm_run_returns_task_id_to_result():
     """Swarm.run() orchestrates planner → scheduler → executor and returns task_id → result."""
     # Use a task that triggers GENERAL strategy so LLM planner is used (5 steps)
     with (
-        patch("hivemind.swarm.planner.generate", return_value=MOCK_NUMBERED_RESPONSE),
-        patch("hivemind.agents.agent.generate", side_effect=["out_1", "out_2", "out_3", "out_4", "out_5"]),
+        patch("devsper.swarm.planner.generate", return_value=MOCK_NUMBERED_RESPONSE),
+        patch("devsper.agents.agent.generate", side_effect=["out_1", "out_2", "out_3", "out_4", "out_5"]),
     ):
         swarm = Swarm(worker_count=2, worker_model="gpt-4o", planner_model="gpt-4o")
         result = swarm.run("Summarize swarm intelligence in one paragraph.")
@@ -31,8 +31,8 @@ def test_swarm_run_returns_task_id_to_result():
 def test_swarm_emits_swarm_started_and_finished():
     """Swarm emits SWARM_STARTED and SWARM_FINISHED around the pipeline."""
     with (
-        patch("hivemind.swarm.planner.generate", return_value=MOCK_NUMBERED_RESPONSE),
-        patch("hivemind.agents.agent.generate", side_effect=["x"] * 5),
+        patch("devsper.swarm.planner.generate", return_value=MOCK_NUMBERED_RESPONSE),
+        patch("devsper.agents.agent.generate", side_effect=["x"] * 5),
     ):
         swarm = Swarm(worker_count=2, worker_model="gpt-4o", planner_model="gpt-4o")
         swarm.run("Summarize in one sentence.")

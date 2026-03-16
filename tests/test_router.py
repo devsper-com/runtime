@@ -1,6 +1,6 @@
 """Test provider router: model name → provider, generate(model, prompt) via utils.models."""
-from hivemind.providers.router import ProviderRouter, _model_to_vendor, _parse_model_spec
-from hivemind.utils.models import generate
+from devsper.providers.router import ProviderRouter, _model_to_vendor, _parse_model_spec
+from devsper.utils.models import generate
 
 
 def test_parse_model_spec_provider_colon_model():

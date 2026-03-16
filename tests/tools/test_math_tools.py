@@ -2,12 +2,12 @@
 
 import pytest
 
-from hivemind.tools.math.calculate_expression import CalculateExpressionTool
-from hivemind.tools.math.mean_std import MeanStdTool
-from hivemind.tools.math.correlation import CorrelationTool
-from hivemind.tools.math.histogram import HistogramTool
-from hivemind.tools.math.random_sample import RandomSampleTool
-from hivemind.tools.math.distribution_summary import DistributionSummaryTool
+from devsper.tools.math.calculate_expression import CalculateExpressionTool
+from devsper.tools.math.mean_std import MeanStdTool
+from devsper.tools.math.correlation import CorrelationTool
+from devsper.tools.math.histogram import HistogramTool
+from devsper.tools.math.random_sample import RandomSampleTool
+from devsper.tools.math.distribution_summary import DistributionSummaryTool
 
 
 def test_calculate_expression():

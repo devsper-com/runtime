@@ -4,56 +4,56 @@ title: Authoring Plugins
 
 # Authoring Plugins
 
-This guide walks through creating a hivemind plugin from scratch. A plugin is a Python package that registers one or more tools via the `hivemind.plugins` entry point.
+This guide walks through creating a devsper plugin from scratch. A plugin is a Python package that registers one or more tools via the `devsper.plugins` entry point.
 
 ## Project Structure
 
 A minimal plugin package looks like this:
 
 ```
-hivemind-plugin-example/
-  hivemind_plugin_example/
+devsper-plugin-example/
+  devsper_plugin_example/
     __init__.py
   pyproject.toml
   README.md
 ```
 
-The Python package name uses underscores (`hivemind_plugin_example`) while the distribution name uses hyphens (`hivemind-plugin-example`).
+The Python package name uses underscores (`devsper_plugin_example`) while the distribution name uses hyphens (`devsper-plugin-example`).
 
 ## pyproject.toml
 
-The entry point declaration is what tells hivemind about your plugin:
+The entry point declaration is what tells devsper about your plugin:
 
 ```toml
 [project]
-name = "hivemind-plugin-example"
+name = "devsper-plugin-example"
 version = "0.1.0"
-description = "An example hivemind plugin"
+description = "An example devsper plugin"
 license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
-    "hivemind-ai",
+    "devsper",
 ]
 
-[project.entry-points."hivemind.plugins"]
-example = "hivemind_plugin_example:load"
+[project.entry-points."devsper.plugins"]
+example = "devsper_plugin_example:load"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["hivemind_plugin_example"]
+packages = ["devsper_plugin_example"]
 ```
 
-The key section is `[project.entry-points."hivemind.plugins"]`. The left side (`example`) is the plugin name used by the loader. The right side points to a callable -- typically a `load` function in your package.
+The key section is `[project.entry-points."devsper.plugins"]`. The left side (`example`) is the plugin name used by the loader. The right side points to a callable -- typically a `load` function in your package.
 
 ## Implementing a Tool
 
-Tools subclass `Tool` from `hivemind.tools.base` and define four attributes plus a `run` method:
+Tools subclass `Tool` from `devsper.tools.base` and define four attributes plus a `run` method:
 
 ```python
-from hivemind.tools.base import Tool
+from devsper.tools.base import Tool
 
 class WordCountTool(Tool):
     name = "word_count"
@@ -101,8 +101,8 @@ Valid categories include: `research`, `coding`, `data_science`, `documents`, `ex
 Your entry point callable must either return a list of `Tool` instances or call `register()` directly:
 
 ```python
-from hivemind.tools.base import Tool
-from hivemind.tools.registry import register
+from devsper.tools.base import Tool
+from devsper.tools.registry import register
 
 class WordCountTool(Tool):
     # ... (as above)
@@ -126,13 +126,13 @@ Install your plugin in editable mode and verify it loads:
 
 ```bash
 pip install -e .
-hivemind doctor
+devsper doctor
 ```
 
 You can also validate your plugin structure with the built-in test command:
 
 ```bash
-hivemind reg test
+devsper reg test
 ```
 
 This checks that your `pyproject.toml` has the required fields, that the entry point loads without errors, and that it returns valid `Tool` objects.
@@ -140,7 +140,7 @@ This checks that your `pyproject.toml` has the required fields, that the entry p
 To test the tool itself:
 
 ```python
-from hivemind_plugin_example import load
+from devsper_plugin_example import load
 
 tools = load()
 result = tools[0].run(text="hello world")
@@ -152,9 +152,9 @@ assert result == "2 words"
 Here is a full plugin that provides an echo tool:
 
 ```python
-# hivemind_plugin_echo/__init__.py
-from hivemind.tools.base import Tool
-from hivemind.tools.registry import register
+# devsper_plugin_echo/__init__.py
+from devsper.tools.base import Tool
+from devsper.tools.registry import register
 
 class EchoTool(Tool):
     name = "echo"

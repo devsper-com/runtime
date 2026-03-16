@@ -1,9 +1,9 @@
 """Tests for speculative execution."""
 
 import pytest
-from hivemind.types.task import Task, TaskStatus
-from hivemind.swarm.scheduler import Scheduler
-from hivemind.swarm.speculation import (
+from devsper.types.task import Task, TaskStatus
+from devsper.swarm.scheduler import Scheduler
+from devsper.swarm.speculation import (
     get_speculative_candidates,
     confirm_speculative,
     discard_speculative,

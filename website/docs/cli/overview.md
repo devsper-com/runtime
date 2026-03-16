@@ -4,24 +4,24 @@ title: CLI Overview
 
 # CLI Overview
 
-The Hivemind CLI is invoked as **`hivemind`** (installed with the `hivemind-ai` package). Run `hivemind --help` or `hivemind <command> --help` for usage and examples.
+The devsper CLI is invoked as **`devsper`** (installed with the `devsper` package). Run `devsper --help` or `devsper <command> --help` for usage and examples.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `hivemind run` | Run a swarm task |
-| `hivemind init` | Initialize a new project |
-| `hivemind doctor` | Verify environment and configuration |
-| `hivemind tui` | Launch the terminal UI |
-| `hivemind workflow` | List, validate, or run workflows |
-| `hivemind memory` | List or consolidate memory entries |
-| `hivemind credentials` | Manage API keys via OS keychain |
-| `hivemind node` | Distributed mode commands |
-| `hivemind query` | Query the knowledge graph |
-| `hivemind analyze` | Analyze a run or repository |
-| `hivemind cache` | Manage the task result cache |
-| `hivemind upgrade` | Check for and install updates |
+| `devsper run` | Run a swarm task |
+| `devsper init` | Initialize a new project |
+| `devsper doctor` | Verify environment and configuration |
+| `devsper tui` | Launch the terminal UI |
+| `devsper workflow` | List, validate, or run workflows |
+| `devsper memory` | List or consolidate memory entries |
+| `devsper credentials` | Manage API keys via OS keychain |
+| `devsper node` | Distributed mode commands |
+| `devsper query` | Query the knowledge graph |
+| `devsper analyze` | Analyze a run or repository |
+| `devsper cache` | Manage the task result cache |
+| `devsper upgrade` | Check for and install updates |
 
 ## Global Flags
 

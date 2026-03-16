@@ -24,8 +24,8 @@ from examples._common import (
 )
 from examples._config import get_planner_model, get_worker_model
 
-from hivemind.swarm.swarm import Swarm
-from hivemind.utils.event_logger import EventLog
+from devsper.swarm.swarm import Swarm
+from devsper.utils.event_logger import EventLog
 
 
 def _iris_csv_path() -> Path:

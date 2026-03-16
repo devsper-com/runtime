@@ -2,22 +2,22 @@
 title: "CLI: run"
 ---
 
-# hivemind run
+# devsper run
 
 Runs the swarm with the given task. The swarm plans subtasks, runs them with agents (with tools and memory if configured), and prints results.
 
 ## Usage
 
 ```bash
-hivemind run "task description"
+devsper run "task description"
 ```
 
 ## Examples
 
 ```bash
-hivemind run "analyze diffusion models"
-hivemind run "Summarize swarm intelligence in one paragraph."
-hivemind run --summary    # print only run summary
+devsper run "analyze diffusion models"
+devsper run "Summarize swarm intelligence in one paragraph."
+devsper run --summary    # print only run summary
 ```
 
 ## Behavior

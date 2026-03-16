@@ -1,12 +1,12 @@
-"""Tests for debug loop (hivemind.dev.debugger)."""
+"""Tests for debug loop (devsper.dev.debugger)."""
 
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from hivemind.dev.sandbox import Sandbox
-from hivemind.dev.debugger import debug_loop, DebugResult
+from devsper.dev.sandbox import Sandbox
+from devsper.dev.debugger import debug_loop, DebugResult
 
 
 def test_debug_loop_passes_when_tests_pass():

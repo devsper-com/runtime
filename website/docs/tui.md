@@ -1,18 +1,18 @@
 # Terminal UI (TUI)
 
-The Hivemind TUI is a terminal interface for running the swarm and inspecting runs. Launch it with:
+The devsper TUI is a terminal interface for running the swarm and inspecting runs. Launch it with:
 
 ```bash
-hivemind tui
+devsper tui
 ```
 
-(Or run `hivemind` with no subcommand.)
+(Or run `devsper` with no subcommand.)
 
 ## Layout
 
 ### Main screen
 
-- **Branding** — Title line: “Hivemind — Distributed AI Swarm Runtime.”
+- **Branding** — Title line: “devsper — Distributed AI Swarm Runtime.”
 - **Prompt box** — Single-line (or multi-line) input for the task. Placeholder suggests a sample task.
 - **Action hints** — Short reminder of keybindings (Esc, Enter, r, o, q).
 - **Output container** — Large scrollable area showing “Response” and the last run’s result. While a run is in progress, a loading state and step status (e.g. “Planning…”, “Step 2 of 5: …”) are shown.
@@ -59,4 +59,4 @@ In the **Tasks** panel, use the arrow keys to select a task row and press **Ente
 4. When the run finishes, the response area shows the aggregated result (e.g. last task result or combined result).
 5. Open the Dashboard with **d** to see tasks, swarm graph, memory, and logs from this run.
 
-Events are written to the configured events directory (e.g. `.hivemind/events`), so you can also inspect or replay runs from the CLI or scripts.
+Events are written to the configured events directory (e.g. `.devsper/events`), so you can also inspect or replay runs from the CLI or scripts.

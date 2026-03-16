@@ -2,9 +2,9 @@
 
 use redis::AsyncCommands;
 
-use crate::error::{HivemindError, Result};
+use crate::error::{DevsperError, Result};
 
-const LEADER_KEY_PREFIX: &str = "hivemind:leader:";
+const LEADER_KEY_PREFIX: &str = "devsper:leader:";
 const LEADER_TTL: u64 = 15;
 const REFRESH_INTERVAL_SECS: u64 = 5;
 
@@ -29,7 +29,7 @@ impl LeaderElector {
             .arg(LEADER_TTL)
             .query_async(&mut self.redis)
             .await
-            .map_err(HivemindError::Redis)?;
+            .map_err(DevsperError::Redis)?;
         Ok(result)
     }
 
@@ -49,7 +49,7 @@ impl LeaderElector {
             .arg(LEADER_TTL as i32)
             .invoke_async(&mut self.redis)
             .await
-            .map_err(HivemindError::Redis)?;
+            .map_err(DevsperError::Redis)?;
         Ok(result != 0)
     }
 
@@ -69,7 +69,7 @@ impl LeaderElector {
             .arg(node_id)
             .invoke_async::<_, ()>(&mut self.redis)
             .await
-            .map_err(HivemindError::Redis)?;
+            .map_err(DevsperError::Redis)?;
         Ok(())
     }
 

@@ -2,9 +2,9 @@
 
 import pytest
 
-from hivemind.tools.tool_runner import run_tool
-from hivemind.tools.registry import register
-from hivemind.tools.base import Tool
+from devsper.tools.tool_runner import run_tool
+from devsper.tools.registry import register
+from devsper.tools.base import Tool
 
 
 class _EchoTool(Tool):

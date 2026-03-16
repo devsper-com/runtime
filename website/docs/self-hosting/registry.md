@@ -4,7 +4,7 @@ title: Self-hosting the Registry
 
 # Self-hosting the Registry
 
-You can run your own instance of the hivemind plugin registry. The entire stack -- API, web UI, PostgreSQL, and Caddy reverse proxy -- is defined in a single Docker Compose file.
+You can run your own instance of the devsper plugin registry. The entire stack -- API, web UI, PostgreSQL, and Caddy reverse proxy -- is defined in a single Docker Compose file.
 
 ## Prerequisites
 
@@ -19,8 +19,8 @@ Optional: S3-compatible object store for package files, GitHub/Google OAuth cred
 ### 1. Clone and Configure
 
 ```bash
-git clone https://github.com/rithul/hivemind.git
-cd hivemind/registry
+git clone https://github.com/rithul/devsper.git
+cd devsper/registry
 cp .env.prod.example .env.prod
 ```
 
@@ -98,7 +98,7 @@ Back up PostgreSQL with `pg_dump`:
 
 ```bash
 docker compose -f docker-compose.prod.yml exec postgres \
-  pg_dump -U registry hivemind_registry > backup_$(date +%Y%m%d).sql
+  pg_dump -U registry devsper_registry > backup_$(date +%Y%m%d).sql
 ```
 
 Database data is persisted in the `postgres-data` Docker volume. Set up automated daily backups to S3 or another durable store for production. If using S3 for package files, those are already stored durably.
@@ -131,14 +131,14 @@ Migrations run automatically on restart.
 ## Pointing the CLI at Your Instance
 
 ```bash
-export HIVEMIND_REGISTRY_URL=https://registry.example.com
-hivemind reg login
+export DEVSPER_REGISTRY_URL=https://registry.example.com
+devsper reg login
 ```
 
 Or install packages directly with pip:
 
 ```bash
-pip install --index-url https://registry.example.com/simple/ hivemind-plugin-example
+pip install --index-url https://registry.example.com/simple/ devsper-plugin-example
 ```
 
 ## Next Steps

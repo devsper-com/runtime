@@ -15,6 +15,6 @@ node_tags = ["default"]
 backend = "redis"
 redis_url = "redis://localhost:6379"
 
-# GitHub provider: set GITHUB_TOKEN in env or use hivemind credentials set github token
+# GitHub provider: set GITHUB_TOKEN in env or use devsper credentials set github token
 [models]
 worker = "github:gpt-4o"

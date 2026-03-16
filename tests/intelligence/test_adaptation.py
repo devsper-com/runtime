@@ -2,9 +2,9 @@
 
 from datetime import datetime, timezone, timedelta
 
-from hivemind.types.task import Task, TaskStatus
-from hivemind.swarm.scheduler import Scheduler
-from hivemind.intelligence.adaptation import (
+from devsper.types.task import Task, TaskStatus
+from devsper.swarm.scheduler import Scheduler
+from devsper.intelligence.adaptation import (
     detect_slow_tasks,
     detect_failed_tasks,
     suggest_alternative_tasks,

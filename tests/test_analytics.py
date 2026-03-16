@@ -2,7 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from hivemind.analytics.tool_analytics import ToolAnalytics
+from devsper.analytics.tool_analytics import ToolAnalytics
 
 
 def test_record_and_get_stats():

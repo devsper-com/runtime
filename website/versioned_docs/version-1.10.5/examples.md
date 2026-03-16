@@ -8,7 +8,7 @@ Example workflows are under **`examples/`**. Run them from the **project root** 
 
 **Prerequisites:** Redis (e.g. `docker compose up -d`), optional deps: `uv sync --extra distributed`.
 
-1. Start workers: `uv run python examples/distributed/run_worker.py` — or use the **Rust worker** (`HIVEMIND_WORKER_MODEL=github:gpt-4o`, `HIVEMIND_PYTHON_BIN=.venv/bin/python`, `HIVEMIND_RPC_PORT=0`) for higher throughput.
+1. Start workers: `uv run python examples/distributed/run_worker.py` — or use the **Rust worker** (`DEVSPER_WORKER_MODEL=github:gpt-4o`, `DEVSPER_PYTHON_BIN=.venv/bin/python`, `DEVSPER_RPC_PORT=0`) for higher throughput.
 2. Submit a job: `uv run python examples/distributed/run_controller.py "Summarize swarm intelligence in one sentence."` — use `--parallel` to spread tasks across workers.
 
 Configs: `examples/distributed/controller.toml`, `examples/distributed/worker.toml`. See [Distributed mode](/docs/distributed).
@@ -22,8 +22,8 @@ Configs: `examples/distributed/controller.toml`, `examples/distributed/worker.to
 **CLI:**
 
 ```bash
-hivemind research papers/
-hivemind research .
+devsper research papers/
+devsper research .
 ```
 
 **Script:**
@@ -43,8 +43,8 @@ uv run python examples/research/literature_review.py [directory]
 **CLI:**
 
 ```bash
-hivemind analyze path/to/repo
-hivemind analyze .
+devsper analyze path/to/repo
+devsper analyze .
 ```
 
 **Script:**
@@ -116,4 +116,4 @@ uv run python examples/experiments/parameter_sweep.py --params '{"lr":[0.01,0.1]
 - **`examples/experiments/monte_carlo_demo.py`** — Monte Carlo experiment demo.
 - **`examples/data_science/run_experiments.py`** — Run experiments pipeline.
 
-Use **`uv run python examples/<path>/<script>.py`** from the project root, or the CLI where applicable (`hivemind research`, `hivemind analyze`).
+Use **`uv run python examples/<path>/<script>.py`** from the project root, or the CLI where applicable (`devsper research`, `devsper analyze`).

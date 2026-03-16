@@ -6,18 +6,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hivemind.agents.critic import CriticAgent, CritiqueResult
-from hivemind.agents.message_bus import SwarmMessageBus, AgentMessage
-from hivemind.types.task import Task, TaskStatus
-from hivemind.types.event import events
-from hivemind.utils.event_logger import EventLog
-from hivemind.workflow.runner import (
+from devsper.agents.critic import CriticAgent, CritiqueResult
+from devsper.agents.message_bus import SwarmMessageBus, AgentMessage
+from devsper.types.task import Task, TaskStatus
+from devsper.types.event import events
+from devsper.utils.event_logger import EventLog
+from devsper.workflow.runner import (
     WorkflowStepError,
     try_parse_structured,
     _format_schema,
     _strip_markdown_json,
 )
-from hivemind.workflow.schema import OutputField, WorkflowDefinition, WorkflowStep
+from devsper.workflow.schema import OutputField, WorkflowDefinition, WorkflowStep
 
 
 # --- Critic ---
@@ -25,9 +25,9 @@ from hivemind.workflow.schema import OutputField, WorkflowDefinition, WorkflowSt
 
 def test_critic_triggers_retry_below_threshold():
     """Mock critique score 0.5 → task re-queued (executor logic)."""
-    from hivemind.swarm.executor import Executor
-    from hivemind.swarm.scheduler import Scheduler
-    from hivemind.agents.agent import Agent
+    from devsper.swarm.executor import Executor
+    from devsper.swarm.scheduler import Scheduler
+    from devsper.agents.agent import Agent
 
     log = EventLog()
     scheduler = Scheduler()
@@ -62,7 +62,7 @@ def test_critic_triggers_retry_below_threshold():
                 critic_roles=["research", "analysis", "code"],
                 fast_model="mock",
             )
-            with patch("hivemind.agents.agent.generate", side_effect=["first", "second"]):
+            with patch("devsper.agents.agent.generate", side_effect=["first", "second"]):
                 asyncio.run(executor.run())
 
             assert mock_critique.called
@@ -74,9 +74,9 @@ def test_critic_triggers_retry_below_threshold():
 
 def test_critic_no_retry_above_threshold():
     """Score 0.85 → no retry."""
-    from hivemind.swarm.executor import Executor
-    from hivemind.swarm.scheduler import Scheduler
-    from hivemind.agents.agent import Agent
+    from devsper.swarm.executor import Executor
+    from devsper.swarm.scheduler import Scheduler
+    from devsper.agents.agent import Agent
 
     log = EventLog()
     scheduler = Scheduler()
@@ -108,7 +108,7 @@ def test_critic_no_retry_above_threshold():
             critic_roles=["research"],
             fast_model="mock",
         )
-        with patch("hivemind.agents.agent.generate", return_value="result"):
+        with patch("devsper.agents.agent.generate", return_value="result"):
             asyncio.run(executor.run())
 
         assert mock_critique.called
@@ -118,9 +118,9 @@ def test_critic_no_retry_above_threshold():
 
 def test_critic_max_one_retry():
     """Already-retried task not critiqued again (retry_count >= 1 skips retry)."""
-    from hivemind.swarm.executor import Executor
-    from hivemind.swarm.scheduler import Scheduler
-    from hivemind.agents.agent import Agent
+    from devsper.swarm.executor import Executor
+    from devsper.swarm.scheduler import Scheduler
+    from devsper.agents.agent import Agent
 
     log = EventLog()
     scheduler = Scheduler()
@@ -146,7 +146,7 @@ def test_critic_max_one_retry():
             critic_roles=["research"],
             fast_model="mock",
         )
-        with patch("hivemind.agents.agent.generate", return_value="result"):
+        with patch("devsper.agents.agent.generate", return_value="result"):
             asyncio.run(executor.run())
 
         assert not mock_critique.called
@@ -183,9 +183,9 @@ def test_message_bus_excludes_own_messages():
 
 def test_prefetch_consumed_on_task_start():
     """Prefetch result used; memory not re-fetched (executor passes prefetch_result to agent)."""
-    from hivemind.swarm.prefetcher import TaskPrefetcher, PrefetchResult
-    from hivemind.agents.agent import Agent
-    from hivemind.types.task import Task
+    from devsper.swarm.prefetcher import TaskPrefetcher, PrefetchResult
+    from devsper.agents.agent import Agent
+    from devsper.types.task import Task
 
     memory_router = MagicMock()
     memory_router.get_memory_context = MagicMock(return_value="cached memory")
@@ -204,7 +204,7 @@ def test_prefetch_consumed_on_task_start():
 
     log = EventLog()
     agent = Agent(model_name="mock", event_log=log, memory_router=memory_router)
-    with patch("hivemind.agents.agent.generate", return_value="done"):
+    with patch("devsper.agents.agent.generate", return_value="done"):
         agent.run_task(task, prefetch_result=result)
     assert task.result == "done"
     # Only one call (from prefetcher.prefetch); agent must not call memory_router when using prefetch_result
@@ -213,7 +213,7 @@ def test_prefetch_consumed_on_task_start():
 
 def test_prefetch_stale_result_ignored():
     """Result > 30s old not used (consume returns None)."""
-    from hivemind.swarm.prefetcher import TaskPrefetcher, PrefetchResult
+    from devsper.swarm.prefetcher import TaskPrefetcher, PrefetchResult
 
     prefetcher = TaskPrefetcher(
         memory_router=MagicMock(),
@@ -257,8 +257,8 @@ def test_structured_correction_includes_error():
 
 def test_structured_correction_max_attempts():
     """Exhausted retries raises WorkflowStepError."""
-    from hivemind.workflow.runner import _run_step_with_correction
-    from hivemind.workflow.context import WorkflowContext
+    from devsper.workflow.runner import _run_step_with_correction
+    from devsper.workflow.context import WorkflowContext
 
     step = WorkflowStep(
         id="s1",
@@ -270,7 +270,7 @@ def test_structured_correction_max_attempts():
     log = EventLog()
     loop = asyncio.new_event_loop()
     try:
-        with patch("hivemind.workflow.runner._run_single_step_sync") as mock_run:
+        with patch("devsper.workflow.runner._run_single_step_sync") as mock_run:
             mock_run.return_value = MagicMock(
                 raw_result="not valid json",
                 error=None,

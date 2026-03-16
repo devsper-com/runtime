@@ -2,7 +2,7 @@
 
 use tokio::sync::broadcast;
 
-use crate::error::{HivemindError, Result};
+use crate::error::{DevsperError, Result};
 use crate::types::BusMessage;
 use redis::AsyncCommands;
 
@@ -37,14 +37,14 @@ impl RedisBus {
     /// Start the bus and optionally spawn a subscriber loop for the given topics.
     pub async fn start(&mut self, subscribe_topics: &[&str]) -> Result<()> {
         let client = redis::Client::open(self.redis_url.as_str())
-            .map_err(|e| HivemindError::BusConnection(e.to_string()))?;
+            .map_err(|e| DevsperError::BusConnection(e.to_string()))?;
         let mut conn = redis::aio::ConnectionManager::new(client.clone())
             .await
-            .map_err(|e| HivemindError::BusConnection(e.to_string()))?;
+            .map_err(|e| DevsperError::BusConnection(e.to_string()))?;
         let _: String = redis::cmd("PING")
             .query_async(&mut conn)
             .await
-            .map_err(|e| HivemindError::BusConnection(e.to_string()))?;
+            .map_err(|e| DevsperError::BusConnection(e.to_string()))?;
         self.pub_client = Some(conn);
         let (tx, _) = broadcast::channel(256);
         self.tx = Some(tx.clone());
@@ -74,12 +74,12 @@ impl RedisBus {
         let conn = self
             .pub_client
             .as_mut()
-            .ok_or_else(|| HivemindError::BusConnection("bus not started".to_string()))?;
+            .ok_or_else(|| DevsperError::BusConnection("bus not started".to_string()))?;
         let ch = channel(&message.topic, &self.run_id);
         let json = message.to_json()?;
         conn.publish::<_, _, ()>(ch, json)
             .await
-            .map_err(HivemindError::Redis)?;
+            .map_err(DevsperError::Redis)?;
         Ok(())
     }
 
@@ -106,17 +106,17 @@ fn run_subscribe_blocking(
     tx: broadcast::Sender<BusMessage>,
 ) -> Result<()> {
     let client =
-        redis::Client::open(redis_url).map_err(|e| HivemindError::BusConnection(e.to_string()))?;
+        redis::Client::open(redis_url).map_err(|e| DevsperError::BusConnection(e.to_string()))?;
     let mut conn = client
         .get_connection()
-        .map_err(|e| HivemindError::BusConnection(e.to_string()))?;
+        .map_err(|e| DevsperError::BusConnection(e.to_string()))?;
     let mut pubsub = conn.as_pubsub();
     for ch in channels {
-        pubsub.subscribe(ch).map_err(HivemindError::Redis)?;
+        pubsub.subscribe(ch).map_err(DevsperError::Redis)?;
     }
     loop {
-        let msg = pubsub.get_message().map_err(HivemindError::Redis)?;
-        let payload: String = msg.get_payload().map_err(HivemindError::Redis)?;
+        let msg = pubsub.get_message().map_err(DevsperError::Redis)?;
+        let payload: String = msg.get_payload().map_err(DevsperError::Redis)?;
         if let Ok(bus_msg) = BusMessage::from_json(&payload) {
             let _ = tx.send(bus_msg);
         }

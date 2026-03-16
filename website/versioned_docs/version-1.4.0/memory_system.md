@@ -15,7 +15,7 @@ Each stored record has: `id`, `memory_type`, `timestamp`, `source_task`, `conten
 
 ## Memory Store
 
-- **Backend:** SQLite (e.g. `.hivemind/memory.db` or path from config).
+- **Backend:** SQLite (e.g. `.devsper/memory.db` or path from config).
 - **Operations:** `store(record)`, `retrieve(memory_id)`, `list_memory(limit=…)`, `delete(memory_id)`.
 - **Default instance:** `get_default_store()` uses the configured data directory.
 
@@ -49,7 +49,7 @@ The swarm (or agent) typically passes a `MemoryRouter` into the `Swarm`/`Agent` 
 
 ## Summarization (v1)
 
-- **Module:** `hivemind.memory.summarizer`
+- **Module:** `devsper.memory.summarizer`
 - **summarize_extractive(records, max_chars):** Concatenates record contents up to a character limit (no LLM).
 - **summarize_with_llm(records, model_name):** Uses an LLM to produce a short summary of the records; falls back to extractive on failure.
 - **summarize(records, use_llm=False):** Single entry point; set `use_llm=True` for LLM summarization.
@@ -58,7 +58,7 @@ Useful for condensing many memories into a single context block or for namespace
 
 ## Namespaces (v1)
 
-- **Module:** `hivemind.memory.namespaces`
+- **Module:** `devsper.memory.namespaces`
 - **Concept:** Memories can be tagged with a namespace (e.g. `research_memory`, `coding_memory`, `dataset_memory`) using a tag prefix `ns:<namespace>`.
 - **Helpers:** `add_namespace(record, namespace)`, `record_namespace(record)`, `filter_by_namespace(records, namespace)`.
 - **Constants:** `RESEARCH_MEMORY`, `CODING_MEMORY`, `DATASET_MEMORY`.
@@ -67,7 +67,7 @@ The TUI memory view and any custom UI can filter by namespace when loading from 
 
 ## Scoring (v1)
 
-- **Module:** `hivemind.memory.scoring`
+- **Module:** `devsper.memory.scoring`
 - **recency_score(record):** Newer memories score higher (exponential decay).
 - **importance_score(record):** Heuristic based on content length and tag count.
 - **score_and_sort(records, similarity_scores=None):** Combines similarity (e.g. from embedding search), recency, and importance to rank and sort records. Use this to re-rank results from the memory index before returning to the agent or UI.

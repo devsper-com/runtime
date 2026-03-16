@@ -13,7 +13,7 @@ A simple tool that strips HTML tags from text and returns clean plaintext.
 ### Project Structure
 
 ```
-hivemind-plugin-sanitizer/
+devsper-plugin-sanitizer/
   pyproject.toml
   sanitizer_plugin/
     __init__.py
@@ -27,13 +27,13 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
-name = "hivemind-plugin-sanitizer"
+name = "devsper-plugin-sanitizer"
 version = "0.1.0"
-description = "HTML sanitizer tool for hivemind"
+description = "HTML sanitizer tool for devsper"
 requires-python = ">=3.10"
-dependencies = ["hivemind-ai"]
+dependencies = ["devsper"]
 
-[project.entry-points."hivemind.plugins"]
+[project.entry-points."devsper.plugins"]
 sanitizer = "sanitizer_plugin:register_tools"
 ```
 
@@ -42,8 +42,8 @@ sanitizer = "sanitizer_plugin:register_tools"
 ```python
 import re
 
-from hivemind.tools.base import Tool
-from hivemind.tools.registry import register
+from devsper.tools.base import Tool
+from devsper.tools.registry import register
 
 
 class SanitizeHtmlTool(Tool):
@@ -75,7 +75,7 @@ def register_tools():
 
 ```bash
 pip install -e .
-hivemind doctor  # Verify sanitize_html appears
+devsper doctor  # Verify sanitize_html appears
 ```
 
 ```python
@@ -95,7 +95,7 @@ An API integration tool that fetches current weather data from the Open-Meteo AP
 ### Project Structure
 
 ```
-hivemind-plugin-weather/
+devsper-plugin-weather/
   pyproject.toml
   weather_plugin/
     __init__.py
@@ -109,13 +109,13 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
-name = "hivemind-plugin-weather"
+name = "devsper-plugin-weather"
 version = "0.1.0"
-description = "Weather lookup tool for hivemind"
+description = "Weather lookup tool for devsper"
 requires-python = ">=3.10"
-dependencies = ["hivemind-ai", "httpx"]
+dependencies = ["devsper", "httpx"]
 
-[project.entry-points."hivemind.plugins"]
+[project.entry-points."devsper.plugins"]
 weather = "weather_plugin:register_tools"
 ```
 
@@ -124,8 +124,8 @@ weather = "weather_plugin:register_tools"
 ```python
 import httpx
 
-from hivemind.tools.base import Tool
-from hivemind.tools.registry import register
+from devsper.tools.base import Tool
+from devsper.tools.registry import register
 
 
 class WeatherTool(Tool):
@@ -173,7 +173,7 @@ def register_tools():
 
 ```bash
 pip install -e .
-hivemind doctor  # Verify get_weather appears
+devsper doctor  # Verify get_weather appears
 ```
 
 ```python
@@ -193,7 +193,7 @@ A file processing tool that reads a CSV file and returns summary statistics.
 ### Project Structure
 
 ```
-hivemind-plugin-csvprofile/
+devsper-plugin-csvprofile/
   pyproject.toml
   csvprofile_plugin/
     __init__.py
@@ -207,13 +207,13 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
-name = "hivemind-plugin-csvprofile"
+name = "devsper-plugin-csvprofile"
 version = "0.1.0"
-description = "CSV profiling tool for hivemind"
+description = "CSV profiling tool for devsper"
 requires-python = ">=3.10"
-dependencies = ["hivemind-ai"]
+dependencies = ["devsper"]
 
-[project.entry-points."hivemind.plugins"]
+[project.entry-points."devsper.plugins"]
 csvprofile = "csvprofile_plugin:register_tools"
 ```
 
@@ -223,8 +223,8 @@ csvprofile = "csvprofile_plugin:register_tools"
 import csv
 import statistics
 
-from hivemind.tools.base import Tool
-from hivemind.tools.registry import register
+from devsper.tools.base import Tool
+from devsper.tools.registry import register
 
 
 class CsvProfileTool(Tool):
@@ -281,7 +281,7 @@ def register_tools():
 
 ```bash
 pip install -e .
-hivemind doctor  # Verify csv_profile appears
+devsper doctor  # Verify csv_profile appears
 ```
 
 ```python
@@ -317,7 +317,7 @@ For any plugin, the testing workflow is the same:
 
 ```bash
 pip install -e .          # Install in editable mode
-hivemind doctor           # Check registration
+devsper doctor           # Check registration
 pytest                    # Run your test suite
 ```
 

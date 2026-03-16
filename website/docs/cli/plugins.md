@@ -2,38 +2,38 @@
 title: "CLI: plugins"
 ---
 
-# hivemind plugins
+# devsper plugins
 
-Plugins extend hivemind with additional tools, memory backends, and agent capabilities. They are distributed through the hivemind plugin registry and managed with the `hivemind reg` command.
+Plugins extend devsper with additional tools, memory backends, and agent capabilities. They are distributed through the devsper plugin registry and managed with the `devsper reg` command.
 
 ## Installing Plugins
 
 Install a plugin from the registry:
 
 ```bash
-hivemind reg install <package>
+devsper reg install <package>
 ```
 
 For example:
 
 ```bash
-hivemind reg install hivemind-web-scraper
-hivemind reg install hivemind-pdf-reader
+devsper reg install devsper-web-scraper
+devsper reg install devsper-pdf-reader
 ```
 
-Plugins are installed into your Python environment alongside hivemind.
+Plugins are installed into your Python environment alongside devsper.
 
 ## Searching for Plugins
 
 Find plugins in the registry by keyword:
 
 ```bash
-hivemind reg search <query>
+devsper reg search <query>
 ```
 
 ```bash
-hivemind reg search "pdf"
-hivemind reg search "database"
+devsper reg search "pdf"
+devsper reg search "database"
 ```
 
 ## Publishing a Plugin
@@ -41,7 +41,7 @@ hivemind reg search "database"
 Package and publish your own plugin to the registry:
 
 ```bash
-hivemind reg publish
+devsper reg publish
 ```
 
 This reads your project metadata and uploads the package. You must be authenticated first (see [registry authentication](/docs/cli/registry)).
@@ -51,11 +51,11 @@ This reads your project metadata and uploads the package. You must be authentica
 View metadata, version history, and dependencies for a plugin:
 
 ```bash
-hivemind reg info <package>
+devsper reg info <package>
 ```
 
 ```bash
-hivemind reg info hivemind-web-scraper
+devsper reg info devsper-web-scraper
 ```
 
 ## Authentication
@@ -63,7 +63,7 @@ hivemind reg info hivemind-web-scraper
 Log in to the registry before publishing:
 
 ```bash
-hivemind reg login
+devsper reg login
 ```
 
 This stores an authentication token locally for future registry operations.
@@ -73,14 +73,14 @@ This stores an authentication token locally for future registry operations.
 After installing plugins, verify they load correctly:
 
 ```bash
-hivemind doctor
+devsper doctor
 ```
 
 The doctor output includes a tool count and lists loaded plugins. If a plugin fails to load, doctor reports the error with details.
 
 ```
 Tools:     12 loaded (2 from plugins)
-Plugins:   hivemind-web-scraper (v1.2.0), hivemind-pdf-reader (v0.9.1)
+Plugins:   devsper-web-scraper (v1.2.0), devsper-pdf-reader (v0.9.1)
 ```
 
 ## Managing Installed Plugins
@@ -88,10 +88,10 @@ Plugins:   hivemind-web-scraper (v1.2.0), hivemind-pdf-reader (v0.9.1)
 List installed plugins by checking the doctor output or by listing enabled tools in your config. To remove a plugin, uninstall it from your Python environment:
 
 ```bash
-pip uninstall hivemind-web-scraper
+pip uninstall devsper-web-scraper
 ```
 
-Then remove it from your `hivemind.toml` if it was explicitly listed:
+Then remove it from your `devsper.toml` if it was explicitly listed:
 
 ```toml
 [tools]
@@ -115,12 +115,12 @@ If `enabled` is set, only the listed tools are loaded. Tools from installed plug
 
 ## Plugin Development
 
-A hivemind plugin is a Python package that exposes tools through entry points. The minimal structure:
+A devsper plugin is a Python package that exposes tools through entry points. The minimal structure:
 
 ```
-hivemind-my-plugin/
+devsper-my-plugin/
   pyproject.toml
-  hivemind_my_plugin/
+  devsper_my_plugin/
     __init__.py
     tools.py
 ```
@@ -128,15 +128,15 @@ hivemind-my-plugin/
 Register your tools in `pyproject.toml`:
 
 ```toml
-[project.entry-points."hivemind.tools"]
-my_tool = "hivemind_my_plugin.tools:MyTool"
+[project.entry-points."devsper.tools"]
+my_tool = "devsper_my_plugin.tools:MyTool"
 ```
 
 Test locally by installing in development mode:
 
 ```bash
-pip install -e ./hivemind-my-plugin
-hivemind doctor
+pip install -e ./devsper-my-plugin
+devsper doctor
 ```
 
-When ready, publish with `hivemind reg publish`. See the [registry reference](/docs/cli/registry) for full details.
+When ready, publish with `devsper reg publish`. See the [registry reference](/docs/cli/registry) for full details.

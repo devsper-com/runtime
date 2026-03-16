@@ -4,8 +4,8 @@ import tempfile
 
 import pytest
 
-from hivemind.memory.memory_store import MemoryStore, generate_memory_id
-from hivemind.memory.memory_types import MemoryRecord, MemoryType
+from devsper.memory.memory_store import MemoryStore, generate_memory_id
+from devsper.memory.memory_types import MemoryRecord, MemoryType
 
 
 @pytest.fixture

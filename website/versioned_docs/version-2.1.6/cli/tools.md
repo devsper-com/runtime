@@ -1,7 +1,7 @@
 ---
-title: "hivemind tools"
+title: "devsper tools"
 ---
 
-# hivemind tools
+# devsper tools
 
 Coming soon.

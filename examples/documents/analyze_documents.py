@@ -24,10 +24,10 @@ from examples._common import (
 )
 from examples._config import get_planner_model, get_worker_model
 
-from hivemind.knowledge.knowledge_graph import KnowledgeGraph
-from hivemind.memory.memory_store import get_default_store
-from hivemind.swarm.swarm import Swarm
-from hivemind.utils.event_logger import EventLog
+from devsper.knowledge.knowledge_graph import KnowledgeGraph
+from devsper.memory.memory_store import get_default_store
+from devsper.swarm.swarm import Swarm
+from devsper.utils.event_logger import EventLog
 
 
 def main() -> None:
@@ -68,9 +68,9 @@ def main() -> None:
     kg_tool_out = run_tool_safe("research_graph_builder", {"documents": texts})
 
     store = get_default_store()
-    from hivemind.memory.memory_types import MemoryRecord, MemoryType
-    from hivemind.memory.memory_store import generate_memory_id
-    from hivemind.memory.memory_index import MemoryIndex
+    from devsper.memory.memory_types import MemoryRecord, MemoryType
+    from devsper.memory.memory_store import generate_memory_id
+    from devsper.memory.memory_index import MemoryIndex
     for i, t in enumerate(texts[:3]):
         rec = MemoryRecord(
             id=generate_memory_id(),

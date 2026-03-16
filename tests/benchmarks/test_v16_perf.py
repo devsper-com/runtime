@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from hivemind.cache.task_cache import SemanticTaskCache
-from hivemind.cache.store import DefaultCacheStore
-from hivemind.providers.complexity_router import TaskComplexityRouter
-from hivemind.types.task import Task
-from hivemind.swarm.scheduler import Scheduler
-from hivemind.swarm.executor import Executor
-from hivemind.agents.agent import Agent
+from devsper.cache.task_cache import SemanticTaskCache
+from devsper.cache.store import DefaultCacheStore
+from devsper.providers.complexity_router import TaskComplexityRouter
+from devsper.types.task import Task
+from devsper.swarm.scheduler import Scheduler
+from devsper.swarm.executor import Executor
+from devsper.agents.agent import Agent
 
 
 def bench_semantic_cache_lookup(tmp_path: Path) -> None:
@@ -71,7 +71,7 @@ def test_bench_parallel_tools() -> None:
         time.sleep(0.05)
         return "ok"
 
-    with patch("hivemind.tools.tool_runner.run_tool", slow_tool):
+    with patch("devsper.tools.tool_runner.run_tool", slow_tool):
         agent = Agent(model_name="mock", use_tools=False, parallel_tools=True)
         task = Task(id="x", description="y", dependencies=[])
         tool_calls = [("t1", {}), ("t2", {}), ("t3", {})]

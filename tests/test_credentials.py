@@ -1,4 +1,4 @@
-"""Tests for credential store (hivemind.credentials)."""
+"""Tests for credential store (devsper.credentials)."""
 
 import os
 from pathlib import Path
@@ -6,13 +6,13 @@ from unittest.mock import patch
 
 import pytest
 
-from hivemind.credentials import (
+from devsper.credentials import (
     delete_credential,
     get_credential,
     list_credentials,
     set_credential,
 )
-from hivemind.credentials.migration import migrate_from_config
+from devsper.credentials.migration import migrate_from_config
 
 
 def test_set_get_credential_roundtrip_mock_keyring():
@@ -66,7 +66,7 @@ def test_list_credentials_never_returns_values():
 
 def test_migrate_from_config_env(tmp_path):
     """migrate_from_config finds and stores env-based credentials in keyring."""
-    config_path = tmp_path / "hivemind.toml"
+    config_path = tmp_path / "devsper.toml"
     config_path.write_text("[swarm]\nworkers = 4\n")
 
     store: dict[str, str] = {}
@@ -89,7 +89,7 @@ def test_migrate_from_config_env(tmp_path):
             },
         ),
     ):
-        import hivemind.credentials.store as store_mod
+        import devsper.credentials.store as store_mod
 
         store_mod._default_store = None
 
@@ -117,7 +117,7 @@ def test_export_env_format(capsys):
         patch("keyring.set_password", side_effect=mock_set),
     ):
         set_credential("openai", "api_key", "sk-export-test")
-        from hivemind.credentials.cli import _run_credentials_export
+        from devsper.credentials.cli import _run_credentials_export
 
         rc = _run_credentials_export("openai")
         assert rc == 0

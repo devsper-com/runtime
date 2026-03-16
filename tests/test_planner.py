@@ -1,10 +1,10 @@
 """Test planner: one task → list of subtasks with sequential dependencies."""
 from unittest.mock import patch
 
-from hivemind.types.task import Task
-from hivemind.swarm.planner import Planner
-from hivemind.types.event import events
-from hivemind.utils.event_logger import EventLog
+from devsper.types.task import Task
+from devsper.swarm.planner import Planner
+from devsper.types.event import events
+from devsper.utils.event_logger import EventLog
 
 
 MOCK_NUMBERED_RESPONSE = """1. Identify key diffusion model papers
@@ -20,7 +20,7 @@ def test_planner_emits_lifecycle_and_returns_subtasks():
     log = EventLog()
     log.clear()
 
-    with patch("hivemind.swarm.planner.generate", return_value=MOCK_NUMBERED_RESPONSE):
+    with patch("devsper.swarm.planner.generate", return_value=MOCK_NUMBERED_RESPONSE):
         planner = Planner(model_name="gpt-4o", event_log=log)
         subtasks = planner.plan(task)
 
@@ -59,7 +59,7 @@ def test_planner_expand_tasks_returns_new_tasks_with_deps():
     )
     log = EventLog()
     mock_response = "1. Compare methods\n2. Identify trends\n"
-    with patch("hivemind.swarm.planner.generate", return_value=mock_response):
+    with patch("devsper.swarm.planner.generate", return_value=mock_response):
         planner = Planner(model_name="gpt-4o", event_log=log)
         new_tasks = planner.expand_tasks(completed)
 

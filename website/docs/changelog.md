@@ -5,7 +5,7 @@ description: What's new in each release. Mirrored from the GitHub changelog.
 
 # Changelog
 
-This page mirrors the [project changelog on GitHub](https://github.com/rithulkamesh/hivemind/blob/main/CHANGELOG.md). Update it when cutting a new release.
+This page mirrors the [project changelog on GitHub](https://github.com/devsper-com/runtime/blob/main/CHANGELOG.md). Update it when cutting a new release.
 
 ---
 
@@ -17,14 +17,14 @@ This page mirrors the [project changelog on GitHub](https://github.com/rithulkam
 
 ### Added
 
-- **In-app HITL resolution** — Optional in-process resolver so you can approve/reject HITL requests in the same terminal as `hivemind run`.
+- **In-app HITL resolution** — Optional in-process resolver so you can approve/reject HITL requests in the same terminal as `devsper run`.
 - **HITL in single-node path** — HITL escalation check and resolver/polling now run in the default single-node flow.
-- **Better MCP** — `hivemind doctor` has a dedicated "MCP Servers" section.
+- **Better MCP** — `devsper doctor` has a dedicated "MCP Servers" section.
 - Full CLI visual redesign: amber/blue/teal color system across all commands
 - Structured logging with tracing-compatible format
 - Live run view: real-time task table, tool activity, cost counter during execution
 - Animated planning phase with strategy selection feedback
-- Redesigned hivemind init: interactive wizard with welcome screen
+- Redesigned devsper init: interactive wizard with welcome screen
 - Typed error classes with actionable hints and docs links
 - Shell completions: bash, zsh, fish
 - `--debug`, `--trace`, `--quiet`, `--no-color`, `--json`, `--plain` global flags
@@ -32,7 +32,7 @@ This page mirrors the [project changelog on GitHub](https://github.com/rithulkam
 ### Changed
 
 - All CLI output uses themed console
-- Python logging replaced with HivemindLogger
+- Python logging replaced with devsperLogger
 - Error display: no raw tracebacks shown to end users
 - **Planner: simple-task fast path** — Short, single-step prompts no longer get decomposed into 5 steps
 - **Planner: dynamic step count** — Planner asks for "the minimal number of smaller steps needed"
@@ -46,7 +46,7 @@ This page mirrors the [project changelog on GitHub](https://github.com/rithulkam
 - **MetaPlanner** — Decompose mega-tasks into sub-swarms with dependencies, SLAs, and priorities
 - **Human-in-the-Loop (HITL)** — Configurable escalation triggers and approval workflows
 - **ApprovalStore** — Persistent pending approvals with timeout handling
-- **CLI** — `hivemind meta` and `hivemind approvals` commands
+- **CLI** — `devsper meta` and `devsper approvals` commands
 
 ---
 
@@ -66,8 +66,8 @@ This page mirrors the [project changelog on GitHub](https://github.com/rithulkam
 - Audit logging: append-only JSONL with chain integrity verification
 - PII redaction and GDPR/CCPA compliance config section
 - Simulation mode: dry-run planning without LLM calls
-- `hivemind explain`, `hivemind simulate`, `hivemind audit` CLI commands
+- `devsper explain`, `devsper simulate`, `devsper audit` CLI commands
 
 ---
 
-For older releases, see the [full changelog on GitHub](https://github.com/rithulkamesh/hivemind/blob/main/CHANGELOG.md).
+For older releases, see the [full changelog on GitHub](https://github.com/devsper-com/runtime/blob/main/CHANGELOG.md).

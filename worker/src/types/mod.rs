@@ -1,4 +1,4 @@
-//! Shared types compatible with Python hivemind.
+//! Shared types compatible with Python devsper.
 
 pub mod agent;
 pub mod event;

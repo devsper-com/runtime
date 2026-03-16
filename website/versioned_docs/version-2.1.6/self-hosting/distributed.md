@@ -16,7 +16,7 @@ Run a **controller** and one or more **workers** across processes or machines. T
 1. **Redis** — Run Redis (e.g. `docker compose up -d`).
 2. **Optional dependency group:**
    ```bash
-   pip install 'hivemind-ai[distributed]'
+   pip install 'devsper[distributed]'
    ```
 
 ## Quick start

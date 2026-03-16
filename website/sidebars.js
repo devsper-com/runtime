@@ -1,7 +1,7 @@
 /** @type {import('@docusaurus/plugin-content-docs').SidebarsConfig} */
 const sidebars = {
   docs: [
-    { type: 'doc', id: 'intro', label: 'What is hivemind?' },
+    { type: 'doc', id: 'intro', label: 'What is devsper?' },
 
     {
       type: 'category',

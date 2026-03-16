@@ -2,11 +2,11 @@
 
 import pytest
 
-from hivemind.tools.coding.run_python import RunPythonTool
-from hivemind.tools.coding.extract_functions import ExtractFunctionsTool
-from hivemind.tools.coding.analyze_code_complexity import AnalyzeCodeComplexityTool
-from hivemind.tools.coding.dependency_analyzer import DependencyAnalyzerTool
-from hivemind.tools.coding.repo_structure_map import RepoStructureMapTool
+from devsper.tools.coding.run_python import RunPythonTool
+from devsper.tools.coding.extract_functions import ExtractFunctionsTool
+from devsper.tools.coding.analyze_code_complexity import AnalyzeCodeComplexityTool
+from devsper.tools.coding.dependency_analyzer import DependencyAnalyzerTool
+from devsper.tools.coding.repo_structure_map import RepoStructureMapTool
 
 
 def test_run_python():

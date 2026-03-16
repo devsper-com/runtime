@@ -4,10 +4,10 @@ import tempfile
 
 import pytest
 
-from hivemind.memory.memory_store import MemoryStore, generate_memory_id
-from hivemind.memory.memory_index import MemoryIndex
-from hivemind.memory.memory_types import MemoryRecord, MemoryType
-from hivemind.memory.embeddings import embed_text
+from devsper.memory.memory_store import MemoryStore, generate_memory_id
+from devsper.memory.memory_index import MemoryIndex
+from devsper.memory.memory_types import MemoryRecord, MemoryType
+from devsper.memory.embeddings import embed_text
 
 
 def test_embed_text_returns_list():

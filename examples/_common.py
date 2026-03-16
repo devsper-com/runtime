@@ -6,13 +6,13 @@ import json
 import os
 from pathlib import Path
 
-import hivemind.tools  # noqa: F401
+import devsper.tools  # noqa: F401
 
-from hivemind.memory.memory_index import MemoryIndex
-from hivemind.memory.memory_router import MemoryRouter
-from hivemind.memory.memory_store import MemoryStore, get_default_store, generate_memory_id
-from hivemind.memory.memory_types import MemoryRecord, MemoryType
-from hivemind.tools.tool_runner import run_tool
+from devsper.memory.memory_index import MemoryIndex
+from devsper.memory.memory_router import MemoryRouter
+from devsper.memory.memory_store import MemoryStore, get_default_store, generate_memory_id
+from devsper.memory.memory_types import MemoryRecord, MemoryType
+from devsper.tools.tool_runner import run_tool
 
 
 def examples_output_dir() -> Path:
@@ -23,7 +23,7 @@ def examples_output_dir() -> Path:
 
 
 def log(msg: str) -> None:
-    print(f"[hivemind] {msg}")
+    print(f"[devsper] {msg}")
 
 
 def run_tool_safe(name: str, args: dict) -> str:

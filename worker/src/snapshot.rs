@@ -4,8 +4,8 @@ use redis::AsyncCommands;
 
 use crate::error::Result;
 
-const SNAPSHOT_KEY_PREFIX: &str = "hivemind:snapshot:";
-const SNAPSHOT_INDEX_KEY: &str = "hivemind:snapshots";
+const SNAPSHOT_KEY_PREFIX: &str = "devsper:snapshot:";
+const SNAPSHOT_INDEX_KEY: &str = "devsper:snapshots";
 
 pub struct SnapshotStore {
     redis: redis::aio::ConnectionManager,

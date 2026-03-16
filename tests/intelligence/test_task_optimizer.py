@@ -1,8 +1,8 @@
 """Tests for task optimizer."""
 import pytest
 
-from hivemind.types.task import Task
-from hivemind.intelligence.task_optimizer import TaskOptimizer
+from devsper.types.task import Task
+from devsper.intelligence.task_optimizer import TaskOptimizer
 
 
 def test_optimize_dedupes_similar():
