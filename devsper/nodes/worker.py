@@ -342,7 +342,6 @@ class WorkerNode:
                     if self.hitl_resolver is not None:
                         resolver = self.hitl_resolver
                         try:
-                            import asyncio
                             if asyncio.iscoroutinefunction(resolver):
                                 approved_result = await resolver(approval, hitl_policy)
                             else:

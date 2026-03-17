@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -9,6 +10,8 @@ from devsper.types.task import Task, TaskStatus
 from devsper.types.event import Event, events
 from devsper.utils.event_logger import EventLog
 from devsper.utils.models import generate
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -306,6 +309,13 @@ class Agent:
             )
         except Exception as e:
             duration = time.perf_counter() - t0
+            log.warning(
+                "Agent run failed for task %s: %s: %s",
+                task_id[:12] if task_id else "?",
+                type(e).__name__,
+                e,
+                exc_info=False,
+            )
             self._emit(events.TASK_FAILED, {"task_id": task_id, "error": str(e)})
             return AgentResponse(
                 task_id=task_id,

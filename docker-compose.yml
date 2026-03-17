@@ -1,0 +1,11 @@
+# Redis for distributed mode (v1.10). From runtime/: docker compose up -d
+# See examples/distributed/README.md for controller + worker steps.
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s

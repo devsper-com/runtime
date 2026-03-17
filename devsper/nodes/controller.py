@@ -238,13 +238,28 @@ class ControllerNode:
                     "claimed": False,
                 }
                 log.info("Dispatched task %s to worker %s", task.id[:8], worker.node_id[:8])
+                payload = {**task.to_dict(), "target_worker_id": worker.node_id}
+                # Include parent task results so workers have corpus/file paths/etc. for chained steps
+                if task.dependencies:
+                    parts = []
+                    for dep_id in task.dependencies:
+                        try:
+                            parent = self.scheduler.get_task(dep_id)
+                            if parent.result:
+                                # Cap size to avoid huge payloads; workers need key context (paths, corpus summary)
+                                parts.append(f"[Previous step {dep_id[:8]}]:\n{(parent.result[:12000]).strip()}")
+                        except Exception:
+                            pass
+                    if parts:
+                        payload["description"] = (
+                            (task.description or "").strip()
+                            + "\n\n--- Outputs from previous steps (use as input) ---\n"
+                            + "\n\n".join(parts)
+                        )
                 await self.bus.publish(
                     create_bus_message(
                         topic=TASK_READY,
-                        payload={
-                            **task.to_dict(),
-                            "target_worker_id": worker.node_id,
-                        },
+                        payload=payload,
                         sender_id=self.node_id,
                         run_id=self.run_id,
                     )

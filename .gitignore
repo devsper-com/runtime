@@ -24,7 +24,7 @@ env/
 registry/.env
 
 # Hivemind runtime and output
-.hivemind/
+.devsper/
 .events/
 
 # Example outputs (generated)
@@ -49,5 +49,6 @@ tmp
 
 node_modules
 
-# Rust (worker crate)
+# Rust (workspace and worker crate)
+target/
 worker/target/

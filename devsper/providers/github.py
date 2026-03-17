@@ -103,7 +103,7 @@ class GitHubProvider(BaseProvider):
                                 str(e) + retry_hint, request=e.request, response=e.response
                             ) from e
                         raise
-                choices = data.get("choices") or []
+            choices = data.get("choices") or []
         if not choices:
             return ""
         msg = choices[0].get("message") or {}

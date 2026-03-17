@@ -44,6 +44,12 @@ def _check_distributed_deps() -> None:
 
 async def main_async(task: str, config_path: str, parallel: bool = False) -> dict:
     _check_distributed_deps()
+    # Load .env from project root (runtime/) so API keys are available for planner
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(ROOT / ".env")
+    except Exception:
+        pass
     from uuid import uuid4
     from devsper.config import get_config
     from devsper.types.task import Task
@@ -119,6 +125,8 @@ async def main_async(task: str, config_path: str, parallel: bool = False) -> dic
         print("No workers in registry. Start workers first (run_worker.py), then run this script.", file=sys.stderr)
     else:
         print(f"Workers visible: {len(workers)} ({', '.join(w.node_id[:8] for w in workers)})", file=sys.stderr)
+        if parallel and len(workers) == 1:
+            print("Tip: with --parallel, start 2+ workers (in other terminals) to spread tasks across workers.", file=sys.stderr)
     total = len(scheduler.get_all_tasks())
     print(f"Run ID: {run_id}. Tasks: {total}. Waiting for workers to complete...", file=sys.stderr)
     if not parallel and len(workers) > 1:

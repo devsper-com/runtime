@@ -32,7 +32,7 @@ docker compose ps   # optional: check Redis is up
 In **separate terminals**, start workers (they register with Redis and wait for tasks):
 
 ```bash
-# Terminal A
+# Terminal A — Python worker
 uv run python examples/distributed/run_worker.py
 
 # Terminal B (optional second worker)
@@ -41,10 +41,17 @@ uv run python examples/distributed/run_worker.py
 
 Leave them running. You should see: `Worker running (run_id=distributed-demo). Ctrl+C to stop.`
 
-**Rust worker (optional)** — From project root, build and run the Rust worker. It must use the **project venv Python** so the subprocess can load `devsper`. For **multiple workers on one machine**, set `DEVSPER_RPC_PORT=0` so each gets a free port. Set **`DEVSPER_WORKER_MODEL`** to match the controller’s worker model (e.g. `github:gpt-4o`) so tasks return real LLM results instead of `(none)`:
+**Rust worker (optional)** — From `runtime/`, build the binary, then run it via the same script (loads `.env` and `worker.toml`; uses current Python as `DEVSPER_PYTHON_BIN` for the agent subprocess):
 
 ```bash
+cd runtime
 cargo build --release -p devsper-worker
+uv run python examples/distributed/run_worker.py --rust
+```
+
+For multiple workers on one machine, set `DEVSPER_RPC_PORT=0` in env. To run the binary directly with custom env:
+
+```bash
 DEVSPER_RUN_ID=distributed-demo DEVSPER_REDIS_URL=redis://localhost:6379 \
   DEVSPER_PYTHON_BIN=.venv/bin/python DEVSPER_RPC_PORT=0 \
   DEVSPER_WORKER_MODEL=github:gpt-4o ./worker/target/release/devsper-worker
@@ -60,7 +67,7 @@ uv run python examples/distributed/run_controller.py "Summarize swarm intelligen
 
 The controller will plan subtasks, become leader, dispatch tasks to workers over Redis, and print results when done.
 
-To run **all subtasks in parallel** (one per worker) instead of one-by-one, use `--parallel`:
+To run **all subtasks in parallel** (no dependency chain), use `--parallel`. Tasks are sent to **all available workers**; if you start only one worker, that worker gets all tasks. Start **2+ workers** in separate terminals to spread load:
 
 ```bash
 uv run python examples/distributed/run_controller.py "Summarize swarm intelligence in one sentence." --parallel
@@ -111,6 +118,8 @@ uv run python examples/distributed/run_worker.py --config /path/to/worker.toml
   The worker was stuck in the LLM call. Workers now have a **90s execution timeout** (`nodes.task_execution_timeout_seconds`): if the model doesn’t respond in time, the worker publishes TASK_FAILED and the controller marks the task failed so the run can finish. Ensure `GITHUB_TOKEN` is set and the model endpoint is responsive; increase the timeout in `worker.toml` if needed.
 - **Rust worker: "empty response from agent"**  
   Set `DEVSPER_PYTHON_BIN` to the interpreter that has `devsper` installed (e.g. `.venv/bin/python`).
+- **"(Error: Connection error.)" or TASK_COMPLETED empty result**  
+  Workers call the LLM (Azure, GitHub, OpenAI, etc.) in their own process. If that process doesn’t have the provider’s credentials or can’t reach the API, you get a connection error and empty result. **Fix:** Run each worker in an environment where the right env vars are set (e.g. `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` for `azure:...`, or `GITHUB_TOKEN` for `github:...`). Export them in the same terminal before `uv run python examples/distributed/run_worker.py`, or use `devsper credentials set azure endpoint <url>` and `devsper credentials set azure api_key <key>` (then start the worker in the same user/session so keychain is available). The worker logs a warning at startup if it detects missing credentials for the configured model.
 - **All results show (none)**  
   Rust workers default to `DEVSPER_WORKER_MODEL=mock`. Set `DEVSPER_WORKER_MODEL` to match the controller’s worker model (e.g. `DEVSPER_WORKER_MODEL=github:gpt-4o` when using the example config with `[models] worker = "github:gpt-4o"`) so the agent uses the real LLM and returns content. If you see `(Error: ...)` in results, fix that (e.g. missing `GITHUB_TOKEN` or keychain).
 - **Only one worker gets tasks**  

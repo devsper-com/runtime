@@ -13,7 +13,10 @@ def _is_azure_foundry_v1_endpoint(endpoint: str) -> bool:
     if not endpoint:
         return False
     e = endpoint.rstrip("/").lower()
-    return "/openai/v1" in e or "cognitiveservices.azure.com" in e
+    # Only treat as Foundry v1 when the endpoint explicitly includes the v1 base path.
+    # Azure OpenAI resources commonly use *.cognitiveservices.azure.com but still require
+    # AzureChatOpenAI (deployment in path), not base_url ChatOpenAI.
+    return "/openai/v1" in e
 
 
 class OpenAIProvider(BaseProvider):
