@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/rithulkamesh/devsper/refs/heads/main/branding/logo_bg.svg" alt="devsper" width="120" height="140" />
+  <img src="https://raw.githubusercontent.com/devsper-com/runtime/refs/heads/main/branding/logo.svg" alt="devsper" width="120" height="140" style="background:#fff; padding:12px; border-radius:10px; filter:invert(1);" />
 </p>
 
 <h1 align="center">devsper</h1>
