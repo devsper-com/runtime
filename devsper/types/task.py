@@ -9,6 +9,7 @@ class TaskStatus(Enum):
     RUNNING = 1
     COMPLETED = 2
     FAILED = -1
+    WAITING_FOR_INPUT = 3  # clarification / human input
 
 
 class Task(BaseModel):
@@ -48,9 +49,11 @@ class Task(BaseModel):
                 "RUNNING": TaskStatus.RUNNING,
                 "COMPLETED": TaskStatus.COMPLETED,
                 "FAILED": TaskStatus.FAILED,
+                "WAITING_FOR_INPUT": TaskStatus.WAITING_FOR_INPUT,
                 "0": TaskStatus.PENDING,
                 "1": TaskStatus.RUNNING,
                 "2": TaskStatus.COMPLETED,
+                "3": TaskStatus.WAITING_FOR_INPUT,
                 "-1": TaskStatus.FAILED,
             }
             task_status = name_to_status.get(status.upper(), TaskStatus.PENDING)

@@ -47,10 +47,11 @@ class SingleNode:
 
     async def start(self) -> None:
         await self.bus.start()
-        await asyncio.gather(
-            self.controller_node.start(),
-            self.worker_node.start(),
-        )
+        # Critical ordering: InMemoryBus is lossy (no persistence). Ensure the worker
+        # has subscribed to TASK_READY / claim topics before the controller can be elected
+        # and begin dispatching.
+        await self.worker_node.start()
+        await self.controller_node.start()
 
     async def run_until_finished(self) -> dict[str, str]:
         """Wait until scheduler is finished; return results."""

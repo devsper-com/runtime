@@ -45,6 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         topics::TASK_READY,
         topics::TASK_CLAIM_GRANTED,
         topics::TASK_CLAIM_REJECTED,
+        topics::TOOL_RESULTS,
         topics::SWARM_SNAPSHOT,
         topics::SWARM_CONTROL,
     ];
@@ -122,6 +123,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 worker_loop.on_claim_result(task_id, worker_id, false);
+            } else if msg.topic == topics::TOOL_RESULTS {
+                let task_id = msg
+                    .payload
+                    .get("task_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let tool_results: Vec<serde_json::Value> = msg
+                    .payload
+                    .get("tool_results")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                worker_loop.on_tool_results(task_id, tool_results);
             } else if msg.topic == topics::SWARM_CONTROL {
                 let w = worker_loop.clone();
                 let payload = msg.payload.clone();

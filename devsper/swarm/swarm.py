@@ -70,7 +70,10 @@ class Swarm:
         store_swarm_memory: bool = True,
         use_tools: bool | None = None,
         config: str | Path | object | None = None,
+        clarification_queue: object = None,
     ) -> None:
+        self.clarification_queue = clarification_queue
+        self._current_executor = None
         # Load from config file or config object if provided
         cfg = None
         if config is not None:
@@ -92,6 +95,14 @@ class Swarm:
             )
             self.worker_model = resolve_model(worker_raw, "analysis")
             self.planner_model = resolve_model(planner_raw, "planning")
+            # Ensure node layer (WorkerNode) uses the same effective model overrides.
+            try:
+                if worker_model is not None:
+                    cfg.models.worker = worker_raw
+                if planner_model is not None:
+                    cfg.models.planner = planner_raw
+            except Exception:
+                pass
             self.adaptive = (
                 adaptive
                 if adaptive is not None
@@ -450,7 +461,9 @@ class Swarm:
             hitl_approval_store=hitl_approval_store,
             hitl_notifier=hitl_notifier,
             hitl_resolver=hitl_resolver,
+            clarification_bus=getattr(self, "clarification_queue", None),
         )
+        self._current_executor = executor
         executor.run_sync()
 
         self._last_scheduler = scheduler

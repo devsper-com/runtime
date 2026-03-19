@@ -17,6 +17,12 @@ pub struct AgentRequest {
     pub system_prompt: String,
     #[serde(default)]
     pub prefetch_used: bool,
+    /// Controller-executed tool protocol: results from previous round.
+    #[serde(default)]
+    pub tool_results: Option<Vec<serde_json::Value>>,
+    /// When true, executor returns tool_calls in response instead of running tools locally.
+    #[serde(default)]
+    pub distributed_tools: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,4 +40,7 @@ pub struct AgentResponse {
     pub error: Option<String>,
     #[serde(default)]
     pub success: bool,
+    /// When model requested tool calls (distributed_tools mode), worker sends these to controller.
+    #[serde(default)]
+    pub tool_calls: Option<Vec<serde_json::Value>>,
 }

@@ -72,6 +72,10 @@ def _run_swarm(args: object) -> int:
         top_k=5,
     )
     workers = getattr(cfg.swarm, "workers", 2)
+    clarification_queue = None
+    if use_live_view:
+        import queue
+        clarification_queue = queue.Queue()
     swarm = Swarm(
         worker_count=workers,
         worker_model=cfg.worker_model,
@@ -79,6 +83,7 @@ def _run_swarm(args: object) -> int:
         event_log=event_log,
         memory_router=memory_router,
         use_tools=True,
+        clarification_queue=clarification_queue,
     )
     results_holder: list[dict] = []
     run_id = getattr(event_log, "run_id", "") or ""
@@ -133,6 +138,8 @@ def _run_swarm(args: object) -> int:
                 run_id=run_id,
                 worker_count=workers,
                 stop_check=lambda: not thread.is_alive(),
+                clarification_queue=clarification_queue,
+                swarm=swarm,
             )
             thread.join()
             results = results_holder[0] if results_holder else {}
@@ -629,6 +636,40 @@ def _run_runs(args: object) -> int:
         console.print(
             'No runs recorded. Run a swarm first (e.g. [cyan]devsper run "task"[/]).'
         )
+    return 0
+
+
+def _run_export_runs(args: object) -> int:
+    """Export run history into multiple formats + PDF pipelines."""
+    from rich.console import Console
+    from devsper.export.service import ExportOptions, export_all_runs
+
+    out_dir = getattr(args, "output", "") or ""
+    if not out_dir:
+        ts = int(time.time())
+        out_dir = f".devsper/exports/runs_{ts}"
+    limit = getattr(args, "limit", None)
+    pdf_pipeline = getattr(args, "pdf_pipeline", "both") or "both"
+    console = Console()
+    manifest = export_all_runs(
+        ExportOptions(
+            output_dir=out_dir,
+            limit=limit,
+            pdf_pipeline=pdf_pipeline,
+        )
+    )
+    console.print(f"[green]Export complete[/]  runs={manifest.get('run_count', 0)}")
+    console.print(f"Output: [cyan]{manifest.get('output_dir', out_dir)}[/]")
+    files = manifest.get("files", {}) or {}
+    for k in ("all_runs_md", "all_runs_rst", "all_runs_tex", "all_runs_bib", "all_runs_html", "all_runs_docx"):
+        if k in files:
+            console.print(f"  - {k}: {files[k]}")
+    pdf_out = manifest.get("pdf_outputs", {}) or {}
+    pdf_err = manifest.get("pdf_errors", {}) or {}
+    for k, v in pdf_out.items():
+        console.print(f"  - {k}: {v}")
+    for k, v in pdf_err.items():
+        console.print(f"[yellow]  - {k} unavailable:[/] {v}")
     return 0
 
 
@@ -2297,6 +2338,31 @@ Examples:
         help="Output runs list as JSON",
     )
     runs_parser.set_defaults(func=_run_runs)
+
+    export_parser = subparsers.add_parser(
+        "export-runs",
+        help="Export all run history into multi-format artifacts",
+        description="Export run history from DB + events into markdown/docx/latex/rst/bibtex and optional PDF outputs.",
+    )
+    export_parser.add_argument(
+        "--output",
+        "-o",
+        default="",
+        help="Output directory (default .devsper/exports/runs_<timestamp>)",
+    )
+    export_parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Max number of recent runs to include (default: all)",
+    )
+    export_parser.add_argument(
+        "--pdf-pipeline",
+        choices=["latex", "html", "both"],
+        default="both",
+        help="PDF generation pipeline(s) to run",
+    )
+    export_parser.set_defaults(func=_run_export_runs)
 
     memory_parser = subparsers.add_parser(
         "memory",

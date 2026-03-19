@@ -46,8 +46,9 @@ Example:
 
 NUMBERED_LINE = re.compile(r"^\s*\d+[.)]\s*(.+)$", re.MULTILINE)
 
-# Skip decomposition for short, single-step prompts (e.g. "What is 2+2?")
-MAX_SIMPLE_TASK_LEN = 200
+# Skip decomposition only for very short single-step prompts (e.g. "What is 2+2?").
+# Keep this conservative: many real tasks are short but still require decomposition.
+MAX_SIMPLE_TASK_LEN = 80
 MULTI_STEP_PATTERN = re.compile(
     r"\b(then|and then|first|second|step\s*\d|finally|after that|next,?)\b|\n|^\s*\d+[.)]\s+",
     re.IGNORECASE | re.MULTILINE,
@@ -56,9 +57,13 @@ MULTI_STEP_PATTERN = re.compile(
 
 def _is_simple_task(description: str) -> bool:
     """True if the task looks like a single question/request, not a multi-step workflow."""
-    if not description or len(description.strip()) > MAX_SIMPLE_TASK_LEN:
+    d = (description or "").strip()
+    if not d or len(d) > MAX_SIMPLE_TASK_LEN:
         return False
-    return MULTI_STEP_PATTERN.search(description.strip()) is None
+    # Only treat as "simple" when it looks like a single question.
+    if not (d.endswith("?") or d.lower().startswith(("what is", "who is", "define ", "explain "))) :
+        return False
+    return MULTI_STEP_PATTERN.search(d) is None
 
 
 def _short_id() -> str:

@@ -68,9 +68,9 @@ class LeaderElector:
         currently_leader = False
         while True:
             try:
-                await asyncio.sleep(REFRESH_INTERVAL)
                 if currently_leader:
                     if await self.refresh(node_id):
+                        await asyncio.sleep(REFRESH_INTERVAL)
                         continue
                     currently_leader = False
                     await on_lost()
@@ -78,6 +78,7 @@ class LeaderElector:
                     if await self.campaign(node_id):
                         currently_leader = True
                         await on_elected()
+                await asyncio.sleep(REFRESH_INTERVAL)
             except asyncio.CancelledError:
                 break
             except Exception:

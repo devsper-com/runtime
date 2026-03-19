@@ -26,6 +26,7 @@ from devsper.cli.ui.errors import (
 from devsper.cli.ui.logging import get_logger, set_log_level, get_log_level, devsperLogger
 from devsper.cli.ui.progress import devsperProgress, progress_spinner_style
 from devsper.cli.ui.run_view import RunViewState, run_live_view, print_run_summary
+from devsper.cli.ui.controller_run_view import ControllerRunView
 
 try:
     from devsper.cli.ui.onboarding import run_init_wizard
@@ -60,6 +61,7 @@ __all__ = [
     "reconfigure_console",
     "run_live_view",
     "RunViewState",
+    "ControllerRunView",
     "run_init_wizard",
     "set_log_level",
 ]

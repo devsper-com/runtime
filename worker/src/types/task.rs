@@ -57,6 +57,9 @@ pub struct Task {
     pub role: Option<String>,
     #[serde(default)]
     pub retry_count: u32,
+    /// Optional tool names for this task (controller may set when dispatching).
+    #[serde(default)]
+    pub tools: Option<Vec<String>>,
 }
 
 impl Task {

@@ -12,6 +12,7 @@ v1.9: Stateless — no task state stored in executor; all state in Scheduler. Pu
 
 import os
 import asyncio
+import queue
 import threading
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -19,6 +20,7 @@ from typing import TYPE_CHECKING
 from devsper.types.task import Task, TaskStatus
 from devsper.types.event import Event, events
 from devsper.utils.event_logger import EventLog
+from devsper.events import ClarificationRequest, ClarificationResponse
 
 from devsper.agents.agent import Agent
 from devsper.swarm.scheduler import Scheduler
@@ -77,6 +79,7 @@ class Executor:
         hitl_approval_store: object = None,
         hitl_notifier: object = None,
         hitl_resolver: object = None,
+        clarification_bus: queue.Queue | None = None,
     ) -> None:
         self.scheduler = scheduler
         self.agent = agent
@@ -105,6 +108,50 @@ class Executor:
         self.hitl_approval_store = hitl_approval_store
         self.hitl_notifier = hitl_notifier
         self.hitl_resolver = hitl_resolver
+        self.clarification_bus = clarification_bus  # sync queue for TUI to read requests
+        self._pending_clarification_queues: dict[str, tuple[queue.Queue, str]] = {}  # request_id -> (response_queue, task_id)
+        self._pending_clarification_lock = threading.Lock()
+
+    def request_clarification(self, req: ClarificationRequest) -> ClarificationResponse:
+        """
+        Called from agent thread. Puts request on clarification_bus, blocks until
+        TUI sends response via receive_clarification() or timeout. Returns ClarificationResponse.
+        """
+        if self.clarification_bus is None:
+            return ClarificationResponse(
+                request_id=req.request_id,
+                answers={},
+                skipped=True,
+            )
+        response_queue: queue.Queue = queue.Queue()
+        with self._pending_clarification_lock:
+            self._pending_clarification_queues[req.request_id] = (response_queue, req.task_id)
+        try:
+            self.scheduler.set_task_status(req.task_id, TaskStatus.WAITING_FOR_INPUT)
+            self.clarification_bus.put(req)
+            try:
+                response = response_queue.get(timeout=req.timeout_seconds)
+            except queue.Empty:
+                response = ClarificationResponse(
+                    request_id=req.request_id,
+                    answers={},
+                    skipped=True,
+                )
+        finally:
+            with self._pending_clarification_lock:
+                self._pending_clarification_queues.pop(req.request_id, None)
+            self.scheduler.set_task_status(req.task_id, TaskStatus.RUNNING)
+        return response
+
+    def receive_clarification(self, response: ClarificationResponse) -> None:
+        """Called by TUI when user completes the clarification widget."""
+        with self._pending_clarification_lock:
+            entry = self._pending_clarification_queues.get(response.request_id)
+        if entry is None:
+            return
+        response_queue, task_id = entry
+        response_queue.put(response)
+        self.scheduler.set_task_status(task_id, TaskStatus.RUNNING)
 
     def run_sync(self) -> None:
         """Run the execution loop to completion (synchronous entry point)."""
@@ -244,6 +291,10 @@ class Executor:
         if self.complexity_router and self.models_config:
             model_override = self._model_for_task(task)
         try:
+            if self.clarification_bus is not None:
+                self.agent.clarification_requester = self
+                self.agent.current_task_id = task.id
+                self.agent.role = getattr(task, "role", None) or "agent"
             use_sandbox = (
                 self.sandbox_config is not None
                 and getattr(self.sandbox_config, "enabled", False)

@@ -15,7 +15,7 @@ def run_agent_sync(request_json: str) -> str:
     """Run agent from JSON request string; return JSON response string. Used by PyO3 executor."""
     data = json.loads(request_json)
     request = AgentRequest.from_dict(data)
-    agent = Agent()
+    agent = Agent(use_tools=bool(request.tools))
     response = agent.run(request)  # sync, not async
     return json.dumps(response.to_dict())
 
@@ -55,7 +55,7 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        agent = Agent()
+        agent = Agent(use_tools=bool(request.tools))
         response = agent.run(request)  # sync, not async
         print(json.dumps(response.to_dict()), flush=True)
         sys.exit(0 if response.success else 1)

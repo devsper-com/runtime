@@ -8,8 +8,12 @@ use dashmap::DashMap;
 use tokio::sync::{oneshot, Semaphore};
 use tracing::Instrument;
 
+/// Type for tool results received from controller (TOOL_RESULTS payload array).
+pub type ToolResultsPayload = Vec<serde_json::Value>;
+
 use crate::bus::RedisBus;
 use crate::claim::make_claim_message;
+use crate::clarification;
 use crate::config::{ExecutorMode, NodeConfig};
 use crate::error::Result;
 use crate::executor::{run_agent_pyo3, run_agent_subprocess};
@@ -32,6 +36,8 @@ pub struct WorkerNode {
     task_durations: std::sync::Mutex<VecDeque<f64>>,
     last_completed_ids: std::sync::Mutex<VecDeque<String>>,
     pending_grants: Arc<DashMap<String, oneshot::Sender<bool>>>,
+    /// When worker sends TASK_TOOL_CALLS it waits here for TOOL_RESULTS from controller.
+    pending_tool_results: Arc<DashMap<String, oneshot::Sender<ToolResultsPayload>>>,
     paused: std::sync::atomic::AtomicBool,
     draining: std::sync::atomic::AtomicBool,
     metrics: Metrics,
@@ -57,9 +63,17 @@ impl WorkerNode {
             task_durations: std::sync::Mutex::new(VecDeque::new()),
             last_completed_ids: std::sync::Mutex::new(VecDeque::new()),
             pending_grants: Arc::new(DashMap::new()),
+            pending_tool_results: Arc::new(DashMap::new()),
             paused: std::sync::atomic::AtomicBool::new(false),
             draining: std::sync::atomic::AtomicBool::new(false),
             metrics: Metrics::default(),
+        }
+    }
+
+    /// Called when TOOL_RESULTS message is received; unblocks the task waiting for tool results.
+    pub fn on_tool_results(&self, task_id: &str, tool_results: ToolResultsPayload) {
+        if let Some((_, tx)) = self.pending_tool_results.remove(task_id) {
+            let _ = tx.send(tool_results);
         }
     }
 
@@ -162,34 +176,175 @@ impl WorkerNode {
     async fn execute_task(self: Arc<Self>, task: Task) -> Result<()> {
         let start = tokio::time::Instant::now();
         let task_id_short = task.id.chars().take(12).collect::<String>();
-        let request = AgentRequest {
+        let tool_names = task.tools.clone().unwrap_or_default();
+        let use_distributed_tools = !tool_names.is_empty();
+        let mut request = AgentRequest {
             task: task.clone(),
             memory_context: String::new(),
-            tools: vec![],
+            tools: tool_names,
             model: self.config.worker_model.clone(),
             system_prompt: String::new(),
             prefetch_used: false,
+            tool_results: None,
+            distributed_tools: use_distributed_tools,
         };
         let timeout_secs = Some(300u64);
-        let response = match self.config.executor_mode {
-            ExecutorMode::Subprocess => {
-                run_agent_subprocess(&self.config.python_bin, &request, timeout_secs).await
+        let response = loop {
+            let resp = match self.config.executor_mode {
+                ExecutorMode::Subprocess => {
+                    run_agent_subprocess(&self.config.python_bin, &request, timeout_secs).await
+                }
+                ExecutorMode::PyO3 => run_agent_pyo3(&request, timeout_secs).await,
+            };
+            let resp = match resp {
+                Ok(r) => r,
+                Err(e) => {
+                    self.bus
+                        .write()
+                        .await
+                        .publish(&self.make_task_failed(&task.id, &e.to_string()))
+                        .await?;
+                    self.active_tasks.fetch_sub(1, Ordering::Relaxed);
+                    self.metrics.inc_failed();
+                    return Err(e);
+                }
+            };
+            let tool_calls = resp.tool_calls.as_ref().filter(|c| !c.is_empty());
+            if tool_calls.is_none() {
+                break resp;
             }
-            ExecutorMode::PyO3 => run_agent_pyo3(&request, timeout_secs).await,
+            let tool_calls = tool_calls.unwrap();
+            let payload = serde_json::json!({
+                "task_id": task.id,
+                "worker_id": self.node_info.node_id,
+                "tool_calls": tool_calls,
+            });
+            let msg = BusMessage {
+                id: uuid::Uuid::new_v4().to_string(),
+                topic: topics::TASK_TOOL_CALLS.to_string(),
+                payload,
+                sender_id: self.node_info.node_id.clone(),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                run_id: self.run_id.clone(),
+                schema_version: None,
+            };
+            self.bus.write().await.publish(&msg).await?;
+            let (tx, rx) = oneshot::channel();
+            self.pending_tool_results
+                .insert(task.id.clone(), tx);
+            let tool_results = match tokio::time::timeout(
+                tokio::time::Duration::from_secs(120),
+                rx,
+            )
+            .await
+            {
+                Ok(Ok(tr)) => tr,
+                Ok(Err(_)) => {
+                    self.pending_tool_results.remove(&task.id);
+                    self.bus
+                        .write()
+                        .await
+                        .publish(&self.make_task_failed(
+                            &task.id,
+                            "tool results channel closed",
+                        ))
+                        .await?;
+                    self.active_tasks.fetch_sub(1, Ordering::Relaxed);
+                    self.metrics.inc_failed();
+                    return Err(crate::error::DevsperError::InvalidPayload(
+                        "tool results channel closed".to_string(),
+                    ));
+                }
+                Err(_) => {
+                    self.pending_tool_results.remove(&task.id);
+                    self.bus
+                        .write()
+                        .await
+                        .publish(&self.make_task_failed(
+                            &task.id,
+                            "timeout waiting for TOOL_RESULTS",
+                        ))
+                        .await?;
+                    self.active_tasks.fetch_sub(1, Ordering::Relaxed);
+                    self.metrics.inc_failed();
+                    return Err(crate::error::DevsperError::InvalidPayload(
+                        "timeout waiting for TOOL_RESULTS".to_string(),
+                    ));
+                }
+            };
+            request.tool_results = Some(tool_results);
+            request.distributed_tools = true;
         };
-        let response = match response {
-            Ok(r) => r,
-            Err(e) => {
-                self.bus
-                    .write()
-                    .await
-                    .publish(&self.make_task_failed(&task.id, &e.to_string()))
-                    .await?;
-                self.active_tasks.fetch_sub(1, Ordering::Relaxed);
-                self.metrics.inc_failed();
-                return Err(e);
+        let mut response = response;
+        if clarification::is_clarification_response(&response.result) {
+            let request_id = uuid::Uuid::new_v4().to_string();
+            let timeout_secs = 120u64;
+            if let Some(req_payload) = clarification::build_request_payload(
+                &request_id,
+                &task.id,
+                "agent",
+                &response.result,
+                timeout_secs,
+            ) {
+                let channel_req = format!("{}.{}", topics::CLARIFICATION_REQUEST_TOPIC, self.run_id);
+                let msg_req = BusMessage {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    topic: channel_req.clone(),
+                    payload: serde_json::json!({
+                        "request": req_payload,
+                        "node_id": self.node_info.node_id
+                    }),
+                    sender_id: self.node_info.node_id.clone(),
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    run_id: self.run_id.clone(),
+                    schema_version: None,
+                };
+                self.bus.write().await.publish_to_channel(&channel_req, &msg_req).await?;
+                // Must match Python RedisBus._channel(topic, run_id) => "{topic}:{run_id}"
+                let response_channel = format!(
+                    "{}.{}.{}:{}",
+                    topics::CLARIFICATION_RESPONSE_TOPIC,
+                    self.run_id,
+                    request_id,
+                    self.run_id
+                );
+                let payload_opt = RedisBus::recv_once_on_channel(
+                    &self.config.redis_url,
+                    &response_channel,
+                    timeout_secs,
+                )
+                .await?;
+                let (append_desc, re_run) = match payload_opt
+                    .as_ref()
+                    .and_then(clarification::parse_clarification_response)
+                {
+                    Some(parsed) if parsed.skipped || parsed.answers.is_empty() => (
+                        "\n\n[Proceed without user clarification; use available information to complete the task.]".to_string(),
+                        true,
+                    ),
+                    Some(parsed) => (
+                        clarification::format_clarification_context(&parsed.answers),
+                        true,
+                    ),
+                    None => (
+                        "\n\n[Proceed without user clarification; use available information to complete the task.]".to_string(),
+                        true,
+                    ),
+                };
+                if re_run {
+                    request.task.description = request.task.description + &append_desc;
+                    let resp2 = match self.config.executor_mode {
+                        ExecutorMode::Subprocess => {
+                            run_agent_subprocess(&self.config.python_bin, &request, Some(300)).await
+                        }
+                        ExecutorMode::PyO3 => run_agent_pyo3(&request, Some(300)).await,
+                    };
+                    if let Ok(r) = resp2 {
+                        response = r;
+                    }
+                }
             }
-        };
+        }
         let elapsed = start.elapsed().as_secs_f64();
         {
             let mut d = self.task_durations.lock().unwrap();

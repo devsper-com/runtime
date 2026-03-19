@@ -13,22 +13,8 @@ import os
 from dotenv import load_dotenv
 
 from devsper.providers.base import BaseProvider, MockProvider
-from devsper.providers.openai import OpenAIProvider
-from devsper.providers.anthropic import AnthropicProvider
-from devsper.providers.gemini import GeminiProvider
-from devsper.providers.github import GitHubProvider
 
 load_dotenv()
-
-# Provider prefix in model spec (provider:model)
-PROVIDERS = {
-    "openai": OpenAIProvider,
-    "anthropic": AnthropicProvider,
-    "azure": OpenAIProvider,  # Azure OpenAI uses OpenAIProvider with azure=True
-    "gemini": GeminiProvider,
-    "github": GitHubProvider,
-}
-
 
 def _parse_model_spec(model: str) -> tuple[str, str]:
     """Return (vendor, model_name). If 'provider:model' format, vendor is provider; else infer from name."""
@@ -62,10 +48,10 @@ class ProviderRouter:
     """Maps model name (or provider:model) to provider. Caches one instance per vendor."""
 
     def __init__(self) -> None:
-        self._openai: OpenAIProvider | None = None
-        self._anthropic: AnthropicProvider | None = None
-        self._gemini: GeminiProvider | None = None
-        self._github: GitHubProvider | None = None
+        self._openai: object | None = None
+        self._anthropic: object | None = None
+        self._gemini: object | None = None
+        self._github: object | None = None
         self._mock = MockProvider()
 
     def get_provider(self, model_name: str) -> BaseProvider:
@@ -73,18 +59,26 @@ class ProviderRouter:
         vendor, _ = _parse_model_spec(model_name)
         if vendor == "openai" or vendor == "azure":
             if self._openai is None:
+                from devsper.providers.openai import OpenAIProvider
+
                 self._openai = OpenAIProvider(azure=_use_azure_openai())
             return self._openai
         if vendor == "anthropic":
             if self._anthropic is None:
+                from devsper.providers.anthropic import AnthropicProvider
+
                 self._anthropic = AnthropicProvider()
             return self._anthropic
         if vendor == "gemini":
             if self._gemini is None:
+                from devsper.providers.gemini import GeminiProvider
+
                 self._gemini = GeminiProvider()
             return self._gemini
         if vendor == "github":
             if self._github is None:
+                from devsper.providers.github import GitHubProvider
+
                 self._github = GitHubProvider()
             return self._github
         return self._mock

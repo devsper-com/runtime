@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.7] — 2026-03-18
+
+### Added
+
+- **Multi-format run export** — New `devsper export-runs` command exports run history bundles to Markdown, reStructuredText, LaTeX, BibTeX, HTML, JSON, and DOCX (when `python-docx` is available), with per-run markdown artifacts under `runs/`.
+- **Dual PDF pipelines** — Export supports both LaTeX (`pdflatex`) and HTML (`wkhtmltopdf`/`pandoc`) PDF generation, plus manifest reporting for generated outputs and pipeline errors.
+- **Branding-aware documents** — Export templates now consume branding tokens and logo assets from `homepage` for consistent "docproc/devsper" presentation.
+- **Export docs and tests** — Added `docs/export-runs.md` and automated tests covering format generation and event-path resolution.
+
+### Changed
+
+- **Distributed run stability** — Controller dispatch/claim handling is more robust (slot-aware routing, shorter unclaimed-task requeue path, safer task-completion fallback parsing) to reduce stuck runs.
+- **Snapshot restore safety** — Leader restore now avoids rolling back to stale/equivalent snapshots, reducing repeated re-dispatch loops.
+- **HITL/MCQ UX** — Clarification prompts now use interactive numeric selection with a custom answer option and explicit "answer received" feedback.
+- **Run summary accuracy** — Duration/cost aggregation now uses event-log grounded values for more reliable final summaries.
+- **CLI/TUI branding and noise** — Theme/style namespace now prefers `devsper.*` aliases, and TUI logging suppression reduces controller log flooding during active runs.
+
 ## [2.1.6] — 2026-03-14
 
 ### Added

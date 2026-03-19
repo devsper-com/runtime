@@ -7,6 +7,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timezone
+from dataclasses import asdict
 
 from devsper.types.task import Task, TaskStatus
 from devsper.agents.agent import Agent, AgentRequest
@@ -26,8 +27,34 @@ from devsper.bus.topics import (
 from devsper.cluster.node_info import NodeInfo, NodeRole
 from devsper.cluster.registry import ClusterRegistry
 from devsper.swarm.prefetcher import PrefetchResult
+from devsper.tools.registry import ToolRegistry
+from devsper.memory.redis_memory import RedisMemoryStore
 
 log = logging.getLogger(__name__)
+
+
+class _DistributedClarificationRequester:
+    """
+    Bridge used by Agent running in a thread: publishes clarification request to controller,
+    waits for response topic scoped to request_id.
+    """
+
+    def __init__(self, *, bus: object, run_id: str, node_id: str, loop: asyncio.AbstractEventLoop):
+        self.bus = bus
+        self.run_id = run_id
+        self.node_id = node_id
+        self.loop = loop
+
+    def request_clarification(self, req) -> object:
+        async def _do():
+            await self.bus.publish_clarification_request(self.run_id, req, self.node_id)
+            return await self.bus.wait_for_clarification_response(
+                self.run_id, req.request_id, timeout=float(req.timeout_seconds or 120)
+            )
+
+        # Called from non-event-loop thread (agent thread)
+        fut = asyncio.run_coroutine_threadsafe(_do(), self.loop)
+        return fut.result()
 
 
 def _require_distributed() -> None:
@@ -179,6 +206,7 @@ class WorkerNode:
         self._paused = False
         self._draining = False
         self._snapshot: dict | None = None
+        self._tool_registry: ToolRegistry | None = None
 
     async def start(self) -> None:
         await self.registry.register(self.node_info)
@@ -187,6 +215,7 @@ class WorkerNode:
         await self.bus.subscribe(TASK_CLAIM_REJECTED, self._on_claim_rejected, run_id=self._run_id)
         await self.bus.subscribe(SWARM_SNAPSHOT, self._on_snapshot, run_id=self._run_id)
         await self.bus.subscribe(SWARM_CONTROL, self._on_control, run_id=self._run_id)
+        await self.bus.subscribe(f"run.start.{self._run_id}", self._on_run_start, run_id=None)
         asyncio.create_task(self.heartbeat_loop())
         await self.bus.publish(
             create_bus_message(
@@ -196,6 +225,36 @@ class WorkerNode:
                 run_id=self._run_id,
             )
         )
+        try:
+            tool_count = len(ToolRegistry.from_global().list())
+        except Exception:
+            tool_count = 0
+        log.info("Worker ready %s (tool_count=%s)", self.node_id[:8], tool_count)
+
+    async def _on_run_start(self, msg: object) -> None:
+        payload = getattr(msg, "payload", {}) or {}
+        run_id = payload.get("run_id") or self._run_id
+        # Tool registry
+        if payload.get("tool_registry"):
+            try:
+                reg = ToolRegistry.from_dict(payload["tool_registry"])
+                reg.install_global()
+                self._tool_registry = reg
+                log.info("tool registry loaded run_id=%s tool_count=%s", run_id, len(reg.list()))
+            except Exception as e:
+                log.warning("tool registry load failed run_id=%s: %s", run_id, e)
+        # Shared memory via Redis: point MemoryRouter.store to RedisMemoryStore for this run.
+        redis_url = payload.get("redis_url")
+        if redis_url:
+            try:
+                # Replace store with shared redis-backed store, keep same MemoryRouter interface.
+                self.memory_router.store = RedisMemoryStore(redis_url=redis_url, run_id=run_id)
+                # MemoryIndex holds reference to store; rebuild index to point at shared store.
+                from devsper.memory.memory_index import MemoryIndex
+                self.memory_router.index = MemoryIndex(self.memory_router.store)
+                log.info("shared memory initialized run_id=%s backend=redis", run_id)
+            except Exception as e:
+                log.warning("shared memory init failed run_id=%s: %s", run_id, e)
 
     async def _on_task_ready(self, msg: object) -> None:
         payload = getattr(msg, "payload", {}) or {}
@@ -270,6 +329,19 @@ class WorkerNode:
                 score_store=self.score_store,
             )
             agent = self.agent_factory(self.config)
+            # Wire clarification requester for distributed mode.
+            try:
+                loop = asyncio.get_running_loop()
+                agent.clarification_requester = _DistributedClarificationRequester(
+                    bus=self.bus,
+                    run_id=self._run_id,
+                    node_id=self.node_id,
+                    loop=loop,
+                )
+                agent.current_task_id = task.id
+                agent.role = getattr(task, "role", None) or "agent"
+            except Exception:
+                pass
             if hasattr(agent, "model_name") and hasattr(self.config, "models"):
                 request = AgentRequest(
                     task=request.task,

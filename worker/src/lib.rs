@@ -2,6 +2,7 @@
 
 pub mod bus;
 pub mod claim;
+pub mod clarification;
 pub mod config;
 pub mod controller;
 pub mod election;

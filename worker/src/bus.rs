@@ -71,13 +71,18 @@ impl RedisBus {
     }
 
     pub async fn publish(&mut self, message: &BusMessage) -> Result<()> {
+        let ch = channel(&message.topic, &self.run_id);
+        self.publish_to_channel(&ch, message).await
+    }
+
+    /// Publish to an exact channel name (e.g. clarification.request.{run_id} where Python subscribes with run_id=None).
+    pub async fn publish_to_channel(&mut self, channel_name: &str, message: &BusMessage) -> Result<()> {
         let conn = self
             .pub_client
             .as_mut()
             .ok_or_else(|| DevsperError::BusConnection("bus not started".to_string()))?;
-        let ch = channel(&message.topic, &self.run_id);
         let json = message.to_json()?;
-        conn.publish::<_, _, ()>(ch, json)
+        conn.publish::<_, _, ()>(channel_name, json)
             .await
             .map_err(DevsperError::Redis)?;
         Ok(())
@@ -96,6 +101,50 @@ impl RedisBus {
 
     pub fn channel_for(&self, topic: &str) -> String {
         channel(topic, &self.run_id)
+    }
+
+    /// Subscribe to a single channel by full name, wait for one message, then return.
+    /// Used for clarification.response (channel = topic:run_id with topic = clarification.response.{run_id}.{request_id}).
+    /// Uses a new blocking Redis connection so it does not interfere with the main subscriber.
+    pub async fn recv_once_on_channel(
+        redis_url: &str,
+        channel_name: &str,
+        timeout_secs: u64,
+    ) -> Result<Option<serde_json::Value>> {
+        let url = redis_url.to_string();
+        let ch = channel_name.to_string();
+        let result = tokio::task::spawn_blocking(move || {
+            let client = redis::Client::open(url.as_str())
+                .map_err(|e| DevsperError::BusConnection(e.to_string()))?;
+            let mut conn = client
+                .get_connection()
+                .map_err(|e| DevsperError::BusConnection(e.to_string()))?;
+            let mut pubsub = conn.as_pubsub();
+            pubsub.subscribe(ch.as_str()).map_err(DevsperError::Redis)?;
+            let deadline = std::time::Instant::now()
+                + std::time::Duration::from_secs(timeout_secs);
+            while std::time::Instant::now() < deadline {
+                match pubsub.get_message() {
+                    Ok(msg) => {
+                        let payload: String = msg.get_payload().map_err(DevsperError::Redis)?;
+                        let parsed: serde_json::Value =
+                            serde_json::from_str(&payload).unwrap_or(serde_json::Value::Null);
+                        if let Some(obj) = parsed.get("payload").cloned() {
+                            return Ok(Some(obj));
+                        }
+                        return Ok(Some(parsed));
+                    }
+                    Err(e) => {
+                        tracing::warn!("clarification recv_once error: {:?}", e);
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Ok(None)
+        })
+        .await
+        .map_err(|e| DevsperError::BusConnection(e.to_string()))?;
+        result
     }
 }
 

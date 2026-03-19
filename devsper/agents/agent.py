@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -10,6 +11,11 @@ from devsper.types.task import Task, TaskStatus
 from devsper.types.event import Event, events
 from devsper.utils.event_logger import EventLog
 from devsper.utils.models import generate
+from devsper.events import (
+    ClarificationField,
+    ClarificationRequest,
+    ClarificationResponse,
+)
 
 log = logging.getLogger(__name__)
 
@@ -23,9 +29,12 @@ class AgentRequest:
     model: str
     system_prompt: str
     prefetch_used: bool
+    # Distributed tool protocol: controller runs tools, worker sends tool_calls and receives tool_results.
+    tool_results: list[dict] | None = None  # [{"name": str, "result": str}, ...]
+    distributed_tools: bool = False  # if True, return tool_calls in response instead of running locally
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "task": self.task.to_dict(),
             "memory_context": self.memory_context,
             "tools": list(self.tools),
@@ -33,9 +42,17 @@ class AgentRequest:
             "system_prompt": self.system_prompt,
             "prefetch_used": self.prefetch_used,
         }
+        if self.tool_results is not None:
+            out["tool_results"] = list(self.tool_results)
+        if self.distributed_tools:
+            out["distributed_tools"] = True
+        return out
 
     @classmethod
     def from_dict(cls, data: dict) -> "AgentRequest":
+        tr = data.get("tool_results")
+        if tr is not None and not isinstance(tr, list):
+            tr = None
         return cls(
             task=Task.from_dict(data["task"]),
             memory_context=data.get("memory_context", ""),
@@ -43,6 +60,8 @@ class AgentRequest:
             model=data.get("model", "mock"),
             system_prompt=data.get("system_prompt", ""),
             prefetch_used=data.get("prefetch_used", False),
+            tool_results=tr,
+            distributed_tools=bool(data.get("distributed_tools", False)),
         )
 
 
@@ -57,9 +76,11 @@ class AgentResponse:
     duration_seconds: float
     error: str | None
     success: bool
+    # Distributed tool protocol: when model requested tool calls, worker sends these to controller.
+    tool_calls: list[dict] | None = None  # [{"name": str, "arguments": dict}, ...]
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "task_id": self.task_id,
             "result": self.result if self.result is not None else "",
             "tools_called": list(self.tools_called),
@@ -69,9 +90,15 @@ class AgentResponse:
             "error": self.error,
             "success": self.success,
         }
+        if self.tool_calls:
+            out["tool_calls"] = list(self.tool_calls)
+        return out
 
     @classmethod
     def from_dict(cls, data: dict) -> "AgentResponse":
+        tc = data.get("tool_calls")
+        if tc is not None and not isinstance(tc, list):
+            tc = None
         return cls(
             task_id=data["task_id"],
             result=data.get("result", ""),
@@ -81,6 +108,7 @@ class AgentResponse:
             duration_seconds=float(data.get("duration_seconds", 0.0)),
             error=data.get("error"),
             success=bool(data.get("success", False)),
+            tool_calls=tc,
         )
 
 BROADCAST_PREFIX = re.compile(r"^\s*BROADCAST:\s*(.+?)(?=\n\n|\n[A-Z]|\Z)", re.DOTALL | re.IGNORECASE)
@@ -122,6 +150,120 @@ If you discover a fact, constraint, or finding that would help other agents work
 BROADCAST: <one sentence finding>
 Your actual response follows on the next line.
 """
+
+
+class ClarificationDetector:
+    """
+    Detects when an agent response is asking for clarification
+    rather than making progress on the task.
+    """
+
+    ASK_PATTERNS = [
+        r"please (provide|share|give|specify|clarify|confirm)",
+        r"(could|can|would) you (please )?(provide|share|tell|give|confirm|specify)",
+        r"to (proceed|continue|help you), (i need|please provide)",
+        r"answer these (quick )?questions",
+        r"^\d+\)\s+.+",  # numbered list of questions
+        r"before i (can |)(proceed|start|begin|continue)",
+    ]
+
+    MCQ_PATTERNS = [
+        r"- [A-D]:",  # - A: option, - B: option
+        r"\(choose one\)",
+        r"select one of",
+        r"options?:.*\n.*-",
+    ]
+
+    def detect(self, text: str) -> ClarificationRequest | None:
+        """
+        Returns ClarificationRequest if text is asking for clarification,
+        None if it's a normal agent response making progress.
+        """
+        if not (text or "").strip():
+            return None
+        ask_score = sum(
+            1
+            for p in self.ASK_PATTERNS
+            if re.search(p, text, re.IGNORECASE | re.MULTILINE)
+        )
+        if ask_score < 2:
+            # Allow explicit structured MCQ blocks even if only one ASK pattern matched.
+            if any(re.search(p, text, re.IGNORECASE | re.MULTILINE) for p in self.MCQ_PATTERNS):
+                pass
+            # Single yes/no question: allow with 1 pattern if we parse a confirm
+            elif not re.search(r"\(yes/no\)|\(y/n\)", text, re.IGNORECASE):
+                return None
+        fields = self._parse_fields(text)
+        if not fields:
+            return None
+        return ClarificationRequest(
+            request_id=str(uuid.uuid4()),
+            task_id="",  # filled by caller
+            agent_role="",  # filled by caller
+            fields=fields,
+            context=self._extract_context(text),
+        )
+
+    def _parse_fields(self, text: str) -> list[ClarificationField]:
+        fields: list[ClarificationField] = []
+        # Single yes/no question (no numbered list)
+        yes_no = re.search(
+            r"(.+?)\s*\(yes/no\)|\(y/n\)",
+            text.strip(),
+            re.IGNORECASE | re.DOTALL,
+        )
+        if yes_no:
+            q = yes_no.group(1).strip()
+            if len(q) > 5:
+                fields.append(
+                    ClarificationField(
+                        type="confirm",
+                        question=q[:500],
+                        options=None,
+                        default=None,
+                        required=True,
+                    )
+                )
+                return fields
+        # Split on numbered items: "1)", "2)", etc.
+        items = re.split(r"\n\d+\)", text)
+        for item in items[1:]:
+            item = item.strip()
+            if not item:
+                continue
+            options = re.findall(r"-\s+[A-D]:\s+(.+)", item)
+            if options:
+                question = item.split("\n")[0].strip()
+                fields.append(
+                    ClarificationField(
+                        type="mcq",
+                        question=question,
+                        options=options,
+                        default=None,
+                        required=True,
+                    )
+                )
+            else:
+                question = item.split("\n")[0].strip()
+                if question:
+                    fields.append(
+                        ClarificationField(
+                            type="text",
+                            question=question,
+                            options=None,
+                            default=None,
+                            required=False,
+                        )
+                    )
+        return fields
+
+    def _extract_context(self, text: str) -> str:
+        lines = text.strip().split("\n")
+        for line in lines:
+            if len(line) > 20 and not re.match(r"\d+\)", line):
+                return line.strip()[:200]
+        return ""
+
 
 TOOL_NAME_PATTERN = re.compile(r"TOOL:\s*(\S+)", re.IGNORECASE)
 INPUT_PREFIX = re.compile(r"INPUT:\s*", re.IGNORECASE)
@@ -250,6 +392,7 @@ class Agent:
         self.message_bus = message_bus
         self.audit_logger = audit_logger
         self.audit_run_id = audit_run_id or ""
+        self.clarification_requester = None  # set by executor for human-in-the-loop
 
     def run(self, request: AgentRequest) -> AgentResponse:
         """Stateless run: all context in AgentRequest, all output in AgentResponse."""
@@ -266,9 +409,23 @@ class Agent:
 
             if self.use_tools and request.tools:
                 tools_objs = _get_tools_by_names(request.tools)
-                text, tools_called = self._run_with_tools_for_request(
+                text, tools_called, tool_calls_out = self._run_with_tools_for_request(
                     request, memory_section, tools_objs
                 )
+                if tool_calls_out:
+                    duration = time.perf_counter() - t0
+                    self._emit(events.AGENT_FINISHED, {"task_id": task_id})
+                    return AgentResponse(
+                        task_id=task_id,
+                        result="",
+                        tools_called=tools_called,
+                        broadcasts=[],
+                        tokens_used=None,
+                        duration_seconds=duration,
+                        error=None,
+                        success=True,
+                        tool_calls=tool_calls_out,
+                    )
             else:
                 prompt = PROMPT_TEMPLATE.format(
                     role_prefix=request.system_prompt,
@@ -280,6 +437,25 @@ class Agent:
                 tools_called = []
 
             text, broadcasts = self._strip_broadcast_and_collect(task_id, text)
+
+            # Clarification: detect ask-for-input and optionally block for user response
+            requester = getattr(self, "clarification_requester", None)
+            if requester is not None:
+                detector = ClarificationDetector()
+                clarification = detector.detect(text)
+                if clarification is not None:
+                    clarification.task_id = request.task.id
+                    clarification.agent_role = (
+                        getattr(request.task, "role", None) or "agent"
+                    )
+                    response = requester.request_clarification(clarification)
+                    if response.skipped:
+                        return self._run_without_clarification(request)
+                    enriched_task = self._enrich_task(
+                        request.task, response.answers
+                    )
+                    new_request = self.build_request(enriched_task)
+                    return self.run(new_request)
 
             if self.store_result_to_memory and text and getattr(self.memory_router, "store", None):
                 self._store_result_to_memory(request.task, text)
@@ -398,9 +574,82 @@ class Agent:
     ) -> str:
         """Backward-compat: build AgentRequest from task and prefetch, run, mutate task, return result."""
         request = self.build_request(task, model_override=model_override, prefetch_result=prefetch_result)
-        response = self.run(request)
+        try:
+            # Preferred: Agent.run(AgentRequest)
+            response = self.run(request)
+        except (TypeError, AttributeError):
+            # Some tests/legacy call sites monkeypatch Agent.run to accept Task.
+            response = self.run(task)  # type: ignore[misc]
+        # Legacy behavior: some call sites monkeypatch Agent.run to return raw text.
+        if isinstance(response, str):
+            response = AgentResponse(
+                task_id=task.id,
+                result=response,
+                tools_called=[],
+                broadcasts=[],
+                tokens_used=None,
+                duration_seconds=0.0,
+                error=None,
+                success=True,
+            )
         self.apply_response(task, response)
         return response.result
+
+    def _enrich_task(self, task: Task, answers: dict) -> Task:
+        """Append user clarification answers to task description."""
+        context_lines = ["\n\n[User provided clarification:]"]
+        for question, answer in answers.items():
+            context_lines.append(f"- {question}: {answer}")
+        return task.model_copy(
+            update={"description": task.description + "\n".join(context_lines)}
+        )
+
+    def clarify(
+        self,
+        context: str,
+        fields: list[ClarificationField],
+        timeout: int = 120,
+        priority: int = 1,
+    ) -> dict:
+        """
+        Request clarification from the user. Blocks until user responds or timeout.
+        Returns answers dict (question -> answer), or {} if skipped/no requester.
+        """
+        requester = getattr(self, "clarification_requester", None)
+        if requester is None:
+            return {}
+        request_id = str(uuid.uuid4())
+        task_id = getattr(self, "current_task_id", "") or ""
+        agent_role = getattr(self, "role", "") or "agent"
+        req = ClarificationRequest(
+            request_id=request_id,
+            task_id=task_id,
+            agent_role=agent_role,
+            fields=fields,
+            context=context,
+            priority=int(priority),
+            timeout_seconds=timeout,
+        )
+        response = requester.request_clarification(req)
+        return response.answers if not response.skipped else {}
+
+    def clarify_blocking(
+        self,
+        context: str,
+        fields: list[ClarificationField],
+        timeout: int = 120,
+    ) -> dict:
+        """Use when the run cannot proceed at all without this answer."""
+        return self.clarify(context=context, fields=fields, timeout=timeout, priority=0)
+
+    def _run_without_clarification(self, request: AgentRequest) -> AgentResponse:
+        """Re-run with hint to proceed without waiting for user input."""
+        hint = "\n\n[Proceed without user clarification; use available information to complete the task.]"
+        task = request.task.model_copy(
+            update={"description": request.task.description + hint}
+        )
+        new_request = self.build_request(task)
+        return self.run(new_request)
 
     def _strip_broadcast_and_collect(self, task_id: str, text: str) -> tuple[str, list[str]]:
         """If text starts with BROADCAST:, optionally emit to message_bus, strip; return (rest, list of findings)."""
@@ -448,8 +697,10 @@ class Agent:
         request: AgentRequest,
         memory_section: str,
         tools_list: list,
-    ) -> tuple[str, list[str]]:
-        """Run tool loop for a request; return (result_text, list of tool names called)."""
+    ) -> tuple[str, list[str], list[dict] | None]:
+        """Run tool loop for a request; return (result_text, tools_called, tool_calls or None).
+        When distributed_tools is True and model returns tool calls, returns tool_calls for controller.
+        """
         from devsper.tools.tool_runner import run_tool
 
         task = request.task
@@ -463,15 +714,27 @@ class Agent:
             tools_section=tools_section,
         )
         conversation = [prompt]
+        if getattr(request, "tool_results", None):
+            for tr in request.tool_results:
+                name = (tr.get("name") or tr.get("tool_name") or "tool").strip()
+                res = tr.get("result") or ""
+                conversation.append(f"Tool result ({name}):\n{res}")
         tools_called: list[str] = []
+        distributed = getattr(request, "distributed_tools", False)
         for _ in range(self.max_tool_iterations):
             full_prompt = "\n\n".join(conversation)
             response = generate(request.model, full_prompt)
             tool_calls = _parse_all_tool_calls(response)
             if not tool_calls:
-                return (response.strip(), tools_called)
+                return (response.strip(), tools_called, None)
             for (tool_name, _) in tool_calls:
                 tools_called.append(tool_name)
+            if distributed:
+                return (
+                    "",
+                    tools_called,
+                    [{"name": n, "arguments": a} for n, a in tool_calls],
+                )
             if len(tool_calls) == 1 or not self.parallel_tools:
                 tool_name, tool_args = tool_calls[0]
                 result = run_tool(tool_name, tool_args, task_type=task_type)
@@ -492,7 +755,7 @@ class Agent:
                     {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
                 )
                 conversation.append(f"Tool result ({tool_name}):\n{result or ''}")
-        return (conversation[-1].strip() or "Max tool iterations reached.", tools_called)
+        return (conversation[-1].strip() or "Max tool iterations reached.", tools_called, None)
 
     def _run_with_tools(
         self,

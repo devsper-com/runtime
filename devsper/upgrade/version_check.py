@@ -18,7 +18,16 @@ def get_current_version() -> str:
     """Read current installed version from importlib.metadata."""
     import importlib.metadata
 
-    return importlib.metadata.version(PACKAGE_NAME)
+    try:
+        return importlib.metadata.version(PACKAGE_NAME)
+    except importlib.metadata.PackageNotFoundError:
+        # Dev / source-tree usage (not installed as a distribution).
+        try:
+            import devsper
+
+            return getattr(devsper, "__version__", "0.0.0") or "0.0.0"
+        except Exception:
+            return "0.0.0"
 
 
 def _cache_is_fresh() -> bool:

@@ -7,13 +7,14 @@ When model_name is "auto", use resolve_model(spec, task_type) first.
 
 import asyncio
 
-from devsper.providers.model_router import TaskType, select_model
-from devsper.providers.router import get_router
+from devsper.providers.model_router import TaskType
 
 
 def resolve_model(model_spec: str, task_type: TaskType) -> str:
     """If model_spec is 'auto', return model_router.select_model(task_type); else return model_spec."""
     if (model_spec or "").strip().lower() == "auto":
+        from devsper.providers.model_router import select_model
+
         return select_model(task_type)
     return model_spec or "mock"
 
@@ -50,5 +51,7 @@ def generate(model_name: str, prompt: str, stream: bool = False):
                 return resp.content
         except Exception:
             pass
+    from devsper.providers.router import get_router
+
     provider = get_router().get_provider(model_name)
     return provider.generate(model_name, prompt, stream=stream)

@@ -51,6 +51,8 @@ pub mod topics {
     pub const TASK_CLAIMED: &str = "task.claimed";
     pub const TASK_CLAIM_GRANTED: &str = "task.claim_granted";
     pub const TASK_CLAIM_REJECTED: &str = "task.claim_rejected";
+    pub const TASK_TOOL_CALLS: &str = "task.tool_calls";
+    pub const TOOL_RESULTS: &str = "tool.results";
     pub const AGENT_BROADCAST: &str = "agent.broadcast";
     pub const SWARM_CONTROL: &str = "swarm.control";
     pub const NODE_HEARTBEAT: &str = "node.heartbeat";
@@ -61,4 +63,8 @@ pub mod topics {
     pub const SWARM_SNAPSHOT: &str = "swarm.snapshot";
     pub const SWARM_STATUS_REQUEST: &str = "swarm.status_request";
     pub const SWARM_STATUS_RESPONSE: &str = "swarm.status_response";
+    /// Topic prefix for controller; full topic = clarification.request.{run_id}
+    pub const CLARIFICATION_REQUEST_TOPIC: &str = "clarification.request";
+    /// Response topic = clarification.response.{run_id}.{request_id}
+    pub const CLARIFICATION_RESPONSE_TOPIC: &str = "clarification.response";
 }

@@ -39,6 +39,9 @@ class events(Enum):
     PROVIDER_FALLBACK = "provider_fallback"
     # v2.1
     TASK_REJECTED_BY_HUMAN = "task_rejected_by_human"
+    # Clarification (human-in-the-loop)
+    CLARIFICATION_NEEDED = "clarification_needed"
+    CLARIFICATION_RECEIVED = "clarification_received"
 
 class Event(BaseModel):
     timestamp: datetime

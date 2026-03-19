@@ -74,6 +74,22 @@ class Scheduler:
             t.status = TaskStatus.FAILED
             t.error = error
 
+    def set_task_status(self, task_id: str, status: TaskStatus) -> None:
+        """Set task status (e.g. WAITING_FOR_INPUT during clarification)."""
+        if task_id in self._tasks:
+            self._tasks[task_id].status = status
+
+    def append_task_context(self, task_id: str, text: str) -> None:
+        """
+        Append shared clarification context to the task description so all nodes
+        (and future retries) see it.
+        """
+        if not text:
+            return
+        if task_id in self._tasks:
+            t = self._tasks[task_id]
+            t.description = (t.description or "") + str(text)
+
     def is_finished(self) -> bool:
         """Return True when every task is completed or failed (no pending/running left)."""
         return all(
