@@ -20,11 +20,13 @@ class MemoryRouter:
         index: MemoryIndex | None = None,
         top_k: int = 10,
         min_similarity: float = 0.55,
+        default_namespace: str | None = None,
     ) -> None:
         self.store = store or MemoryStore()
         self.index = index or MemoryIndex(self.store)
         self.top_k = top_k
         self.min_similarity = min_similarity
+        self.default_namespace = default_namespace
 
     def get_relevant_memory(self, task: str) -> list[MemoryRecord]:
         """
@@ -35,6 +37,7 @@ class MemoryRouter:
             task,
             top_k=self.top_k,
             min_similarity=self.min_similarity,
+            namespace=self.default_namespace,
         )
 
     def get_memory_context(self, task: str) -> str:
@@ -44,7 +47,9 @@ class MemoryRouter:
         Empty if no memories meet the relevance threshold.
         """
         lines = []
-        inject_records = self.store.list_memory(tag_contains="user_injection", limit=10)
+        inject_records = self.store.list_memory(
+            tag_contains="user_injection", limit=10, namespace=self.default_namespace
+        )
         if inject_records:
             lines.append("USER INJECTIONS (high priority):")
             for r in inject_records:

@@ -2,7 +2,7 @@
 
 from devsper.tools.base import Tool
 from devsper.tools.registry import register
-from devsper.memory.memory_store import get_default_store
+from devsper.memory.context import get_effective_memory_namespace, get_effective_memory_store
 from devsper.memory.memory_index import MemoryIndex
 
 
@@ -25,9 +25,10 @@ class SearchMemoryTool(Tool):
         top_k = kwargs.get("top_k", 5)
         if not isinstance(top_k, int) or top_k < 1:
             top_k = 5
-        store = get_default_store()
+        store = get_effective_memory_store()
+        ns = get_effective_memory_namespace()
         index = MemoryIndex(store)
-        records = index.query_memory(query, top_k=top_k)
+        records = index.query_memory(query, top_k=top_k, namespace=ns)
         if not records:
             return "No matching memory found."
         lines = []

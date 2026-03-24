@@ -33,6 +33,7 @@ class MemoryIndex:
         top_k: int = 5,
         min_similarity: float = 0.0,
         include_archived: bool = False,
+        namespace: str | None = None,
     ) -> list[MemoryRecord]:
         """
         Semantic search: embed query, score against stored records with embeddings,
@@ -41,7 +42,9 @@ class MemoryIndex:
         Use min_similarity > 0 (e.g. 0.45) to avoid injecting barely-related memory.
         By default excludes archived records (consolidation).
         """
-        records = self.store.list_memory(limit=500, include_archived=include_archived)
+        records = self.store.list_memory(
+            limit=500, include_archived=include_archived, namespace=namespace
+        )
         if not records:
             return []
         query_emb = embed_text(text)
@@ -64,6 +67,7 @@ class MemoryIndex:
         min_similarity: float = 0.0,
         run_id_filter: str | None = None,
         include_archived: bool = False,
+        namespace: str | None = None,
     ) -> list[MemoryRecord]:
         """
         v1.8: Same as query_memory but over more records (all runs), optional run_id filter.
@@ -73,6 +77,7 @@ class MemoryIndex:
             limit=2000,
             include_archived=include_archived,
             run_id_filter=run_id_filter,
+            namespace=namespace,
         )
         if not records:
             return []

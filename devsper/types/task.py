@@ -22,10 +22,11 @@ class Task(BaseModel):
     speculative: bool = False
     role: str | None = None  # Optional agent role: research, code, analysis, critic
     retry_count: int = 0  # v1.7: critic retries
+    project_id: str | None = None  # platform project scope for memory namespace
 
     def to_dict(self) -> dict:
         """Return all fields as JSON-safe dict."""
-        return {
+        d = {
             "id": self.id,
             "description": self.description,
             "dependencies": list(self.dependencies),
@@ -36,6 +37,9 @@ class Task(BaseModel):
             "role": self.role,
             "retry_count": self.retry_count,
         }
+        if self.project_id:
+            d["project_id"] = self.project_id
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> "Task":
@@ -69,6 +73,7 @@ class Task(BaseModel):
             speculative=data.get("speculative", False),
             role=data.get("role"),
             retry_count=data.get("retry_count", 0),
+            project_id=data.get("project_id"),
         )
 
     def to_json(self) -> str:

@@ -379,12 +379,14 @@ class Agent:
         message_bus=None,
         audit_logger=None,
         audit_run_id: str = "",
+        memory_namespace: str | None = None,
     ):
         self.model_name = model_name
         self.event_log = event_log or EventLog()
         self.use_tools = use_tools
         self.max_tool_iterations = max_tool_iterations
         self.memory_router = memory_router
+        self.memory_namespace = memory_namespace
         self.store_result_to_memory = store_result_to_memory
         self.reasoning_store = reasoning_store
         self.user_task = user_task
@@ -397,8 +399,14 @@ class Agent:
     def run(self, request: AgentRequest) -> AgentResponse:
         """Stateless run: all context in AgentRequest, all output in AgentResponse."""
         import time
+        from devsper.memory.context import attach_memory_context, detach_memory_context
+
         t0 = time.perf_counter()
         task_id = request.task.id
+        ctx = attach_memory_context(
+            getattr(self.memory_router, "store", None) if self.memory_router else None,
+            self.memory_namespace,
+        )
         try:
             self._emit(events.AGENT_STARTED, {"task_id": task_id})
             self._emit(events.TASK_STARTED, {"task_id": task_id})
@@ -503,6 +511,8 @@ class Agent:
                 error=str(e),
                 success=False,
             )
+        finally:
+            detach_memory_context(ctx)
 
     def build_request(
         self,
@@ -690,7 +700,7 @@ class Agent:
         index = getattr(self.memory_router, "index", None)
         if isinstance(index, MemoryIndex):
             record = index.ensure_embedding(record)
-        store.store(record)
+        store.store(record, namespace=self.memory_namespace)
 
     def _run_with_tools_for_request(
         self,

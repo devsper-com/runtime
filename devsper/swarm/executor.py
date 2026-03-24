@@ -80,9 +80,11 @@ class Executor:
         hitl_notifier: object = None,
         hitl_resolver: object = None,
         clarification_bus: queue.Queue | None = None,
+        project_id: str | None = None,
     ) -> None:
         self.scheduler = scheduler
         self.agent = agent
+        self._project_id = project_id
         self.worker_count = worker_count
         self.event_log = event_log or EventLog()
         self.planner = planner
@@ -111,6 +113,15 @@ class Executor:
         self.clarification_bus = clarification_bus  # sync queue for TUI to read requests
         self._pending_clarification_queues: dict[str, tuple[queue.Queue, str]] = {}  # request_id -> (response_queue, task_id)
         self._pending_clarification_lock = threading.Lock()
+
+    def _apply_project_memory_namespace(self) -> None:
+        ns = f"project:{self._project_id}" if getattr(self, "_project_id", None) else None
+        if self.agent is None:
+            return
+        self.agent.memory_namespace = ns
+        mr = getattr(self.agent, "memory_router", None)
+        if mr is not None:
+            mr.default_namespace = ns
 
     def request_clarification(self, req: ClarificationRequest) -> ClarificationResponse:
         """
@@ -252,6 +263,7 @@ class Executor:
                 )
             return task.id
 
+        self._apply_project_memory_namespace()
         self._publish_bus("task.started", task.to_dict())
         if self.audit_logger is not None and self.scheduler is not None:
             try:

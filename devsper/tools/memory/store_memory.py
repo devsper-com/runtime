@@ -2,7 +2,8 @@
 
 from devsper.tools.base import Tool
 from devsper.tools.registry import register
-from devsper.memory.memory_store import get_default_store, generate_memory_id
+from devsper.memory.context import get_effective_memory_namespace, get_effective_memory_store
+from devsper.memory.memory_store import generate_memory_id
 from devsper.memory.memory_types import MemoryRecord, MemoryType
 from devsper.memory.memory_index import MemoryIndex
 
@@ -33,7 +34,8 @@ class StoreMemoryTool(Tool):
         if isinstance(tags, str):
             tags = [t.strip() for t in tags.split(",") if t.strip()]
         source_task = kwargs.get("source_task") or ""
-        store = get_default_store()
+        store = get_effective_memory_store()
+        ns = get_effective_memory_namespace()
         index = MemoryIndex(store)
         record = MemoryRecord(
             id=generate_memory_id(),
@@ -43,5 +45,5 @@ class StoreMemoryTool(Tool):
             source_task=source_task,
         )
         record = index.ensure_embedding(record)
-        mid = store.store(record)
+        mid = store.store(record, namespace=ns)
         return f"Stored memory id: {mid}"

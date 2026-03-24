@@ -29,6 +29,7 @@ from devsper.cluster.registry import ClusterRegistry
 from devsper.swarm.prefetcher import PrefetchResult
 from devsper.tools.registry import ToolRegistry
 from devsper.memory.redis_memory import RedisMemoryStore
+from devsper.memory.memory_index import MemoryIndex
 
 log = logging.getLogger(__name__)
 
@@ -207,6 +208,7 @@ class WorkerNode:
         self._draining = False
         self._snapshot: dict | None = None
         self._tool_registry: ToolRegistry | None = None
+        self._redis_url: str | None = None
 
     async def start(self) -> None:
         await self.registry.register(self.node_info)
@@ -246,11 +248,11 @@ class WorkerNode:
         # Shared memory via Redis: point MemoryRouter.store to RedisMemoryStore for this run.
         redis_url = payload.get("redis_url")
         if redis_url:
+            self._redis_url = redis_url
             try:
                 # Replace store with shared redis-backed store, keep same MemoryRouter interface.
                 self.memory_router.store = RedisMemoryStore(redis_url=redis_url, run_id=run_id)
                 # MemoryIndex holds reference to store; rebuild index to point at shared store.
-                from devsper.memory.memory_index import MemoryIndex
                 self.memory_router.index = MemoryIndex(self.memory_router.store)
                 log.info("shared memory initialized run_id=%s backend=redis", run_id)
             except Exception as e:
@@ -317,6 +319,14 @@ class WorkerNode:
         self._current_tasks[task.id] = task
         start = time.monotonic()
         task_id_short = (task.id or "?")[:12]
+        mem_ns = f"project:{task.project_id}" if getattr(task, "project_id", None) else None
+        try:
+            st = self.memory_router.store
+            if isinstance(st, RedisMemoryStore):
+                st.set_default_namespace(mem_ns)
+        except Exception:
+            pass
+        self.memory_router.default_namespace = mem_ns
         try:
             prefetch = self.prefetcher.consume(task.id) if self.prefetcher else None
             request = _build_agent_request(
@@ -329,6 +339,11 @@ class WorkerNode:
                 score_store=self.score_store,
             )
             agent = self.agent_factory(self.config)
+            agent.memory_namespace = mem_ns
+            if getattr(agent, "memory_router", None) is None:
+                agent.memory_router = self.memory_router
+            elif agent.memory_router is not self.memory_router:
+                agent.memory_router = self.memory_router
             # Wire clarification requester for distributed mode.
             try:
                 loop = asyncio.get_running_loop()

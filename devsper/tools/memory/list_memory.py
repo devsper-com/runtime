@@ -2,7 +2,7 @@
 
 from devsper.tools.base import Tool
 from devsper.tools.registry import register
-from devsper.memory.memory_store import get_default_store
+from devsper.memory.context import get_effective_memory_namespace, get_effective_memory_store
 from devsper.memory.memory_types import MemoryType
 
 
@@ -18,7 +18,8 @@ class ListMemoryTool(Tool):
     }
 
     def run(self, **kwargs) -> str:
-        store = get_default_store()
+        store = get_effective_memory_store()
+        ns = get_effective_memory_namespace()
         mt = kwargs.get("memory_type")
         limit = kwargs.get("limit", 20)
         if not isinstance(limit, int) or limit < 1:
@@ -27,7 +28,7 @@ class ListMemoryTool(Tool):
             memory_type = MemoryType(mt.lower()) if mt else None
         except (ValueError, AttributeError):
             memory_type = None
-        records = store.list_memory(memory_type=memory_type, limit=limit)
+        records = store.list_memory(memory_type=memory_type, limit=limit, namespace=ns)
         if not records:
             return "No memory entries."
         lines = [f"- {r.id} [{r.memory_type.value}] {r.content[:150]}{'...' if len(r.content) > 150 else ''}" for r in records]

@@ -2,7 +2,7 @@
 
 from devsper.tools.base import Tool
 from devsper.tools.registry import register
-from devsper.memory.memory_store import get_default_store
+from devsper.memory.context import get_effective_memory_namespace, get_effective_memory_store
 from devsper.memory.memory_types import MemoryRecord, MemoryType
 from devsper.memory.memory_index import MemoryIndex
 
@@ -29,19 +29,12 @@ class TagMemoryTool(Tool):
         if not isinstance(tags, list):
             tags = [str(tags)]
         tags = [str(t).strip() for t in tags if str(t).strip()]
-        store = get_default_store()
-        record = store.retrieve(memory_id)
+        store = get_effective_memory_store()
+        ns = get_effective_memory_namespace()
+        record = store.retrieve(memory_id, namespace=ns)
         if not record:
             return "Memory not found."
         new_tags = tags if replace else list(dict.fromkeys(record.tags + tags))
-        updated = MemoryRecord(
-            id=record.id,
-            memory_type=record.memory_type,
-            timestamp=record.timestamp,
-            source_task=record.source_task,
-            content=record.content,
-            tags=new_tags,
-            embedding=record.embedding,
-        )
-        store.store(updated)
+        updated = record.model_copy(update={"tags": new_tags})
+        store.store(updated, namespace=ns)
         return f"Tags updated: {new_tags}"

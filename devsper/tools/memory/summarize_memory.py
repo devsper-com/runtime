@@ -2,7 +2,7 @@
 
 from devsper.tools.base import Tool
 from devsper.tools.registry import register
-from devsper.memory.memory_store import get_default_store
+from devsper.memory.context import get_effective_memory_namespace, get_effective_memory_store
 from devsper.memory.memory_types import MemoryType
 
 
@@ -18,7 +18,8 @@ class SummarizeMemoryTool(Tool):
     }
 
     def run(self, **kwargs) -> str:
-        store = get_default_store()
+        store = get_effective_memory_store()
+        ns = get_effective_memory_namespace()
         mt = kwargs.get("memory_type")
         limit = kwargs.get("limit", 5)
         if not isinstance(limit, int) or limit < 0:
@@ -27,7 +28,7 @@ class SummarizeMemoryTool(Tool):
             memory_type = MemoryType(mt.lower()) if mt else None
         except (ValueError, AttributeError):
             memory_type = None
-        records = store.list_memory(memory_type=memory_type, limit=1000)
+        records = store.list_memory(memory_type=memory_type, limit=1000, namespace=ns)
         total = len(records)
         by_type: dict[str, int] = {}
         for r in records:
