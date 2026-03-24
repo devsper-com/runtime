@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.8] — 2026-03-24
+
+### Changed
+
+- **Memory management** — Runtime lifecycle and retention tuned for lower steady-state memory use (agent/worker paths, caches, and long-run cleanup).
+
 ## [2.1.7] — 2026-03-18
 
 ### Added
