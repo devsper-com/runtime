@@ -42,6 +42,7 @@ class events(Enum):
     # Clarification (human-in-the-loop)
     CLARIFICATION_NEEDED = "clarification_needed"
     CLARIFICATION_RECEIVED = "clarification_received"
+    RUN_MANIFEST_EMITTED = "run_manifest_emitted"
 
 class Event(BaseModel):
     timestamp: datetime

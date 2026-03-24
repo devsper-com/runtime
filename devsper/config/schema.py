@@ -55,6 +55,9 @@ class MemoryConfig(BaseModel):
     enabled: bool = True
     store_results: bool = True
     top_k: int = 5
+    backend: Literal["local", "platform", "hybrid"] = "local"
+    platform_api_url: str = ""
+    platform_org_slug: str = ""
 
 
 class KnowledgeConfig(BaseModel):

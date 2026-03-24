@@ -148,7 +148,14 @@ def _build_merged_raw(
         },
         "agents": {"roles": ["research_agent", "code_agent", "analysis_agent", "critic_agent"]},
         "models": {"planner": planner_default, "worker": worker_default},
-        "memory": {"enabled": True, "store_results": True, "top_k": 5},
+        "memory": {
+            "enabled": True,
+            "store_results": True,
+            "top_k": 5,
+            "backend": "local",
+            "platform_api_url": "",
+            "platform_org_slug": "",
+        },
         "knowledge": {"guide_planning": True, "min_confidence": 0.30, "auto_extract": True},
         "tools": {"enabled": None, "top_k": 0},
         "telemetry": {"enabled": True, "save_events": True},
@@ -204,6 +211,12 @@ def _apply_env_overrides(merged: dict) -> dict:
         merged["events_dir"] = os.environ["DEVSPER_EVENTS_DIR"]
     if os.environ.get("DEVSPER_DATA_DIR"):
         merged["data_dir"] = os.environ["DEVSPER_DATA_DIR"]
+    if os.environ.get("DEVSPER_MEMORY_BACKEND"):
+        merged.setdefault("memory", {})["backend"] = os.environ["DEVSPER_MEMORY_BACKEND"]
+    if os.environ.get("DEVSPER_PLATFORM_API_URL"):
+        merged.setdefault("memory", {})["platform_api_url"] = os.environ["DEVSPER_PLATFORM_API_URL"]
+    if os.environ.get("DEVSPER_PLATFORM_ORG"):
+        merged.setdefault("memory", {})["platform_org_slug"] = os.environ["DEVSPER_PLATFORM_ORG"]
     return merged
 
 

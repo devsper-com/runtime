@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from devsper.types.task import Task
 from devsper.types.event import Event, events
 from devsper.agents.roles import infer_role_from_description
+from devsper.policy.client import enforce_model_policy
 from devsper.utils.event_logger import EventLog
 from devsper.utils.models import generate
 
@@ -96,6 +97,10 @@ class Planner:
 
     def plan(self, task: Task) -> list[Task]:
         """Break task into subtasks (strategy DAG or LLM). Emit planner lifecycle events."""
+        try:
+            enforce_model_policy(self.model_name)
+        except Exception:
+            pass
         self._emit(events.PLANNER_STARTED, {"task_id": task.id})
 
         if self.strategy is not None:

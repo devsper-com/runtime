@@ -3,6 +3,7 @@ Memory router: determine which memories are relevant to a task and return contex
 """
 
 from devsper.memory.memory_index import MemoryIndex
+from devsper.memory.platform_memory import PlatformMemoryStore
 from devsper.memory.memory_store import MemoryStore
 from devsper.memory.memory_types import MemoryRecord
 
@@ -22,7 +23,7 @@ class MemoryRouter:
         min_similarity: float = 0.55,
         default_namespace: str | None = None,
     ) -> None:
-        self.store = store or MemoryStore()
+        self.store = store or _build_memory_store()
         self.index = index or MemoryIndex(self.store)
         self.top_k = top_k
         self.min_similarity = min_similarity
@@ -65,3 +66,19 @@ class MemoryRouter:
                     f"{r.content[:500]}{'...' if len(r.content) > 500 else ''}"
                 )
         return "\n".join(lines) if lines else ""
+
+
+def _build_memory_store() -> MemoryStore | PlatformMemoryStore:
+    try:
+        from devsper.config import get_config
+
+        cfg = get_config()
+        backend = getattr(cfg.memory, "backend", "local")
+        if backend == "platform":
+            return PlatformMemoryStore(
+                base_url=getattr(cfg.memory, "platform_api_url", ""),
+                org_slug=getattr(cfg.memory, "platform_org_slug", ""),
+            )
+    except Exception:
+        pass
+    return MemoryStore()

@@ -131,6 +131,7 @@ uv run python examples/distributed/run_worker.py --config /path/to/worker.toml
 - **More logs**
   Controller and worker show dispatch/claim/execute/complete at INFO. Use `export DEVSPER_LOG_LEVEL=DEBUG` for more detail.
 
+
 ## Stop
 
 - Workers: Ctrl+C in each worker terminal.

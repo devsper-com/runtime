@@ -1,10 +1,12 @@
 """Load workflow definitions from workflow.devsper.toml or devsper.toml."""
 
 import secrets
+import os
 from pathlib import Path
 from typing import Any
 
 import tomllib
+import requests
 
 from devsper.workflow.schema import (
     OutputField,
@@ -117,6 +119,9 @@ def load_workflow(name: str, config_path: Path | None = None) -> WorkflowDefinit
     Legacy: if steps are a list of strings, they are wrapped in a WorkflowDefinition with
     auto-generated step ids and sequential dependencies.
     """
+    remote = _load_remote_workflow(name)
+    if remote is not None:
+        return remote
     path = config_path or _find_workflow_file()
     if not path:
         return None
@@ -135,6 +140,46 @@ def load_workflow(name: str, config_path: Path | None = None) -> WorkflowDefinit
     if not raw:
         return None
     return _workflow_dict_to_definition(name, raw)
+
+
+def _load_remote_workflow(name: str) -> WorkflowDefinition | None:
+    if "@" not in name or "/" not in name:
+        return None
+    base = os.environ.get("DEVSPER_PLATFORM_API_URL", "").rstrip("/")
+    org = os.environ.get("DEVSPER_PLATFORM_ORG", "")
+    token = os.environ.get("DEVSPER_PLATFORM_TOKEN", "")
+    if not base or not org:
+        return None
+    wf_name, version = name.split("@", 1)
+    wf_name = wf_name.split("/", 1)[-1]
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        version_num = int(version)
+    except Exception:
+        return None
+    try:
+        resp = requests.get(
+            f"{base}/orgs/{org}/workflows/{wf_name}/versions/{version_num}",
+            headers=headers,
+            timeout=15,
+        )
+        if not resp.ok:
+            return None
+        data = resp.json() or {}
+        spec = data.get("spec")
+        if not isinstance(spec, dict):
+            return None
+        return _workflow_dict_to_definition(
+            wf_name,
+            {
+                "description": spec.get("description") or "remote workflow",
+                "version": str(data.get("version") or version_num),
+                "steps": spec.get("steps") or [],
+                "inputs": spec.get("inputs") or [],
+            },
+        )
+    except Exception:
+        return None
 
 
 def list_workflows(config_path: Path | None = None) -> list[str]:

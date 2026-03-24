@@ -64,6 +64,16 @@ def export_all_runs(options: ExportOptions) -> dict:
         else:
             pdf_errors["html_pdf"] = msg
 
+    artifact_manifest = {
+        "schema_version": "1",
+        "artifacts": [
+            {"kind": "history_json", "path": str(history_json)},
+            {"kind": "branding_json", "path": str(branding_json)},
+            {"kind": "all_runs_html", "path": written.get("all_runs_html", "")},
+            {"kind": "all_runs_tex", "path": written.get("all_runs_tex", "")},
+        ],
+    }
+
     manifest = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "run_count": bundle.run_count,
@@ -72,6 +82,8 @@ def export_all_runs(options: ExportOptions) -> dict:
         "pdf_outputs": pdf_outputs,
         "pdf_errors": pdf_errors,
         "pipelines": {"pdf_pipeline": options.pdf_pipeline},
+        "artifact_manifest": artifact_manifest,
+        "run_manifest_version": "1",
     }
     manifest_path = out_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")

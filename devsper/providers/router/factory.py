@@ -1,6 +1,7 @@
 """Build LLMRouter from config and register backends."""
 
 from devsper.config import get_config
+from devsper.policy.client import enforce_model_policy
 from devsper.providers.router.router import LLMRouter
 from devsper.providers.router.backends.openai_backend import OpenAIBackend
 from devsper.providers.router.backends.anthropic_backend import AnthropicBackend
@@ -89,4 +90,8 @@ def get_llm_router() -> LLMRouter | None:
     if not router._backends:
         return None
     _router_instance = router
+    try:
+        enforce_model_policy(getattr(cfg.models, "worker", ""))
+    except Exception:
+        pass
     return _router_instance

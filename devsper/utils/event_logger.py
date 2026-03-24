@@ -86,3 +86,14 @@ class EventLog:
     def clear(self) -> None:
         if os.path.exists(self.log_path):
             os.remove(self.log_path)
+
+    def append_run_manifest(self, manifest: dict) -> None:
+        try:
+            event = Event(
+                timestamp=datetime.now(timezone.utc),
+                type=events.RUN_MANIFEST_EMITTED,
+                payload={"manifest_version": "1", "manifest": manifest},
+            )
+            self.append_event(event)
+        except Exception:
+            pass

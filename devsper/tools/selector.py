@@ -5,6 +5,7 @@ Smart tool selection: filter by category and select top_k tools by semantic simi
 import os
 
 from devsper.memory.embeddings import embed_text
+from devsper.policy.client import filter_tools_by_policy
 from devsper.tools.base import Tool
 from devsper.tools.registry import list_tools
 
@@ -20,6 +21,14 @@ def _tool_category(tool: Tool) -> str:
             if p == "tools" and i + 1 < len(parts):
                 return parts[i + 1].lower()
     return "general"
+
+
+def _apply_policy_filter(tools: list[Tool]) -> list[Tool]:
+    try:
+        allowed_names = set(filter_tools_by_policy([t.name for t in tools]))
+        return [t for t in tools if t.name in allowed_names]
+    except Exception:
+        return tools
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -61,7 +70,7 @@ def select_tools_for_task(
     Return tools most relevant to the task: filter by enabled_categories (if set),
     then by semantic similarity, return top_k. If top_k <= 0, return all (no limit).
     """
-    all_tools = list_tools()
+    all_tools = _apply_policy_filter(list_tools())
     if enabled_categories is not None and len(enabled_categories) > 0:
         allowed = {c.lower().strip() for c in enabled_categories}
         all_tools = [t for t in all_tools if _tool_category(t) in allowed]
@@ -101,7 +110,7 @@ def get_tools_for_task(
         if role_config.tool_categories:
             enabled = role_config.tool_categories
 
-    all_tools = list_tools()
+    all_tools = _apply_policy_filter(list_tools())
     if enabled is not None and len(enabled) > 0:
         allowed = {c.lower().strip() for c in enabled}
         all_tools = [t for t in all_tools if _tool_category(t) in allowed]
