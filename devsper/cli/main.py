@@ -68,7 +68,10 @@ def _run_swarm(args: object) -> int:
     log_path = getattr(event_log, "log_path", None)
     memory_router = MemoryRouter(
         store=get_default_store(),
-        index=MemoryIndex(get_default_store()),
+        index=MemoryIndex(
+            get_default_store(),
+            ranking_backend=getattr(cfg.memory, "backend", "local"),
+        ),
         top_k=5,
     )
     workers = getattr(cfg.swarm, "workers", 2)
@@ -797,7 +800,10 @@ def _workflow_run(name: str, input_pairs: list[str]) -> int:
     cfg = get_config()
     memory_router = MemoryRouter(
         store=get_default_store(),
-        index=MemoryIndex(get_default_store()),
+        index=MemoryIndex(
+            get_default_store(),
+            ranking_backend=getattr(cfg.memory, "backend", "local"),
+        ),
         top_k=5,
     )
     runner = WorkflowRunner()
@@ -1575,7 +1581,10 @@ def _run_synthesize(
 
     cfg = get_config()
     store = get_default_store()
-    index = MemoryIndex(store=store)
+    index = MemoryIndex(
+        store=store,
+        ranking_backend=getattr(cfg.memory, "backend", "local"),
+    )
     worker_model = resolve_model(cfg.models.worker, TaskType.ANALYSIS)
     kg = None if no_kg else KnowledgeGraph(store=store)
     if kg and not no_kg:
@@ -1645,8 +1654,11 @@ def _run_memory_consolidate(dry_run: bool = False, min_cluster_size: int = 3) ->
     from devsper.providers.model_router import TaskType
 
     store = get_default_store()
-    index = MemoryIndex(store=store)
     cfg = get_config()
+    index = MemoryIndex(
+        store=store,
+        ranking_backend=getattr(cfg.memory, "backend", "local"),
+    )
     worker_model = resolve_model(cfg.models.worker, TaskType.ANALYSIS)
     consolidator = MemoryConsolidator(min_cluster_size=min_cluster_size)
     records = store.list_memory(limit=5000, include_archived=False)

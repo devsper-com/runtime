@@ -253,7 +253,10 @@ class WorkerNode:
                 # Replace store with shared redis-backed store, keep same MemoryRouter interface.
                 self.memory_router.store = RedisMemoryStore(redis_url=redis_url, run_id=run_id)
                 # MemoryIndex holds reference to store; rebuild index to point at shared store.
-                self.memory_router.index = MemoryIndex(self.memory_router.store)
+                self.memory_router.index = MemoryIndex(
+                    self.memory_router.store,
+                    ranking_backend=getattr(self.memory_router, "ranking_backend", "local"),
+                )
                 log.info("shared memory initialized run_id=%s backend=redis", run_id)
             except Exception as e:
                 log.warning("shared memory init failed run_id=%s: %s", run_id, e)

@@ -541,7 +541,10 @@ class Swarm:
         store = getattr(self.memory_router, "store", None)
         if not isinstance(store, MemoryStore):
             store = get_default_store()
-        index = getattr(self.memory_router, "index", None) or MemoryIndex(store)
+        index = getattr(self.memory_router, "index", None) or MemoryIndex(
+            store,
+            ranking_backend=getattr(self.memory_router, "ranking_backend", "local"),
+        )
         for task in scheduler.get_completed_tasks():
             content = (task.result or "").strip()
             if not content or len(content) < 10:

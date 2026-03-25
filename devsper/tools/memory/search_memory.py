@@ -27,7 +27,14 @@ class SearchMemoryTool(Tool):
             top_k = 5
         store = get_effective_memory_store()
         ns = get_effective_memory_namespace()
-        index = MemoryIndex(store)
+        try:
+            from devsper.config import get_config
+
+            cfg = get_config()
+            ranking_backend = getattr(cfg.memory, "backend", "local")
+        except Exception:
+            ranking_backend = "local"
+        index = MemoryIndex(store, ranking_backend=ranking_backend)
         records = index.query_memory(query, top_k=top_k, namespace=ns)
         if not records:
             return "No matching memory found."

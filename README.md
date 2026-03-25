@@ -266,6 +266,19 @@ Full docs (with versioning and dark mode): **[docs.devsper.com](https://docs.dev
 
 ---
 
+## Attribution & Credits
+This runtime includes a local “Supermemory-style” subset (`memory.backend="supermemory"`) implemented in Rust (`runtime/supermemory-core`).
+
+What this subset does (local-only; no Supermemory hosted HTTP calls):
+- Hybrid ranking: lexical/token overlap + optional embedding cosine similarity
+- Relevance filtering: `min_similarity` + top-k truncation
+- Deduplication: near-identical memories collapsed deterministically
+- Recency tie-breaking: newer memories preferred when scores are close
+- MemoryType weighting: research/artifact/semantic/episodic are scored with different multipliers
+- Rust-driven `memory_context` formatting: user injections first, then ranked memories
+
+Portions of the approach are inspired by the Supermemory project’s retrieval concepts (semantic recall, metadata/tag filtering, and relevance thresholding), documented in this repo under `supermemory/skills/supermemory/references/`.
+
 ## Contributing
 
 Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).

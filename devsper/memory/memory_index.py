@@ -5,6 +5,7 @@ Semantic search across stored memory via embeddings and top_k retrieval.
 from devsper.memory.embeddings import embed_text
 from devsper.memory.memory_store import MemoryStore
 from devsper.memory.memory_types import MemoryRecord
+from devsper.memory.supermemory_rust_ranker import rank_memories
 
 
 def _cosine_sim(a: list[float], b: list[float]) -> float:
@@ -24,8 +25,9 @@ class MemoryIndex:
     embeddings on records for query_memory(text, top_k).
     """
 
-    def __init__(self, store: MemoryStore | None = None) -> None:
+    def __init__(self, store: MemoryStore | None = None, ranking_backend: str = "local") -> None:
         self.store = store or MemoryStore()
+        self.ranking_backend = ranking_backend
 
     def query_memory(
         self,
@@ -36,9 +38,13 @@ class MemoryIndex:
         namespace: str | None = None,
     ) -> list[MemoryRecord]:
         """
-        Semantic search: embed query, score against stored records with embeddings,
-        return top_k by similarity above min_similarity. Records without embeddings
-        are skipped for ranking; if none have embeddings, return latest by timestamp.
+        Semantic search via ranking strategy:
+        - local (default): embed query, cosine-rank records that have embeddings.
+        - supermemory: hybrid local ranking (lexical token overlap + optional embedding
+          cosine similarity) using `rank_memories()`; records without embeddings can
+          still be ranked via lexical overlap.
+
+        Candidates with final_score < min_similarity are dropped (when min_similarity > 0).
         Use min_similarity > 0 (e.g. 0.45) to avoid injecting barely-related memory.
         By default excludes archived records (consolidation).
         """
@@ -47,6 +53,39 @@ class MemoryIndex:
         )
         if not records:
             return []
+
+        if self.ranking_backend == "supermemory":
+            # Prepare candidates for local hybrid ranking.
+            candidates = [
+                {
+                    "id": r.id,
+                    "content": r.content,
+                    "tags": r.tags,
+                    "embedding": r.embedding,
+                    "timestamp": r.timestamp.isoformat(),
+                    "memory_type": r.memory_type.value,
+                    "source_task": r.source_task,
+                }
+                for r in records
+            ]
+            with_emb = any(c.get("embedding") is not None for c in candidates)
+            query_emb = embed_text(text) if with_emb else None
+            ranked = rank_memories(
+                query_text=text,
+                query_embedding=query_emb,
+                candidates=candidates,
+                top_k=top_k,
+                min_similarity=min_similarity,
+            )
+            id_map = {r.id: r for r in records}
+            out: list[MemoryRecord] = []
+            for x in ranked:
+                rid = str(x.get("id", ""))
+                r = id_map.get(rid)
+                if r is not None:
+                    out.append(r)
+            return out
+
         query_emb = embed_text(text)
         with_emb = [r for r in records if r.embedding is not None]
         if not with_emb:
@@ -81,6 +120,38 @@ class MemoryIndex:
         )
         if not records:
             return []
+
+        if self.ranking_backend == "supermemory":
+            candidates = [
+                {
+                    "id": r.id,
+                    "content": r.content,
+                    "tags": r.tags,
+                    "embedding": r.embedding,
+                    "timestamp": r.timestamp.isoformat(),
+                    "memory_type": r.memory_type.value,
+                    "source_task": r.source_task,
+                }
+                for r in records
+            ]
+            with_emb = any(c.get("embedding") is not None for c in candidates)
+            query_emb = embed_text(text) if with_emb else None
+            ranked = rank_memories(
+                query_text=text,
+                query_embedding=query_emb,
+                candidates=candidates,
+                top_k=top_k,
+                min_similarity=min_similarity,
+            )
+            id_map = {r.id: r for r in records}
+            out: list[MemoryRecord] = []
+            for x in ranked:
+                rid = str(x.get("id", ""))
+                r = id_map.get(rid)
+                if r is not None:
+                    out.append(r)
+            return out
+
         query_emb = embed_text(text)
         with_emb = [r for r in records if r.embedding is not None]
         if not with_emb:

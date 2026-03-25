@@ -17,7 +17,12 @@ from devsper.memory.memory_types import (
 )
 from devsper.memory.memory_store import MemoryStore
 from devsper.memory.memory_index import MemoryIndex
-from devsper.memory.memory_router import MemoryRouter
+try:
+    from devsper.memory.memory_router import MemoryRouter
+except Exception:
+    # Some backends may require optional HTTP dependencies (e.g. `requests`).
+    # Keep local store/index usable even when optional dependencies are absent.
+    MemoryRouter = None  # type: ignore[assignment]
 
 __all__ = [
     "EpisodicMemory",
@@ -28,8 +33,10 @@ __all__ = [
     "MemoryType",
     "MemoryStore",
     "MemoryIndex",
-    "MemoryRouter",
 ]
+
+if MemoryRouter is not None:
+    __all__.append("MemoryRouter")
 
 # Optional: import submodules for summarizer, namespaces, scoring
 # from devsper.memory import summarizer, namespaces, scoring

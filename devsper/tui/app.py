@@ -121,7 +121,10 @@ class devsperTUI(App[None]):
             self._event_log_path = event_log.log_path
             memory_router = MemoryRouter(
                 store=get_default_store(),
-                index=MemoryIndex(get_default_store()),
+                index=MemoryIndex(
+                    get_default_store(),
+                    ranking_backend=getattr(cfg.memory, "backend", "local"),
+                ),
                 top_k=5,
             )
             swarm = Swarm(

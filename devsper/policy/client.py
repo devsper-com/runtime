@@ -3,22 +3,17 @@ from __future__ import annotations
 import os
 from typing import Any
 
-import requests
+from devsper.platform.request_builder import PlatformAPIError, PlatformAPIRequestBuilder
 
 
 def fetch_org_policy() -> dict[str, Any]:
-    base = os.environ.get("DEVSPER_PLATFORM_API_URL", "").rstrip("/")
-    org = os.environ.get("DEVSPER_PLATFORM_ORG", "")
-    token = os.environ.get("DEVSPER_PLATFORM_TOKEN", "")
-    if not base or not org:
+    api = PlatformAPIRequestBuilder()
+    if not api.enabled():
         return {}
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
-        resp = requests.get(f"{base}/orgs/{org}/policy", headers=headers, timeout=10)
-        if not resp.ok:
-            return {}
-        return (resp.json() or {}).get("policy") or {}
-    except Exception:
+        data = api.get_json(f"/orgs/{api.org_slug}/policy", params=None)
+        return (data or {}).get("policy") or {}
+    except PlatformAPIError:
         return {}
 
 

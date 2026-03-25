@@ -3,7 +3,6 @@ Memory router: determine which memories are relevant to a task and return contex
 """
 
 from devsper.memory.memory_index import MemoryIndex
-from devsper.memory.platform_memory import PlatformMemoryStore
 from devsper.memory.memory_store import MemoryStore
 from devsper.memory.memory_types import MemoryRecord
 
@@ -22,9 +21,19 @@ class MemoryRouter:
         top_k: int = 10,
         min_similarity: float = 0.55,
         default_namespace: str | None = None,
+        ranking_backend: str | None = None,
     ) -> None:
         self.store = store or _build_memory_store()
-        self.index = index or MemoryIndex(self.store)
+        # Ranking backend only affects retrieval/ranking; persistence remains store-backed.
+        try:
+            from devsper.config import get_config
+
+            cfg = get_config()
+            effective_backend = ranking_backend or getattr(cfg.memory, "backend", "local")
+        except Exception:
+            effective_backend = ranking_backend or "local"
+        self.ranking_backend = effective_backend
+        self.index = index or MemoryIndex(self.store, ranking_backend=effective_backend)
         self.top_k = top_k
         self.min_similarity = min_similarity
         self.default_namespace = default_namespace
@@ -51,30 +60,57 @@ class MemoryRouter:
         inject_records = self.store.list_memory(
             tag_contains="user_injection", limit=10, namespace=self.default_namespace
         )
+        ranked_records = self.get_relevant_memory(task)
+
+        if self.ranking_backend == "supermemory":
+            from devsper.memory.supermemory_rust_ranker import format_memory_context
+
+            # Rust does the prompt assembly (including dedup of user_injections).
+            return format_memory_context(
+                user_injections=inject_records,
+                ranked_candidates=ranked_records,
+            )
+
+        # Non-supermemory: preserve legacy prompt formatting.
         if inject_records:
             lines.append("USER INJECTIONS (high priority):")
             for r in inject_records:
-                lines.append(f"- {r.content[:1000]}{'...' if len(r.content) > 1000 else ''}")
-        records = self.get_relevant_memory(task)
-        if records:
+                lines.append(
+                    f"- {r.content[:1000]}{'...' if len(r.content) > 1000 else ''}"
+                )
+
+        # Avoid duplicating user injections in the legacy path.
+        ranked_records = [
+            r
+            for r in ranked_records
+            if not any(t == "user_injection" for t in (getattr(r, "tags", None) or []))
+        ]
+
+        if ranked_records:
             if lines:
                 lines.append("")
-            lines.append("RELEVANT MEMORY (previous research notes, findings, artifacts):")
-            for r in records:
+            lines.append(
+                "RELEVANT MEMORY (previous research notes, findings, artifacts):"
+            )
+            for r in ranked_records:
                 lines.append(
                     f"- [{r.memory_type.value}] {r.source_task or 'general'}: "
                     f"{r.content[:500]}{'...' if len(r.content) > 500 else ''}"
                 )
+
         return "\n".join(lines) if lines else ""
 
 
-def _build_memory_store() -> MemoryStore | PlatformMemoryStore:
+def _build_memory_store() -> MemoryStore:
     try:
         from devsper.config import get_config
 
         cfg = get_config()
         backend = getattr(cfg.memory, "backend", "local")
         if backend == "platform":
+            # Lazy import so local-only memory backends don't require optional HTTP deps.
+            from devsper.memory.platform_memory import PlatformMemoryStore
+
             return PlatformMemoryStore(
                 base_url=getattr(cfg.memory, "platform_api_url", ""),
                 org_slug=getattr(cfg.memory, "platform_org_slug", ""),
