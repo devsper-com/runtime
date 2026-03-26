@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import importlib.util
 from pathlib import Path
 
 
@@ -38,6 +39,18 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
+def _load_pool_module(rel_path: str, module_name: str):
+    """Load platform/pool module by file path, avoiding stdlib 'platform' name collision."""
+    root = _project_root().parent
+    mod_path = root / rel_path
+    spec = importlib.util.spec_from_file_location(module_name, mod_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load module at {mod_path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _run_example(script_path: Path, *args: str) -> int:
     """Run an example script with project root on PYTHONPATH."""
     root = _project_root()
@@ -49,6 +62,12 @@ def _run_example(script_path: Path, *args: str) -> int:
 
 def _run_swarm(args: object) -> int:
     """Run swarm. Uses live view unless --quiet, --plain, or non-TTY."""
+    # Local profile fast-path: route through platform pool + local workers.
+    if os.environ.get("DEVSPER_PROFILE", "").strip().lower() == "local":
+        try:
+            return _run_swarm_via_local_pool(args)
+        except Exception as e:
+            print(f"Local pool failed, falling back to in-process swarm: {e}", file=sys.stderr)
     from devsper.config import get_config
     from devsper.utils.event_logger import EventLog
     from devsper.swarm.swarm import Swarm
@@ -199,6 +218,96 @@ def _run_swarm(args: object) -> int:
                 if (result or "") and len(result) > 2000:
                     console.print("...")
     return 0
+
+
+def _run_swarm_via_local_pool(args: object) -> int:
+    import asyncio
+    import uuid
+    import json as _json
+
+    task_text = getattr(args, "task", "") or ""
+    run_id = str(uuid.uuid4())
+    org_id = os.environ.get("DEVSPER_ORG_ID", "local-org")
+    user_id = os.environ.get("DEVSPER_USER_ID", "local-user")
+    redis_url = os.environ.get("REDIS_URL") or "redis://localhost:6379"
+
+    crypto_mod = _load_pool_module("platform/pool/crypto.py", "devsper_platform_pool_crypto")
+    manager_mod = _load_pool_module("platform/pool/manager.py", "devsper_platform_pool_manager")
+    models_mod = _load_pool_module("platform/pool/models.py", "devsper_platform_pool_models")
+    store_mod = _load_pool_module("platform/pool/store.py", "devsper_platform_pool_store")
+    encrypt_payload = crypto_mod.encrypt_payload
+    generate_org_keypair = crypto_mod.generate_org_keypair
+    PoolManager = manager_mod.PoolManager
+    QueuedTask = models_mod.QueuedTask
+    RedisPoolStore = store_mod.RedisPoolStore
+    from devsper.credentials.store import CredentialStore
+
+    # Ensure org key exists in keyring (local convenience).
+    cs = CredentialStore()
+    priv_hex = cs.get("org", "private_key")
+    if not priv_hex:
+        priv, pub = generate_org_keypair()
+        cs.set("org", "private_key", priv.hex())
+        pub_hex = pub.hex()
+    else:
+        # derive public key from private
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+        from cryptography.hazmat.primitives import serialization
+
+        priv = bytes.fromhex(priv_hex)
+        pub_hex = (
+            X25519PrivateKey.from_private_bytes(priv)
+            .public_key()
+            .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+            .hex()
+        )
+
+    org_pub = bytes.fromhex(pub_hex)
+
+    payload = {
+        "task_id": run_id,
+        "prompt": task_text,
+        "context": "",
+        "tools": [],
+        "model": os.environ.get("DEVSPER_WORKER_MODEL", "mock"),
+        "system_prompt": "",
+    }
+    payload_enc = encrypt_payload(_json.dumps(payload).encode(), org_pub)
+
+    class _Bus:
+        def __init__(self, url: str):
+            import redis
+            self._r = redis.Redis.from_url(url, decode_responses=True)
+
+        def publish(self, channel: str, payload: dict):
+            self._r.publish(channel, _json.dumps(payload))
+
+    async def _run_once() -> int:
+        store = RedisPoolStore(redis_url)
+        bus = _Bus(redis_url)
+        cfg = type("Cfg", (), {"profile": "local", "max_tasks_per_minute": 60, "max_payload_bytes": 1_048_576, "max_queue_depth": 100, "worker_timeout_secs": 90})()
+        pool = PoolManager(store=store, bus=bus, config=cfg)
+        qt = QueuedTask(task_id=run_id, org_id=org_id, user_id=user_id, priority=1, payload_enc=payload_enc)
+        await pool.enqueue(qt)
+
+        import redis.asyncio as aioredis
+        r = aioredis.from_url(redis_url, decode_responses=True)
+        pubsub = r.pubsub()
+        await pubsub.subscribe(f"devsper:task:{run_id}:result")
+        async for msg in pubsub.listen():
+            if msg.get("type") != "message":
+                continue
+            data = msg.get("data")
+            if not data:
+                continue
+            res = _json.loads(data)
+            if res.get("success"):
+                print(res.get("result", ""))
+                return 0
+            print(res.get("error", "error"), file=sys.stderr)
+            return 1
+
+    return asyncio.run(_run_once())
 
 
 def _run_meta(
@@ -1219,6 +1328,86 @@ def _run_node_logs(args) -> int:
     print(
         "Connect to", url, "stream/events (--follow); not implemented", file=sys.stderr
     )
+    return 0
+
+
+def _run_pool_status(args) -> int:
+    """Show pool worker counts by tier (Redis-backed best effort)."""
+    redis_url = getattr(args, "redis_url", None) or os.environ.get("REDIS_URL") or "redis://localhost:6379"
+    try:
+        import redis
+    except Exception as e:
+        print("Pool commands require redis package. Install devsper[distributed].", file=sys.stderr)
+        return 1
+    try:
+        r = redis.Redis.from_url(redis_url, decode_responses=True)
+        tiers = ["dedicated", "org", "global", "local"]
+        out = {}
+        for t in tiers:
+            out[t] = int(r.scard(f"pool:tier:{t}:workers") or 0)
+        print(json.dumps({"redis_url": redis_url, "tiers": out}))
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def _run_pool_workers(args) -> int:
+    """List worker ids by tier (Redis-backed best effort)."""
+    redis_url = getattr(args, "redis_url", None) or os.environ.get("REDIS_URL") or "redis://localhost:6379"
+    try:
+        import redis
+    except Exception:
+        print("Pool commands require redis package. Install devsper[distributed].", file=sys.stderr)
+        return 1
+    try:
+        r = redis.Redis.from_url(redis_url, decode_responses=True)
+        tiers = ["dedicated", "org", "global", "local"]
+        rows = []
+        for t in tiers:
+            for wid in sorted(r.smembers(f"pool:tier:{t}:workers") or []):
+                raw = r.get(f"pool:worker:{wid}")
+                rows.append({"tier": t, "worker_id": wid, "raw": raw})
+        print(json.dumps({"workers": rows}) if getattr(args, "json_output", False) else "\n".join([f"{w['tier']}\t{w['worker_id']}" for w in rows]))
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def _run_pool_queue(args) -> int:
+    """Wait queue depth is process-local; report N/A for now."""
+    print(json.dumps({"queue_depth": None, "note": "wait queue is in pool-manager process"}))
+    return 0
+
+
+def _run_pool_start(args) -> int:
+    """Start local worker pool spawner (foreground)."""
+    workers = getattr(args, "workers", 2)
+    env = os.environ.copy()
+    env["DEVSPER_PROFILE"] = "local"
+    root = str(_project_root().parent.resolve())
+    env["PYTHONPATH"] = root + os.pathsep + env.get("PYTHONPATH", "")
+    cmd = [sys.executable, "-m", "platform.pool.local_pool", "--workers", str(workers)]
+    return subprocess.call(cmd, env=env)
+
+
+def _run_org_keygen(args) -> int:
+    """Generate org E2EE keypair and store private key in keyring."""
+    try:
+        crypto_mod = _load_pool_module("platform/pool/crypto.py", "devsper_platform_pool_crypto")
+        generate_org_keypair = crypto_mod.generate_org_keypair
+        from devsper.credentials.store import CredentialStore
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    priv, pub = generate_org_keypair()
+    try:
+        CredentialStore().set("org", "private_key", priv.hex())
+    except Exception as e:
+        print(f"Error storing key in keyring: {e}", file=sys.stderr)
+        return 1
+    print(pub.hex())
     return 0
 
 
@@ -2612,6 +2801,36 @@ Examples:
     )
     node_logs_p.add_argument("--controller-url", type=str, default=None)
     node_logs_p.set_defaults(func=lambda a: _run_node_logs(a))
+
+    pool_parser = subparsers.add_parser(
+        "pool",
+        help="Worker pool commands (v2.x)",
+        description="Inspect and run the platform worker pool manager.",
+    )
+    pool_sub = pool_parser.add_subparsers(dest="pool_cmd", help="Subcommand")
+    pool_status_p = pool_sub.add_parser("status", help="Show worker counts by tier")
+    pool_status_p.add_argument("--redis-url", type=str, default=None, help="Redis URL override")
+    pool_status_p.set_defaults(func=lambda a: _run_pool_status(a))
+    pool_workers_p = pool_sub.add_parser("workers", help="List workers by tier")
+    pool_workers_p.add_argument("--redis-url", type=str, default=None, help="Redis URL override")
+    pool_workers_p.set_defaults(func=lambda a: _run_pool_workers(a))
+    pool_queue_p = pool_sub.add_parser("queue", help="Show wait queue depth")
+    pool_queue_p.set_defaults(func=lambda a: _run_pool_queue(a))
+    pool_start_p = pool_sub.add_parser("start", help="Start local worker pool (foreground)")
+    pool_start_p.add_argument("--local", action="store_true", help="Start local pool")
+    pool_start_p.add_argument("--workers", type=int, default=2, help="Number of local workers")
+    pool_start_p.set_defaults(func=lambda a: _run_pool_start(a))
+    pool_parser.set_defaults(pool_cmd=None, func=lambda a: pool_parser.print_help() or 0)
+
+    org_parser = subparsers.add_parser(
+        "org",
+        help="Org management (pool + keys)",
+        description="Org-scoped operations for pool and E2EE keys.",
+    )
+    org_sub = org_parser.add_subparsers(dest="org_cmd", help="Subcommand")
+    org_keygen_p = org_sub.add_parser("keygen", help="Generate org E2EE keypair (store private in keyring)")
+    org_keygen_p.set_defaults(func=lambda a: _run_org_keygen(a))
+    org_parser.set_defaults(org_cmd=None, func=lambda a: org_parser.print_help() or 0)
 
     graph_parser = subparsers.add_parser(
         "graph",
