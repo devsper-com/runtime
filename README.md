@@ -61,6 +61,50 @@ eval "$(devsper completion zsh)"
 
 ---
 
+## How devsper compares
+
+|  | devsper | swarms | crewai | autogen |
+|--|---------|--------|--------|---------|
+| Distributed execution | ✅ Python + Rust workers | ❌ Single process | ❌ | ❌ |
+| Language-agnostic protocol | ✅ HTTP wire format | ❌ Python only | ❌ | ❌ |
+| OpenTelemetry traces | ✅ Native | ❌ | ❌ | ❌ |
+| Budget-aware execution | ✅ Per-run limits | ❌ | ❌ | ❌ |
+| Persistent agent identities | ✅ Named + memory | ❌ | ⚠️ Partial | ❌ |
+| DAG-based task scheduling | ✅ | ❌ Linear/basic | ❌ | ❌ |
+| Event replay | ✅ Full run replay | ❌ | ❌ | ❌ |
+| Rust worker support | ✅ | ❌ | ❌ | ❌ |
+| Deployable agent packages | ✅ .devsper format | ❌ Prompts only | ❌ | ❌ |
+
+## Architecture diagram
+
+```mermaid
+flowchart LR
+    Planner --> Scheduler --> Executor
+    Executor --> Agents
+    Agents --> Tools
+    Agents --> Memory --> KG[Knowledge Graph]
+    Executor --> RustWorkers[Rust Workers]
+    Executor --> RemoteAgents[Remote Polyglot Agents]
+    Executor --> EventLog
+    EventLog --> Replay
+    EventLog --> Trace
+    EventLog --> EventsAPI[SSE/Topology API]
+```
+
+## Why devsper
+
+Devsper is distributed-first by design. The execution engine can run locally, across Redis-backed worker pools, or with Rust worker binaries for higher-throughput task execution.
+
+It is observable by default. Runs emit structured events and OpenTelemetry spans for planner, scheduler, executor, agent, and tool boundaries so operators can replay, trace, and debug production runs.
+
+It is polyglot-ready. The HTTP agent protocol allows Python, Rust, Go, and TypeScript services to participate as first-class agents while preserving orchestration controls such as budgeting and DAG scheduling.
+
+## Benchmarks
+
+Performance scripts live in [`benchmarks/`](benchmarks/).
+
+---
+
 ## Run from code
 
 **From config file:**

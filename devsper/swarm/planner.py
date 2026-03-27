@@ -7,12 +7,14 @@ Subtasks have sequential dependencies; each subtask gets a short unique ID.
 
 import re
 import secrets
+import json
 from datetime import datetime, timezone
 
 from devsper.types.task import Task
 from devsper.types.event import Event, events
 from devsper.agents.roles import infer_role_from_description
 from devsper.policy.client import enforce_model_policy
+from devsper.telemetry import get_tracer, record_exception
 from devsper.utils.event_logger import EventLog
 from devsper.utils.models import generate
 
@@ -97,67 +99,89 @@ class Planner:
 
     def plan(self, task: Task) -> list[Task]:
         """Break task into subtasks (strategy DAG or LLM). Emit planner lifecycle events."""
-        try:
-            enforce_model_policy(self.model_name)
-        except Exception:
-            pass
-        self._emit(events.PLANNER_STARTED, {"task_id": task.id})
+        tracer = get_tracer()
+        run_id = getattr(self.event_log, "run_id", "") or ""
+        with tracer.start_as_current_span("planner.plan") as span:
+            if span is not None:
+                span.set_attribute("strategy", type(self.strategy).__name__ if self.strategy is not None else "llm")
+                span.set_attribute("devsper.run.id", run_id)
+                span.set_attribute("devsper.task.id", task.id)
+            try:
+                enforce_model_policy(self.model_name)
+            except Exception:
+                pass
+            self._emit(events.PLANNER_STARTED, {"task_id": task.id})
+            try:
+                if self.strategy is not None:
+                    subtasks = self.strategy.plan(task)
+                    if subtasks:
+                        for st in subtasks:
+                            if getattr(st, "role", None) is None:
+                                st.role = infer_role_from_description(st.description or "")
+                            if self.parallel:
+                                st.dependencies = []
+                            self._emit(events.TASK_CREATED, {"task_id": st.id, "description": st.description})
+                        if span is not None:
+                            span.set_attribute("task_count", len(subtasks))
+                        self._emit(events.PLANNER_FINISHED, {"task_id": task.id, "subtask_count": len(subtasks)})
+                        return subtasks
 
-        if self.strategy is not None:
-            subtasks = self.strategy.plan(task)
-            if subtasks:
-                for st in subtasks:
-                    if getattr(st, "role", None) is None:
-                        st.role = infer_role_from_description(st.description or "")
-                    if self.parallel:
-                        st.dependencies = []
-                    self._emit(events.TASK_CREATED, {"task_id": st.id, "description": st.description})
+                if _is_simple_task(task.description or ""):
+                    if getattr(task, "role", None) is None:
+                        task.role = infer_role_from_description(task.description or "")
+                    self._emit(events.TASK_CREATED, {"task_id": task.id, "description": task.description})
+                    if span is not None:
+                        span.set_attribute("task_count", 1)
+                    self._emit(events.PLANNER_FINISHED, {"task_id": task.id, "subtask_count": 1})
+                    return [task]
+
+                task_description = (task.description or "") + self.prompt_suffix
+                kg_section = ""
+                if self.guide_planning and self.knowledge_graph is not None:
+                    from devsper.knowledge.query import query_for_planning, format_planning_context
+                    planning_ctx = query_for_planning(self.knowledge_graph, task_description)
+                    if planning_ctx.confidence > self.min_confidence:
+                        kg_section = "\n\n## Relevant prior knowledge:\n" + format_planning_context(planning_ctx) + "\n\nUse this to avoid re-discovering known facts."
+                        self._emit(
+                            events.PLANNER_KG_CONTEXT_INJECTED,
+                            {
+                                "concept_count": len(planning_ctx.relevant_concepts),
+                                "finding_count": len(planning_ctx.prior_findings),
+                                "confidence": planning_ctx.confidence,
+                            },
+                        )
+                prompt = PLANNER_PROMPT.format(task_description=task_description, kg_section=kg_section or "")
+                raw = generate(self.model_name, prompt)
+                steps = self._parse_numbered_items(raw)
+
+                subtasks: list[Task] = []
+                task_ids: list[str] = []
+                for i, item in enumerate(steps, start=1):
+                    description = item["task"]
+                    task_id = _short_id()
+                    task_ids.append(task_id)
+                    deps = [] if self.parallel else ([task_ids[i - 2]] if i > 1 else [])
+                    role = infer_role_from_description(description.strip())
+                    subtask = Task(
+                        id=task_id,
+                        description=description.strip(),
+                        dependencies=deps,
+                        role=role,
+                        agent=item.get("agent"),
+                    )
+                    subtasks.append(subtask)
+                    self._emit(
+                        events.TASK_CREATED,
+                        {"task_id": task_id, "description": subtask.description},
+                    )
+
+                if span is not None:
+                    span.set_attribute("task_count", len(subtasks))
                 self._emit(events.PLANNER_FINISHED, {"task_id": task.id, "subtask_count": len(subtasks)})
                 return subtasks
-
-        # Simple single-step prompt: skip LLM decomposition (avoids overcomplication)
-        if _is_simple_task(task.description or ""):
-            if getattr(task, "role", None) is None:
-                task.role = infer_role_from_description(task.description or "")
-            self._emit(events.TASK_CREATED, {"task_id": task.id, "description": task.description})
-            self._emit(events.PLANNER_FINISHED, {"task_id": task.id, "subtask_count": 1})
-            return [task]
-
-        task_description = (task.description or "") + self.prompt_suffix
-        kg_section = ""
-        if self.guide_planning and self.knowledge_graph is not None:
-            from devsper.knowledge.query import query_for_planning, format_planning_context
-            planning_ctx = query_for_planning(self.knowledge_graph, task_description)
-            if planning_ctx.confidence > self.min_confidence:
-                kg_section = "\n\n## Relevant prior knowledge:\n" + format_planning_context(planning_ctx) + "\n\nUse this to avoid re-discovering known facts."
-                self._emit(
-                    events.PLANNER_KG_CONTEXT_INJECTED,
-                    {
-                        "concept_count": len(planning_ctx.relevant_concepts),
-                        "finding_count": len(planning_ctx.prior_findings),
-                        "confidence": planning_ctx.confidence,
-                    },
-                )
-        prompt = PLANNER_PROMPT.format(task_description=task_description, kg_section=kg_section or "")
-        raw = generate(self.model_name, prompt)
-        steps = self._parse_numbered_list(raw)
-
-        subtasks: list[Task] = []
-        task_ids: list[str] = []
-        for i, description in enumerate(steps, start=1):
-            task_id = _short_id()
-            task_ids.append(task_id)
-            deps = [] if self.parallel else ([task_ids[i - 2]] if i > 1 else [])
-            role = infer_role_from_description(description.strip())
-            subtask = Task(id=task_id, description=description.strip(), dependencies=deps, role=role)
-            subtasks.append(subtask)
-            self._emit(
-                events.TASK_CREATED,
-                {"task_id": task_id, "description": subtask.description},
-            )
-
-        self._emit(events.PLANNER_FINISHED, {"task_id": task.id, "subtask_count": len(subtasks)})
-        return subtasks
+            except Exception as exc:
+                record_exception(span, exc)
+                raise
 
     def expand_tasks(self, completed_task: Task, context: list[Task] | None = None) -> list[Task]:
         """
@@ -200,6 +224,21 @@ class Planner:
             if m:
                 steps.append(m.group(1).strip())
         return steps
+
+    def _parse_numbered_items(self, text: str) -> list[dict]:
+        out: list[dict] = []
+        for s in self._parse_numbered_list(text):
+            s2 = s.strip()
+            if s2.startswith("{") and s2.endswith("}"):
+                try:
+                    obj = json.loads(s2)
+                    if isinstance(obj, dict) and obj.get("task"):
+                        out.append({"task": str(obj.get("task")), "agent": obj.get("agent")})
+                        continue
+                except Exception:
+                    pass
+            out.append({"task": s2, "agent": None})
+        return out
 
     def _emit(self, event_type: events, payload: dict) -> None:
         self.event_log.append_event(

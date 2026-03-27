@@ -47,7 +47,21 @@ class InitWizard:
     def _run_minimal(self) -> int:
         """Write minimal devsper.toml and print next steps."""
         from devsper.cli.init import _build_init_toml
-        toml = _build_init_toml(workers=4, planner="auto", worker="auto")
+        providers_toml = ""
+        planner = "auto"
+        worker = "auto"
+        ollama_host = os.environ.get("OLLAMA_HOST")
+        if ollama_host and str(ollama_host).strip():
+            providers_toml = f"""
+[providers]
+[providers.ollama]
+enabled = true
+base_url = "{str(ollama_host).strip()}"
+"""
+            # Avoid "auto" routing (which picks OpenAI/Claude model ids) when using a local Ollama server.
+            planner = "llama3"
+            worker = "llama3"
+        toml = _build_init_toml(workers=4, planner=planner, worker=worker, providers_toml=providers_toml)
         path = self.cwd / "devsper.toml"
         path.write_text(toml, encoding="utf-8")
         console.print("[hive.success]✓[/] Wrote [cyan]devsper.toml[/]")

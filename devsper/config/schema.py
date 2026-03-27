@@ -29,6 +29,7 @@ class SwarmConfig(BaseModel):
     # v1.9
     checkpoint_interval: int = 10
     checkpoint_enabled: bool = True
+    remote_agents: list[str] = Field(default_factory=list)
 
 
 class CacheConfig(BaseModel):
@@ -42,6 +43,16 @@ class CacheConfig(BaseModel):
 class AgentsConfig(BaseModel):
     """Agent roles enabled for the swarm (research, analysis, critic, code)."""
     roles: list[str] = ["research_agent", "code_agent", "analysis_agent", "critic_agent"]
+
+
+class AgentIdentityConfig(BaseModel):
+    name: str
+    persona: str = ""
+    model: str = "gpt-4o-mini"
+    memory_namespace: str = ""
+    tools: list[str] = Field(default_factory=list)
+    max_memory_entries: int = 200
+    temperature: float = 0.2
 
 
 class ModelsConfig(BaseModel):
@@ -75,6 +86,16 @@ class ToolsConfig(BaseModel):
 class TelemetryConfig(BaseModel):
     enabled: bool = True
     save_events: bool = True
+    otel_enabled: bool = True
+    otel_endpoint: str = ""
+    otel_headers: dict[str, str] = Field(default_factory=dict)
+    cost_tracking: bool = True
+
+
+class BudgetConfig(BaseModel):
+    limit_usd: float = 0.0
+    on_exceeded: Literal["warn", "stop", "raise"] = "warn"
+    alert_at_pct: int = 80
 
 
 class ProviderAzureConfig(BaseModel):
@@ -213,11 +234,13 @@ class devsperConfigModel(BaseModel):
 
     swarm: SwarmConfig = Field(default_factory=SwarmConfig)
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
+    agent_identities: list[AgentIdentityConfig] = Field(default_factory=list)
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
+    budget: BudgetConfig = Field(default_factory=BudgetConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     bus: BusConfig = Field(default_factory=BusConfig)
     nodes: NodesConfig = Field(default_factory=NodesConfig)

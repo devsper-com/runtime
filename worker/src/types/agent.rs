@@ -23,6 +23,8 @@ pub struct AgentRequest {
     /// When true, executor returns tool_calls in response instead of running tools locally.
     #[serde(default)]
     pub distributed_tools: bool,
+    #[serde(default)]
+    pub budget_remaining_usd: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +37,12 @@ pub struct AgentResponse {
     #[serde(default)]
     pub broadcasts: Vec<String>,
     pub tokens_used: Option<u64>,
+    #[serde(default)]
+    pub prompt_tokens: Option<u64>,
+    #[serde(default)]
+    pub completion_tokens: Option<u64>,
+    #[serde(default)]
+    pub cost_usd: Option<f64>,
     #[serde(default)]
     pub duration_seconds: f64,
     pub error: Option<String>,

@@ -11,6 +11,7 @@ critic_roles = ["research", "analysis", "code"]
 message_bus_enabled = true
 prefetch_enabled = true
 prefetch_max_age_seconds = 30
+remote_agents = []
 
 [models]
 planner = "github:copilot"
@@ -21,6 +22,16 @@ enabled = true
 
 [tools]
 top_k = 12
+
+[telemetry]
+otel_enabled = true
+otel_endpoint = ""
+cost_tracking = true
+
+[budget]
+limit_usd = 0.0
+on_exceeded = "warn"
+alert_at_pct = 80
 
 [[mcp.servers]]
 name = "filesystem"

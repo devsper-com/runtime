@@ -37,6 +37,9 @@ dependencies = [
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.2",
     "rich>=14.3.3",
+    "opentelemetry-api>=1.27.0",
+    "opentelemetry-sdk>=1.27.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
 ]
 
 [project.urls]
@@ -50,6 +53,7 @@ devsper = "devsper.cli:main"
 hivemind = "devsper.cli:main"  # backward compat alias
 
 [project.optional-dependencies]
+server = ["fastapi>=0.110", "uvicorn>=0.29", "sse-starlette>=2.0"]
 ollama = []
 compliance = ["spacy>=3.7"]
 explainability = []
@@ -78,6 +82,7 @@ dev = [
     "black>=26.3.0",
     "mypy>=1.19.1",
     "pytest>=9.0.2",
+    "pytest-asyncio>=0.24.0",
     "respx>=0.22.0",
     "ruff>=0.15.5",
 ]

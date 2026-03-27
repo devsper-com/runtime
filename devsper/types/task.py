@@ -23,6 +23,11 @@ class Task(BaseModel):
     role: str | None = None  # Optional agent role: research, code, analysis, critic
     retry_count: int = 0  # v1.7: critic retries
     project_id: str | None = None  # platform project scope for memory namespace
+    agent: str | None = None  # optional named agent assignment
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    tokens_used: int | None = None
+    cost_usd: float | None = None
 
     def to_dict(self) -> dict:
         """Return all fields as JSON-safe dict."""
@@ -39,6 +44,16 @@ class Task(BaseModel):
         }
         if self.project_id:
             d["project_id"] = self.project_id
+        if self.agent:
+            d["agent"] = self.agent
+        if self.prompt_tokens is not None:
+            d["prompt_tokens"] = self.prompt_tokens
+        if self.completion_tokens is not None:
+            d["completion_tokens"] = self.completion_tokens
+        if self.tokens_used is not None:
+            d["tokens_used"] = self.tokens_used
+        if self.cost_usd is not None:
+            d["cost_usd"] = self.cost_usd
         return d
 
     @classmethod
@@ -74,6 +89,11 @@ class Task(BaseModel):
             role=data.get("role"),
             retry_count=data.get("retry_count", 0),
             project_id=data.get("project_id"),
+            agent=data.get("agent"),
+            prompt_tokens=data.get("prompt_tokens"),
+            completion_tokens=data.get("completion_tokens"),
+            tokens_used=data.get("tokens_used"),
+            cost_usd=data.get("cost_usd"),
         )
 
     def to_json(self) -> str:

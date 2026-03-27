@@ -59,6 +59,13 @@ PROVIDER_REGISTRY: list[tuple[str, str, str | None, list[str], list[str]]] = [
         ["gpt-4o", "gpt-4o-mini"],
     ),
     (
+        "ollama",
+        "Ollama (local)",
+        "OLLAMA_HOST",
+        ["llama3"],
+        ["llama3"],
+    ),
+    (
         "mock",
         "Mock (no API, for testing)",
         None,
@@ -123,9 +130,10 @@ def _build_init_toml(
     adaptive_planning: bool = False,
     adaptive_execution: bool = False,
     max_iterations: int = 10,
+    providers_toml: str = "",
 ) -> str:
     """Build [swarm] [models] [memory] [tools] TOML snippet."""
-    return f"""[swarm]
+    base = f"""[swarm]
 workers = {workers}
 speculative_execution = {str(speculative_execution).lower()}
 cache_enabled = {str(cache_enabled).lower()}
@@ -143,6 +151,9 @@ enabled = {str(memory_enabled).lower()}
 [tools]
 top_k = {tools_top_k}
 """
+    if providers_toml and not providers_toml.endswith("\n"):
+        providers_toml += "\n"
+    return base + ("\n" if providers_toml and not base.endswith("\n") else "") + providers_toml
 
 
 def _run_init_interactive(cwd: Path) -> tuple[str, dict[str, str]]:
@@ -152,7 +163,7 @@ def _run_init_interactive(cwd: Path) -> tuple[str, dict[str, str]]:
     """
     from rich.console import Console
     from rich.panel import Panel
-    from rich.prompt import Confirm, IntPrompt
+    from rich.prompt import Confirm, IntPrompt, Prompt
 
     console = Console()
     api_keys: dict[str, str] = {}
@@ -170,6 +181,19 @@ def _run_init_interactive(cwd: Path) -> tuple[str, dict[str, str]]:
     choices = _provider_choices_for_display()
     provider_id = _select_option("Select model provider", choices, default_index=0)
     console.print(f"  [dim]Using provider: {provider_id}[/]\n")
+
+    providers_toml = ""
+    if provider_id == "ollama":
+        default_ollama_host = os.environ.get("OLLAMA_HOST") or "http://localhost:11434"
+        ollama_host = Prompt.ask("OLLAMA_HOST (Ollama base URL)", default=default_ollama_host)
+        if str(ollama_host).strip():
+            providers_toml = f"""
+[providers]
+[providers.ollama]
+enabled = true
+base_url = "{str(ollama_host).strip()}"
+"""
+            api_keys["OLLAMA_HOST"] = str(ollama_host).strip()
 
     # GitHub: device flow (show code, open browser, poll) if no token and client_id set
     if provider_id == "github" and not os.environ.get("GITHUB_TOKEN"):
@@ -248,6 +272,7 @@ def _run_init_interactive(cwd: Path) -> tuple[str, dict[str, str]]:
         cache_enabled=cache,
         adaptive_planning=adaptive_planning,
         adaptive_execution=adaptive_execution,
+        providers_toml=providers_toml,
     )
 
     return toml_content, api_keys
@@ -283,12 +308,27 @@ def run_init(interactive: bool = True) -> int:
                 print("\nInit cancelled.", file=sys.stderr)
                 return 130
         else:
+            providers_toml = ""
+            planner_choice = "auto"
+            worker_choice = "auto"
+            ollama_host = os.environ.get("OLLAMA_HOST")
+            if ollama_host and str(ollama_host).strip():
+                providers_toml = f"""
+[providers]
+[providers.ollama]
+enabled = true
+base_url = "{str(ollama_host).strip()}"
+"""
+                # Avoid "auto" routing (which picks OpenAI/Claude model ids) when using a local Ollama server.
+                planner_choice = "llama3"
+                worker_choice = "llama3"
             toml_content = _build_init_toml(
                 workers=4,
-                planner="auto",
-                worker="auto",
+                planner=planner_choice,
+                worker=worker_choice,
                 memory_enabled=True,
                 tools_top_k=12,
+                providers_toml=providers_toml,
             )
             try:
                 toml_path.write_text(toml_content, encoding="utf-8")
@@ -382,6 +422,7 @@ def _check_env_quiet() -> bool:
         or os.environ.get("GITHUB_TOKEN")
         or os.environ.get("GOOGLE_API_KEY")
         or os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("OLLAMA_HOST")
         or (os.environ.get("AZURE_OPENAI_ENDPOINT") and os.environ.get("AZURE_OPENAI_API_KEY"))
     )
 
@@ -433,6 +474,9 @@ def run_doctor() -> int:
         ok.append("OPENAI_API_KEY is set")
     else:
         issues.append("OPENAI_API_KEY not set (optional)")
+
+    if os.environ.get("OLLAMA_HOST"):
+        ok.append("OLLAMA_HOST is set")
 
     from devsper.config.config_loader import project_config_paths
 

@@ -20,6 +20,8 @@ struct Args {
     role: String,
     #[arg(long, env = "DEVSPER_RPC_PORT", default_value = "7700")]
     port: u16,
+    #[arg(long, env = "DEVSPER_BUDGET_REMAINING_USD")]
+    budget_remaining_usd: Option<f64>,
 }
 
 #[tokio::main]
@@ -38,6 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     let _args = Args::parse();
+    devsper_worker::telemetry::init_otel();
     info!(node_id = %config.node_id, run_id = %config.run_id, worker_model = %config.worker_model, "starting worker node");
 
     let mut bus = RedisBus::new(config.redis_url.clone(), config.run_id.clone());
@@ -168,6 +171,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         get_status,
         get_current_tasks,
         rpc_token: config.rpc_token.clone(),
+        runtime: "rust".to_string(),
     });
 
     let app = rpc::app(rpc_state);

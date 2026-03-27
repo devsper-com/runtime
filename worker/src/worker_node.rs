@@ -187,6 +187,7 @@ impl WorkerNode {
             prefetch_used: false,
             tool_results: None,
             distributed_tools: use_distributed_tools,
+            budget_remaining_usd: None,
         };
         let timeout_secs = Some(300u64);
         let response = loop {

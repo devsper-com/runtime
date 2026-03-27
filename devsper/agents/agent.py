@@ -76,6 +76,9 @@ class AgentResponse:
     duration_seconds: float
     error: str | None
     success: bool
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cost_usd: float | None = None
     # Distributed tool protocol: when model requested tool calls, worker sends these to controller.
     tool_calls: list[dict] | None = None  # [{"name": str, "arguments": dict}, ...]
 
@@ -86,6 +89,9 @@ class AgentResponse:
             "tools_called": list(self.tools_called),
             "broadcasts": list(self.broadcasts),
             "tokens_used": self.tokens_used,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "cost_usd": self.cost_usd,
             "duration_seconds": self.duration_seconds,
             "error": self.error,
             "success": self.success,
@@ -105,6 +111,9 @@ class AgentResponse:
             tools_called=list(data.get("tools_called", [])),
             broadcasts=list(data.get("broadcasts", [])),
             tokens_used=data.get("tokens_used"),
+            prompt_tokens=data.get("prompt_tokens"),
+            completion_tokens=data.get("completion_tokens"),
+            cost_usd=data.get("cost_usd"),
             duration_seconds=float(data.get("duration_seconds", 0.0)),
             error=data.get("error"),
             success=bool(data.get("success", False)),
@@ -573,6 +582,10 @@ class Agent:
         """Apply AgentResponse to task (status, result, error)."""
         task.status = TaskStatus.COMPLETED if response.success else TaskStatus.FAILED
         task.result = response.result
+        task.tokens_used = response.tokens_used
+        task.prompt_tokens = response.prompt_tokens
+        task.completion_tokens = response.completion_tokens
+        task.cost_usd = response.cost_usd
         if response.error:
             task.error = response.error
 

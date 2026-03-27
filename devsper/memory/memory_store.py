@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from devsper.memory.memory_types import MemoryRecord, MemoryType
+from devsper.telemetry import get_tracer, record_exception
 
 
 def _default_db_path() -> str:
@@ -79,49 +80,58 @@ class MemoryStore:
 
     def store(self, record: MemoryRecord, namespace: str | None = None) -> str:
         """Store a memory record. Returns record id. Redacts PII if compliance.pii_redaction enabled."""
-        content = record.content
-        try:
-            from devsper.config import get_config
-            cfg = get_config()
-            if getattr(getattr(cfg, "compliance", None), "pii_redaction", False):
-                from devsper.compliance.pii import PIIRedactor
-                redactor = PIIRedactor(
-                    pii_types=getattr(cfg.compliance, "pii_types", None),
-                    gdpr_mode=getattr(cfg.compliance, "gdpr_mode", False),
-                )
-                res = redactor.redact(content or "")
-                content = res.redacted_text
-        except Exception:
-            pass
-        if content != record.content:
-            record = record.model_copy(update={"content": content})
-        row = record.to_store_row()
-        emb = row.get("embedding")
-        embedding_json = json.dumps(emb) if emb is not None else None
-        archived = row.get("archived", 0)
-        run_id = row.get("run_id", "") or ""
-        ns = _norm_namespace(namespace)
-        with self._conn() as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO memory
-                (memory_id, memory_type, content, tags, timestamp, source_task, embedding, run_id, archived, namespace)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    row["memory_id"],
-                    row["memory_type"],
-                    row["content"],
-                    row["tags"],
-                    row["timestamp"],
-                    row["source_task"],
-                    embedding_json,
-                    run_id,
-                    archived,
-                    ns,
-                ),
-            )
-        return row["memory_id"]
+        tracer = get_tracer()
+        with tracer.start_as_current_span("memory.store") as span:
+            try:
+                content = record.content
+                try:
+                    from devsper.config import get_config
+                    cfg = get_config()
+                    if getattr(getattr(cfg, "compliance", None), "pii_redaction", False):
+                        from devsper.compliance.pii import PIIRedactor
+                        redactor = PIIRedactor(
+                            pii_types=getattr(cfg.compliance, "pii_types", None),
+                            gdpr_mode=getattr(cfg.compliance, "gdpr_mode", False),
+                        )
+                        res = redactor.redact(content or "")
+                        content = res.redacted_text
+                except Exception:
+                    pass
+                if content != record.content:
+                    record = record.model_copy(update={"content": content})
+                row = record.to_store_row()
+                emb = row.get("embedding")
+                embedding_json = json.dumps(emb) if emb is not None else None
+                archived = row.get("archived", 0)
+                run_id = row.get("run_id", "") or ""
+                ns = _norm_namespace(namespace)
+                if span is not None:
+                    span.set_attribute("namespace", ns or "default")
+                    span.set_attribute("memory_type", row["memory_type"])
+                with self._conn() as conn:
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO memory
+                        (memory_id, memory_type, content, tags, timestamp, source_task, embedding, run_id, archived, namespace)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            row["memory_id"],
+                            row["memory_type"],
+                            row["content"],
+                            row["tags"],
+                            row["timestamp"],
+                            row["source_task"],
+                            embedding_json,
+                            run_id,
+                            archived,
+                            ns,
+                        ),
+                    )
+                return row["memory_id"]
+            except Exception as exc:
+                record_exception(span, exc)
+                raise
 
     def retrieve(self, memory_id: str, namespace: str | None = None) -> MemoryRecord | None:
         """Retrieve a single record by id."""

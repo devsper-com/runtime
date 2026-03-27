@@ -43,6 +43,8 @@ class events(Enum):
     CLARIFICATION_NEEDED = "clarification_needed"
     CLARIFICATION_RECEIVED = "clarification_received"
     RUN_MANIFEST_EMITTED = "run_manifest_emitted"
+    BUDGET_WARNING = "budget_warning"
+    RUN_COMPLETED = "run_completed"
 
 class Event(BaseModel):
     timestamp: datetime

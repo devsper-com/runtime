@@ -25,6 +25,9 @@ from devsper.swarm.planner import Planner
 from devsper.swarm.scheduler import Scheduler
 from devsper.swarm.executor import Executor
 from devsper.agents.agent import Agent
+from devsper.agents.registry import AgentRegistry
+from devsper.budget import BudgetManager
+from devsper.telemetry import instrument_swarm_run, record_exception
 
 
 def _fake_config():
@@ -56,6 +59,12 @@ def _persist_dag(scheduler: Scheduler, event_log: EventLog) -> None:
         json.dump({"nodes": nodes, "edges": edges}, f, indent=0)
 
 
+class RunResult(dict):
+    """Backward-compatible run result map with optional metadata."""
+
+    budget: dict | None = None
+
+
 class Swarm:
     """Orchestrates planner, scheduler, executor, and agent. Single entrypoint for running a task."""
 
@@ -71,6 +80,8 @@ class Swarm:
         use_tools: bool | None = None,
         config: str | Path | object | None = None,
         clarification_queue: object = None,
+        budget_usd: float | None = None,
+        budget_on_exceeded: str | None = None,
     ) -> None:
         self.clarification_queue = clarification_queue
         self._current_executor = None
@@ -118,6 +129,16 @@ class Swarm:
             self.message_bus_enabled = getattr(cfg.swarm, "message_bus_enabled", True)
             self.prefetch_enabled = getattr(cfg.swarm, "prefetch_enabled", True)
             self._config = cfg
+            self.budget_usd = (
+                float(budget_usd)
+                if budget_usd is not None
+                else float(getattr(getattr(cfg, "budget", None), "limit_usd", 0.0))
+            )
+            self.budget_on_exceeded = (
+                str(budget_on_exceeded)
+                if budget_on_exceeded is not None
+                else str(getattr(getattr(cfg, "budget", None), "on_exceeded", "warn"))
+            )
             # v1.10.5: register MCP server tools from config
             mcp_servers = getattr(getattr(cfg, "mcp", None), "servers", None) or []
             for server_config in mcp_servers:
@@ -150,6 +171,8 @@ class Swarm:
             self.message_bus_enabled = True
             self.prefetch_enabled = True
             self._config = None
+            self.budget_usd = float(budget_usd or 0.0)
+            self.budget_on_exceeded = str(budget_on_exceeded or "warn")
         self.event_log = event_log or EventLog()
         self.memory_router = memory_router
         self.store_swarm_memory = store_swarm_memory
@@ -171,343 +194,391 @@ class Swarm:
         Create root task → plan subtasks → add to scheduler → run executor → return task_id → result.
         hitl_resolver: optional (approval, policy) -> bool for in-process approval prompts.
         """
-        self._emit(events.SWARM_STARTED, {"user_task": user_task[:200]})
-
-        root = Task(id="root", description=user_task, dependencies=[])
-        from devsper.intelligence.strategy_selector import StrategySelector
-        from devsper.intelligence.strategies import get_strategy_for
-
-        knowledge_graph = None
-        if self._config is not None:
-            kg_cfg = getattr(self._config, "knowledge", None)
-            if kg_cfg and (getattr(kg_cfg, "guide_planning", False) or getattr(kg_cfg, "auto_extract", False)):
-                from devsper.knowledge.knowledge_graph import KnowledgeGraph
-                from devsper.memory.memory_store import get_default_store
-                knowledge_graph = KnowledgeGraph(store=get_default_store())
-                knowledge_graph.load()
-                knowledge_graph.build_from_memory(merge=True)
-        selector = StrategySelector()
-        selected = selector.select(root)
-        strategy_instance = get_strategy_for(selected)
-        prompt_suffix = selector.suggest_planner_prompt_suffix(selected)
-        guide_planning = False
-        min_confidence = 0.30
-        if self._config is not None and getattr(self._config, "knowledge", None):
-            guide_planning = getattr(self._config.knowledge, "guide_planning", False)
-            min_confidence = getattr(self._config.knowledge, "min_confidence", 0.30)
-        planner = Planner(
-            model_name=self.planner_model,
-            event_log=self.event_log,
-            strategy=strategy_instance,
-            prompt_suffix=prompt_suffix,
-            knowledge_graph=knowledge_graph,
-            guide_planning=guide_planning,
-            min_confidence=min_confidence,
-        )
-        subtasks = planner.plan(root)
-
-        scheduler = Scheduler()
-        scheduler.add_tasks(subtasks)
-        scheduler.run_id = getattr(self.event_log, "run_id", "") or ""
-        _persist_dag(scheduler, self.event_log)
-
-        from devsper.reasoning.store import ReasoningStore
-        from devsper.agents.message_bus import SwarmMessageBus
-
-        message_bus = None
-        if getattr(self, "message_bus_enabled", True):
-            message_bus = SwarmMessageBus(event_log=self.event_log)
-
-        # Build HITL once for both single-node and executor paths
-        hitl_enabled = False
-        hitl_escalation_checker = None
-        hitl_approval_store = None
-        hitl_notifier = None
-        if self._config is not None:
-            hitl_cfg = getattr(self._config, "hitl", None)
-            if hitl_cfg and getattr(hitl_cfg, "enabled", False):
-                from devsper.hitl.escalation import EscalationChecker, EscalationPolicy, EscalationTrigger
-                from devsper.hitl.approval import ApprovalStore, ApprovalNotifier
-                policies: list[EscalationPolicy] = []
-                for p in getattr(hitl_cfg, "policies", []) or []:
-                    triggers = [
-                        EscalationTrigger(type=getattr(t, "type", "confidence_below"), threshold=getattr(t, "threshold", 0.5))
-                        for t in getattr(p, "triggers", []) or []
-                    ]
-                    policies.append(
-                        EscalationPolicy(
-                            triggers=triggers,
-                            approvers=getattr(p, "approvers", []) or [],
-                            timeout_seconds=getattr(p, "timeout_seconds", 3600),
-                            on_timeout=getattr(p, "on_timeout", "auto_approve"),
-                        )
-                    )
-                if policies:
-                    hitl_enabled = True
-                    hitl_escalation_checker = EscalationChecker(policies)
-                    hitl_approval_store = ApprovalStore(getattr(self._config, "data_dir", ".devsper"))
-                    hitl_notifier = ApprovalNotifier()
-
-        nodes_mode = "distributed"  # no config -> use executor path (v1.9 behavior)
-        if self._config is not None:
-            nodes_cfg = getattr(self._config, "nodes", None)
-            nodes_mode = getattr(nodes_cfg, "mode", "single") if nodes_cfg else "single"
-        if nodes_mode == "single" and self._config is not None:
-            def _agent_factory(cfg):
-                rs = ReasoningStore()
-                mb = SwarmMessageBus(event_log=self.event_log) if getattr(self, "message_bus_enabled", True) else None
-                return Agent(
-                    model_name=self.worker_model,
-                    event_log=self.event_log,
-                    memory_router=self.memory_router,
-                    store_result_to_memory=False,
-                    use_tools=self.use_tools,
-                    reasoning_store=rs,
-                    user_task=user_task,
-                    parallel_tools=getattr(self, "parallel_tools", True),
-                    message_bus=mb,
-                )
-            from devsper.nodes.single import create_single_node
-            single_node = create_single_node(
-                config=self._config or _fake_config(),
-                scheduler=scheduler,
-                event_log=self.event_log,
-                memory_router=self.memory_router,
-                agent_factory=_agent_factory,
-                user_task=user_task,
-                message_bus=message_bus,
-                hitl_enabled=hitl_enabled,
-                hitl_escalation_checker=hitl_escalation_checker,
-                hitl_approval_store=hitl_approval_store,
-                hitl_notifier=hitl_notifier,
-                hitl_resolver=hitl_resolver,
-            )
-            async def _run_single():
-                await single_node.start()
-                return await single_node.run_until_finished()
-            results = asyncio.run(_run_single())
-            self._last_scheduler = scheduler
-            self._last_reasoning_store = None
-            if self.store_swarm_memory and self.memory_router and results:
-                self._store_swarm_memory(user_task, scheduler)
-            self._emit(events.SWARM_FINISHED, {"task_count": len(results)})
+        run_id = getattr(self.event_log, "run_id", "") or ""
+        with instrument_swarm_run(run_id, user_task) as span:
+            if span is not None:
+                span.set_attribute("model_plan", self.planner_model)
+                span.set_attribute("model_worker", self.worker_model)
             try:
-                from devsper.intelligence.analysis.run_report import build_report_from_events
-                from devsper.runtime.run_history import RunHistory
-                log_path = getattr(self.event_log, "log_path", None)
-                if log_path:
-                    events_dir = os.path.dirname(log_path)
-                    run_id = getattr(self.event_log, "run_id", None)
-                    if run_id:
-                        report = build_report_from_events(run_id, events_dir)
-                        RunHistory().record_run(report)
-                        if self._config and getattr(getattr(self._config, "knowledge", None), "auto_extract", False):
-                            from devsper.knowledge.knowledge_graph import KnowledgeGraph
-                            from devsper.knowledge.extractor import KnowledgeExtractor
-                            from devsper.memory.memory_store import get_default_store
-                            kg = KnowledgeGraph(store=get_default_store())
-                            kg.load()
-                            kg.build_from_memory(merge=True)
-                            completed_tasks = self.last_completed_tasks
-                            min_conf = getattr(self._config.knowledge, "min_confidence", 0.60)
-                            extractor = KnowledgeExtractor(min_confidence=min_conf)
-                            try:
-                                asyncio.get_event_loop().run_until_complete(
-                                    extractor.extract_from_run(
-                                        run_id, completed_tasks, kg, event_log=self.event_log
-                                    )
-                                )
-                            except Exception:
-                                loop = asyncio.new_event_loop()
-                                loop.run_until_complete(
-                                    extractor.extract_from_run(
-                                        run_id, completed_tasks, kg, event_log=self.event_log
-                                    )
-                                )
-            except Exception:
-                pass
-            return results
+                self._emit(events.SWARM_STARTED, {"user_task": user_task[:200]})
 
-        reasoning_store = ReasoningStore()
-        agent = Agent(
-            model_name=self.worker_model,
-            event_log=self.event_log,
-            memory_router=self.memory_router,
-            store_result_to_memory=False,
-            use_tools=self.use_tools,
-            reasoning_store=reasoning_store,
-            user_task=user_task,
-            parallel_tools=getattr(self, "parallel_tools", True),
-            message_bus=message_bus,
-        )
-        audit_logger = None
-        if self._config and getattr(getattr(self._config, "compliance", None), "audit_logging", False):
-            run_id = getattr(self.event_log, "run_id", "") or ""
-            if run_id:
-                from devsper.audit.logger import AuditLogger
-                audit_logger = AuditLogger(
-                    getattr(self._config, "data_dir", ".devsper"),
-                    run_id=run_id,
-                )
-                agent.audit_logger = audit_logger
-                agent.audit_run_id = run_id
-        task_cache = None
-        semantic_cache = None
-        if getattr(self, "cache_enabled", False):
-            from devsper.cache import TaskCache
+                root = Task(id="root", description=user_task, dependencies=[])
+                from devsper.intelligence.strategy_selector import StrategySelector
+                from devsper.intelligence.strategies import get_strategy_for
 
-            task_cache = TaskCache()
-            cfg = getattr(self, "_config", None)
-            if cfg and getattr(getattr(cfg, "cache", None), "semantic", False):
-                from devsper.cache.task_cache import SemanticTaskCache
-
-                cache_cfg = cfg.cache
-                semantic_cache = SemanticTaskCache(
-                    similarity_threshold=getattr(cache_cfg, "similarity_threshold", 0.92),
-                    max_age_hours=getattr(cache_cfg, "max_age_hours", 168.0),
-                )
-        complexity_router = None
-        models_config = None
-        if self._config is not None:
-            from devsper.providers.complexity_router import TaskComplexityRouter
-
-            complexity_router = TaskComplexityRouter()
-            models_config = self._config.models
-
-        critic_agent = None
-        critic_enabled = False
-        critic_roles: list[str] = []
-        fast_model = self.worker_model
-        if self._config is not None:
-            critic_enabled = getattr(self._config.swarm, "critic_enabled", False)
-            critic_roles = list(
-                getattr(self._config.swarm, "critic_roles", [])
-                or ["research", "analysis", "code"]
-            )
-            fast_model = getattr(self._config.models, "fast", None) or self.worker_model
-            if critic_enabled:
-                from devsper.agents.critic import CriticAgent
-                critic_agent = CriticAgent(event_log=self.event_log)
-
-        prefetcher = None
-        if getattr(self, "speculative_execution", False) and getattr(
-            self, "prefetch_enabled", True
-        ):
-            from devsper.swarm.prefetcher import TaskPrefetcher
-            from devsper.tools.selector import get_tools_for_task
-            try:
-                from devsper.tools.scoring import get_default_score_store
-                score_store = get_default_score_store()
-            except Exception:
-                score_store = None
-            prefetch_max_age = 30.0
-            if self._config is not None:
-                prefetch_max_age = getattr(
-                    self._config.swarm, "prefetch_max_age_seconds", 30.0
-                )
-            prefetcher = TaskPrefetcher(
-                memory_router=self.memory_router,
-                tool_selector=lambda desc, role=None, score_store=None: get_tools_for_task(
-                    desc or "", role=role, score_store=score_store
-                ),
-                score_store=score_store,
-                max_age_seconds=prefetch_max_age,
-            )
-
-        bus = None
-        checkpointer = None
-        if self._config is not None:
-            try:
-                from devsper.bus import get_bus
-                bus = get_bus(self._config)
-            except Exception:
-                pass
-            if getattr(getattr(self._config, "swarm", None), "checkpoint_enabled", True):
-                from devsper.swarm.checkpointer import SchedulerCheckpointer
-                checkpointer = SchedulerCheckpointer(
-                    events_dir=getattr(self._config, "events_dir", ".devsper/events"),
-                    interval_tasks=getattr(
-                        getattr(self._config, "swarm", None), "checkpoint_interval", 10
-                    ),
-                )
-
-        from devsper.config import get_config
-        sandbox_config = getattr(get_config(), "sandbox", None)
-        executor = Executor(
-            scheduler=scheduler,
-            agent=agent,
-            worker_count=self.worker_count,
-            event_log=self.event_log,
-            planner=planner if self.adaptive else None,
-            adaptive=self.adaptive,
-            speculative_execution=getattr(self, "speculative_execution", False),
-            task_cache=task_cache,
-            pause_event=self._pause_event,
-            semantic_cache=semantic_cache,
-            complexity_router=complexity_router,
-            models_config=models_config,
-            streaming_dag=True,
-            critic_agent=critic_agent,
-            critic_enabled=critic_enabled,
-            critic_roles=critic_roles,
-            fast_model=fast_model,
-            prefetcher=prefetcher,
-            bus=bus,
-            checkpointer=checkpointer,
-            sandbox_config=sandbox_config,
-            audit_logger=audit_logger,
-            hitl_enabled=hitl_enabled,
-            hitl_escalation_checker=hitl_escalation_checker,
-            hitl_approval_store=hitl_approval_store,
-            hitl_notifier=hitl_notifier,
-            hitl_resolver=hitl_resolver,
-            clarification_bus=getattr(self, "clarification_queue", None),
-        )
-        self._current_executor = executor
-        executor.run_sync()
-
-        self._last_scheduler = scheduler
-        self._last_reasoning_store = reasoning_store
-        results = scheduler.get_results()
-        if self.store_swarm_memory and self.memory_router and results:
-            self._store_swarm_memory(user_task, scheduler)
-        self._emit(events.SWARM_FINISHED, {"task_count": len(results)})
-        try:
-            from devsper.intelligence.analysis.run_report import build_report_from_events
-            from devsper.runtime.run_history import RunHistory
-            log_path = getattr(self.event_log, "log_path", None)
-            if log_path:
-                events_dir = os.path.dirname(log_path)
-                run_id = getattr(self.event_log, "run_id", None)
-                if run_id:
-                    report = build_report_from_events(run_id, events_dir)
-                    RunHistory().record_run(report)
-                    if self._config and getattr(getattr(self._config, "knowledge", None), "auto_extract", False):
+                knowledge_graph = None
+                if self._config is not None:
+                    kg_cfg = getattr(self._config, "knowledge", None)
+                    if kg_cfg and (getattr(kg_cfg, "guide_planning", False) or getattr(kg_cfg, "auto_extract", False)):
                         from devsper.knowledge.knowledge_graph import KnowledgeGraph
-                        from devsper.knowledge.extractor import KnowledgeExtractor
                         from devsper.memory.memory_store import get_default_store
-                        kg = KnowledgeGraph(store=get_default_store())
-                        kg.load()
-                        kg.build_from_memory(merge=True)
-                        completed_tasks = self.last_completed_tasks
-                        min_conf = getattr(self._config.knowledge, "min_confidence", 0.60)
-                        extractor = KnowledgeExtractor(min_confidence=min_conf)
-                        try:
-                            asyncio.get_event_loop().run_until_complete(
-                                extractor.extract_from_run(
-                                    run_id, completed_tasks, kg, event_log=self.event_log
+                        knowledge_graph = KnowledgeGraph(store=get_default_store())
+                        knowledge_graph.load()
+                        knowledge_graph.build_from_memory(merge=True)
+                selector = StrategySelector()
+                selected = selector.select(root)
+                strategy_instance = get_strategy_for(selected)
+                prompt_suffix = selector.suggest_planner_prompt_suffix(selected)
+                guide_planning = False
+                min_confidence = 0.30
+                if self._config is not None and getattr(self._config, "knowledge", None):
+                    guide_planning = getattr(self._config.knowledge, "guide_planning", False)
+                    min_confidence = getattr(self._config.knowledge, "min_confidence", 0.30)
+                planner = Planner(
+                    model_name=self.planner_model,
+                    event_log=self.event_log,
+                    strategy=strategy_instance,
+                    prompt_suffix=prompt_suffix,
+                    knowledge_graph=knowledge_graph,
+                    guide_planning=guide_planning,
+                    min_confidence=min_confidence,
+                )
+                subtasks = planner.plan(root)
+
+                scheduler = Scheduler()
+                scheduler.add_tasks(subtasks)
+                scheduler.run_id = getattr(self.event_log, "run_id", "") or ""
+                _persist_dag(scheduler, self.event_log)
+
+                from devsper.reasoning.store import ReasoningStore
+                from devsper.agents.message_bus import SwarmMessageBus
+
+                message_bus = None
+                if getattr(self, "message_bus_enabled", True):
+                    message_bus = SwarmMessageBus(event_log=self.event_log)
+
+                # Build HITL once for both single-node and executor paths
+                hitl_enabled = False
+                hitl_escalation_checker = None
+                hitl_approval_store = None
+                hitl_notifier = None
+                if self._config is not None:
+                    hitl_cfg = getattr(self._config, "hitl", None)
+                    if hitl_cfg and getattr(hitl_cfg, "enabled", False):
+                        from devsper.hitl.escalation import EscalationChecker, EscalationPolicy, EscalationTrigger
+                        from devsper.hitl.approval import ApprovalStore, ApprovalNotifier
+                        policies: list[EscalationPolicy] = []
+                        for p in getattr(hitl_cfg, "policies", []) or []:
+                            triggers = [
+                                EscalationTrigger(type=getattr(t, "type", "confidence_below"), threshold=getattr(t, "threshold", 0.5))
+                                for t in getattr(p, "triggers", []) or []
+                            ]
+                            policies.append(
+                                EscalationPolicy(
+                                    triggers=triggers,
+                                    approvers=getattr(p, "approvers", []) or [],
+                                    timeout_seconds=getattr(p, "timeout_seconds", 3600),
+                                    on_timeout=getattr(p, "on_timeout", "auto_approve"),
                                 )
                             )
-                        except Exception:
-                            loop = asyncio.new_event_loop()
-                            loop.run_until_complete(
-                                extractor.extract_from_run(
-                                    run_id, completed_tasks, kg, event_log=self.event_log
-                                )
-                            )
-        except Exception:
-            pass
-        return results
+                        if policies:
+                            hitl_enabled = True
+                            hitl_escalation_checker = EscalationChecker(policies)
+                            hitl_approval_store = ApprovalStore(getattr(self._config, "data_dir", ".devsper"))
+                            hitl_notifier = ApprovalNotifier()
+
+                nodes_mode = "distributed"  # no config -> use executor path (v1.9 behavior)
+                if self._config is not None:
+                    nodes_cfg = getattr(self._config, "nodes", None)
+                    nodes_mode = getattr(nodes_cfg, "mode", "single") if nodes_cfg else "single"
+                if nodes_mode == "single" and self._config is not None:
+                    def _agent_factory(cfg):
+                        rs = ReasoningStore()
+                        mb = SwarmMessageBus(event_log=self.event_log) if getattr(self, "message_bus_enabled", True) else None
+                        return Agent(
+                            model_name=self.worker_model,
+                            event_log=self.event_log,
+                            memory_router=self.memory_router,
+                            store_result_to_memory=False,
+                            use_tools=self.use_tools,
+                            reasoning_store=rs,
+                            user_task=user_task,
+                            parallel_tools=getattr(self, "parallel_tools", True),
+                            message_bus=mb,
+                        )
+                    from devsper.nodes.single import create_single_node
+                    single_node = create_single_node(
+                        config=self._config or _fake_config(),
+                        scheduler=scheduler,
+                        event_log=self.event_log,
+                        memory_router=self.memory_router,
+                        agent_factory=_agent_factory,
+                        user_task=user_task,
+                        message_bus=message_bus,
+                        hitl_enabled=hitl_enabled,
+                        hitl_escalation_checker=hitl_escalation_checker,
+                        hitl_approval_store=hitl_approval_store,
+                        hitl_notifier=hitl_notifier,
+                        hitl_resolver=hitl_resolver,
+                    )
+                    async def _run_single():
+                        await single_node.start()
+                        return await single_node.run_until_finished()
+                    results = asyncio.run(_run_single())
+                    self._last_scheduler = scheduler
+                    self._last_reasoning_store = None
+                    if self.store_swarm_memory and self.memory_router and results:
+                        self._store_swarm_memory(user_task, scheduler)
+                    self._emit(events.SWARM_FINISHED, {"task_count": len(results)})
+                    try:
+                        from devsper.intelligence.analysis.run_report import build_report_from_events
+                        from devsper.runtime.run_history import RunHistory
+                        log_path = getattr(self.event_log, "log_path", None)
+                        if log_path:
+                            events_dir = os.path.dirname(log_path)
+                            run_id = getattr(self.event_log, "run_id", None)
+                            if run_id:
+                                report = build_report_from_events(run_id, events_dir)
+                                RunHistory().record_run(report)
+                                if self._config and getattr(getattr(self._config, "knowledge", None), "auto_extract", False):
+                                    from devsper.knowledge.knowledge_graph import KnowledgeGraph
+                                    from devsper.knowledge.extractor import KnowledgeExtractor
+                                    from devsper.memory.memory_store import get_default_store
+                                    kg = KnowledgeGraph(store=get_default_store())
+                                    kg.load()
+                                    kg.build_from_memory(merge=True)
+                                    completed_tasks = self.last_completed_tasks
+                                    min_conf = getattr(self._config.knowledge, "min_confidence", 0.60)
+                                    extractor = KnowledgeExtractor(min_confidence=min_conf)
+                                    try:
+                                        asyncio.get_event_loop().run_until_complete(
+                                            extractor.extract_from_run(
+                                                run_id, completed_tasks, kg, event_log=self.event_log
+                                            )
+                                        )
+                                    except Exception:
+                                        loop = asyncio.new_event_loop()
+                                        loop.run_until_complete(
+                                            extractor.extract_from_run(
+                                                run_id, completed_tasks, kg, event_log=self.event_log
+                                            )
+                                        )
+                    except Exception:
+                        pass
+                    result_obj = RunResult(results)
+                    result_obj.budget = {
+                        "limit_usd": float(self.budget_usd or 0.0),
+                        "spent_usd": 0.0,
+                        "remaining_usd": float(self.budget_usd or 0.0),
+                        "breakdown": {},
+                        "tasks_completed": len(scheduler.get_completed_tasks()),
+                        "tasks_skipped": 0,
+                    }
+                    return result_obj
+
+                reasoning_store = ReasoningStore()
+                remote_agents = list(getattr(getattr(self._config, "swarm", None), "remote_agents", []) or [])
+                if remote_agents:
+                    from devsper.protocol.client import RemoteAgent
+
+                    agent = RemoteAgent(remote_agents, model_name=self.worker_model)
+                else:
+                    agent = Agent(
+                        model_name=self.worker_model,
+                        event_log=self.event_log,
+                        memory_router=self.memory_router,
+                        store_result_to_memory=False,
+                        use_tools=self.use_tools,
+                        reasoning_store=reasoning_store,
+                        user_task=user_task,
+                        parallel_tools=getattr(self, "parallel_tools", True),
+                        message_bus=message_bus,
+                    )
+                agent_registry = AgentRegistry.from_config(self._config) if self._config is not None else AgentRegistry([])
+                audit_logger = None
+                if self._config and getattr(getattr(self._config, "compliance", None), "audit_logging", False):
+                    run_id = getattr(self.event_log, "run_id", "") or ""
+                    if run_id:
+                        from devsper.audit.logger import AuditLogger
+                        audit_logger = AuditLogger(
+                            getattr(self._config, "data_dir", ".devsper"),
+                            run_id=run_id,
+                        )
+                        if hasattr(agent, "audit_logger"):
+                            agent.audit_logger = audit_logger
+                        if hasattr(agent, "audit_run_id"):
+                            agent.audit_run_id = run_id
+                task_cache = None
+                semantic_cache = None
+                if getattr(self, "cache_enabled", False):
+                    from devsper.cache import TaskCache
+
+                    task_cache = TaskCache()
+                    cfg = getattr(self, "_config", None)
+                    if cfg and getattr(getattr(cfg, "cache", None), "semantic", False):
+                        from devsper.cache.task_cache import SemanticTaskCache
+
+                        cache_cfg = cfg.cache
+                        semantic_cache = SemanticTaskCache(
+                            similarity_threshold=getattr(cache_cfg, "similarity_threshold", 0.92),
+                            max_age_hours=getattr(cache_cfg, "max_age_hours", 168.0),
+                        )
+                complexity_router = None
+                models_config = None
+                if self._config is not None:
+                    from devsper.providers.complexity_router import TaskComplexityRouter
+
+                    complexity_router = TaskComplexityRouter()
+                    models_config = self._config.models
+
+                critic_agent = None
+                critic_enabled = False
+                critic_roles: list[str] = []
+                fast_model = self.worker_model
+                if self._config is not None:
+                    critic_enabled = getattr(self._config.swarm, "critic_enabled", False)
+                    critic_roles = list(
+                        getattr(self._config.swarm, "critic_roles", [])
+                        or ["research", "analysis", "code"]
+                    )
+                    fast_model = getattr(self._config.models, "fast", None) or self.worker_model
+                    if critic_enabled:
+                        from devsper.agents.critic import CriticAgent
+                        critic_agent = CriticAgent(event_log=self.event_log)
+
+                prefetcher = None
+                if getattr(self, "speculative_execution", False) and getattr(
+                    self, "prefetch_enabled", True
+                ):
+                    from devsper.swarm.prefetcher import TaskPrefetcher
+                    from devsper.tools.selector import get_tools_for_task
+                    try:
+                        from devsper.tools.scoring import get_default_score_store
+                        score_store = get_default_score_store()
+                    except Exception:
+                        score_store = None
+                    prefetch_max_age = 30.0
+                    if self._config is not None:
+                        prefetch_max_age = getattr(
+                            self._config.swarm, "prefetch_max_age_seconds", 30.0
+                        )
+                    prefetcher = TaskPrefetcher(
+                        memory_router=self.memory_router,
+                        tool_selector=lambda desc, role=None, score_store=None: get_tools_for_task(
+                            desc or "", role=role, score_store=score_store
+                        ),
+                        score_store=score_store,
+                        max_age_seconds=prefetch_max_age,
+                    )
+
+                bus = None
+                checkpointer = None
+                if self._config is not None:
+                    try:
+                        from devsper.bus import get_bus
+                        bus = get_bus(self._config)
+                    except Exception:
+                        pass
+                    if getattr(getattr(self._config, "swarm", None), "checkpoint_enabled", True):
+                        from devsper.swarm.checkpointer import SchedulerCheckpointer
+                        checkpointer = SchedulerCheckpointer(
+                            events_dir=getattr(self._config, "events_dir", ".devsper/events"),
+                            interval_tasks=getattr(
+                                getattr(self._config, "swarm", None), "checkpoint_interval", 10
+                            ),
+                        )
+
+                from devsper.config import get_config
+                sandbox_config = getattr(get_config(), "sandbox", None)
+                if remote_agents:
+                    sandbox_config = None
+                executor = Executor(
+                    scheduler=scheduler,
+                    agent=agent,
+                    worker_count=self.worker_count,
+                    event_log=self.event_log,
+                    planner=planner if self.adaptive else None,
+                    adaptive=self.adaptive,
+                    speculative_execution=getattr(self, "speculative_execution", False),
+                    task_cache=task_cache,
+                    pause_event=self._pause_event,
+                    semantic_cache=semantic_cache,
+                    complexity_router=complexity_router,
+                    models_config=models_config,
+                    streaming_dag=True,
+                    critic_agent=critic_agent,
+                    critic_enabled=critic_enabled,
+                    critic_roles=critic_roles,
+                    fast_model=fast_model,
+                    prefetcher=prefetcher,
+                    bus=bus,
+                    checkpointer=checkpointer,
+                    sandbox_config=sandbox_config,
+                    audit_logger=audit_logger,
+                    hitl_enabled=hitl_enabled,
+                    hitl_escalation_checker=hitl_escalation_checker,
+                    hitl_approval_store=hitl_approval_store,
+                    hitl_notifier=hitl_notifier,
+                    hitl_resolver=hitl_resolver,
+                    clarification_bus=getattr(self, "clarification_queue", None),
+                    budget_manager=BudgetManager(
+                        limit_usd=float(self.budget_usd or 0.0),
+                        on_exceeded=self.budget_on_exceeded,
+                        alert_at_pct=int(getattr(getattr(self._config, "budget", None), "alert_at_pct", 80) if self._config else 80),
+                    ),
+                    agent_registry=agent_registry,
+                )
+                self._current_executor = executor
+                executor.run_sync()
+
+                self._last_scheduler = scheduler
+                self._last_reasoning_store = reasoning_store
+                results = scheduler.get_results()
+                if self.store_swarm_memory and self.memory_router and results:
+                    self._store_swarm_memory(user_task, scheduler)
+                self._emit(events.SWARM_FINISHED, {"task_count": len(results)})
+                try:
+                    from devsper.intelligence.analysis.run_report import build_report_from_events
+                    from devsper.runtime.run_history import RunHistory
+                    log_path = getattr(self.event_log, "log_path", None)
+                    if log_path:
+                        events_dir = os.path.dirname(log_path)
+                        run_id = getattr(self.event_log, "run_id", None)
+                        if run_id:
+                            report = build_report_from_events(run_id, events_dir)
+                            RunHistory().record_run(report)
+                            if self._config and getattr(getattr(self._config, "knowledge", None), "auto_extract", False):
+                                from devsper.knowledge.knowledge_graph import KnowledgeGraph
+                                from devsper.knowledge.extractor import KnowledgeExtractor
+                                from devsper.memory.memory_store import get_default_store
+                                kg = KnowledgeGraph(store=get_default_store())
+                                kg.load()
+                                kg.build_from_memory(merge=True)
+                                completed_tasks = self.last_completed_tasks
+                                min_conf = getattr(self._config.knowledge, "min_confidence", 0.60)
+                                extractor = KnowledgeExtractor(min_confidence=min_conf)
+                                try:
+                                    asyncio.get_event_loop().run_until_complete(
+                                        extractor.extract_from_run(
+                                            run_id, completed_tasks, kg, event_log=self.event_log
+                                        )
+                                    )
+                                except Exception:
+                                    loop = asyncio.new_event_loop()
+                                    loop.run_until_complete(
+                                        extractor.extract_from_run(
+                                            run_id, completed_tasks, kg, event_log=self.event_log
+                                        )
+                                    )
+                except Exception:
+                    pass
+                result_obj = RunResult(results)
+                if executor.budget_manager is not None:
+                    bm = executor.budget_manager
+                    total_tasks = len(scheduler.get_all_tasks())
+                    done_tasks = len(scheduler.get_completed_tasks())
+                    result_obj.budget = {
+                        "limit_usd": float(bm.limit_usd),
+                        "spent_usd": float(bm.spent_usd),
+                        "remaining_usd": float(bm.remaining_usd if bm.limit_usd > 0 else 0.0),
+                        "breakdown": bm.breakdown,
+                        "tasks_completed": done_tasks,
+                        "tasks_skipped": max(0, total_tasks - done_tasks),
+                    }
+                return result_obj
+            except Exception as exc:
+                record_exception(span, exc)
+                raise
 
     @property
     def last_completed_tasks(self) -> list[Task]:

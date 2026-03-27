@@ -1,6 +1,7 @@
 """Run Python code in a subprocess and return stdout/stderr."""
 
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -29,7 +30,7 @@ class RunPythonTool(Tool):
                 path = f.name
             try:
                 result = subprocess.run(
-                    ["python", path],
+                    [sys.executable or "python3", path],
                     capture_output=True,
                     text=True,
                     timeout=30,

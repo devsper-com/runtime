@@ -34,11 +34,14 @@ pub struct RpcState {
     pub get_status: GetStatusFn,
     pub get_current_tasks: Arc<dyn Fn() -> Vec<serde_json::Value> + Send + Sync>,
     pub rpc_token: Option<String>,
+    pub runtime: String,
 }
 
 pub fn app(state: Arc<RpcState>) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/agent", get(agent_info))
+        .route("/agent/execute", post(agent_execute))
         .route("/status", get(status))
         .route("/tasks", get(tasks))
         .route("/control", post(control))
@@ -49,11 +52,37 @@ pub fn app(state: Arc<RpcState>) -> Router {
 
 async fn health(State(s): State<Arc<RpcState>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
+        "status": "ok",
+        "version": VERSION,
+        "runtime": s.runtime,
         "node_id": s.node_id,
         "role": s.role,
         "healthy": true,
         "uptime_seconds": s.started_at.elapsed().as_secs_f64(),
-        "version": VERSION,
+    }))
+}
+
+async fn agent_info(State(_s): State<Arc<RpcState>>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "name": "devsper-rust-worker",
+        "capabilities": ["task.execute"],
+        "models": [],
+    }))
+}
+
+async fn agent_execute(
+    State(_s): State<Arc<RpcState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
+    let task_id = body.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
+    Json(serde_json::json!({
+        "task_id": task_id,
+        "output": "",
+        "tool_calls": [],
+        "tokens": {"prompt": 0, "completion": 0},
+        "cost_usd": 0.0,
+        "duration_ms": 0,
+        "error": "not_implemented_on_worker_rpc",
     }))
 }
 

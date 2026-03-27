@@ -4,6 +4,7 @@ Tool runner: execute a tool by name with validated arguments and safe error hand
 
 import time
 
+from devsper.telemetry import get_tracer, record_exception
 from devsper.tools.registry import get_with_mcp_fallback
 
 
@@ -52,36 +53,56 @@ def run_tool(
     Records usage to tool analytics and tool scoring when available.
     """
     start = time.perf_counter()
-    tool = get_with_mcp_fallback(name)
-    if tool is None:
-        _record_analytics(name, False, start)
-        _record_scoring(name, task_type, False, start, error_type="ToolNotFound")
-        return f"Tool not found: {name}"
-    resolved_name = tool.name
-    err = _validate_args(args, tool.input_schema)
-    if err is not None:
-        _record_analytics(resolved_name, False, start)
-        _record_scoring(resolved_name, task_type, False, start, error_type="ValidationError")
-        return f"Validation error: {err}"
-    try:
-        result = tool.run(**args)
-        latency_ms = int((time.monotonic() - start) * 1000)
-        success = not (isinstance(result, str) and result.startswith("Tool error:"))
-        _record_analytics(resolved_name, success, start)
-        _record_scoring(resolved_name, task_type, success, start, latency_ms=latency_ms)
-        return result
-    except Exception as e:
-        latency_ms = int((time.monotonic() - start) * 1000)
-        _record_analytics(resolved_name, False, start)
-        _record_scoring(
-            resolved_name,
-            task_type,
-            False,
-            start,
-            latency_ms=latency_ms,
-            error_type=type(e).__name__,
-        )
-        return f"Tool error: {type(e).__name__}: {e}"
+    tracer = get_tracer()
+    with tracer.start_as_current_span("tool.call") as span:
+        if span is not None:
+            span.set_attribute("tool_name", name)
+            span.set_attribute("tool_category", (task_type or "general"))
+        tool = get_with_mcp_fallback(name)
+        if tool is None:
+            _record_analytics(name, False, start)
+            _record_scoring(name, task_type, False, start, error_type="ToolNotFound")
+            if span is not None:
+                span.set_attribute("success", False)
+                span.set_attribute("duration_ms", int((time.monotonic() - start) * 1000))
+            return f"Tool not found: {name}"
+        resolved_name = tool.name
+        if span is not None:
+            span.set_attribute("tool_name", resolved_name)
+        err = _validate_args(args, tool.input_schema)
+        if err is not None:
+            _record_analytics(resolved_name, False, start)
+            _record_scoring(resolved_name, task_type, False, start, error_type="ValidationError")
+            if span is not None:
+                span.set_attribute("success", False)
+                span.set_attribute("duration_ms", int((time.monotonic() - start) * 1000))
+            return f"Validation error: {err}"
+        try:
+            result = tool.run(**args)
+            latency_ms = int((time.monotonic() - start) * 1000)
+            success = not (isinstance(result, str) and result.startswith("Tool error:"))
+            _record_analytics(resolved_name, success, start)
+            _record_scoring(resolved_name, task_type, success, start, latency_ms=latency_ms)
+            if span is not None:
+                span.set_attribute("success", bool(success))
+                span.set_attribute("duration_ms", latency_ms)
+            return result
+        except Exception as e:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            _record_analytics(resolved_name, False, start)
+            _record_scoring(
+                resolved_name,
+                task_type,
+                False,
+                start,
+                latency_ms=latency_ms,
+                error_type=type(e).__name__,
+            )
+            record_exception(span, e)
+            if span is not None:
+                span.set_attribute("success", False)
+                span.set_attribute("duration_ms", latency_ms)
+            return f"Tool error: {type(e).__name__}: {e}"
 
 
 def _record_analytics(tool_name: str, success: bool, start_time: float) -> None:

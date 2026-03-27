@@ -180,15 +180,19 @@ class ClarificationWidget:
         console.print(f"    [dim]{custom_idx}[/]  Enter custom answer")
         console.print()
 
-        choices = [str(i) for i in range(1, custom_idx + 1)]
+        alpha_choices = [chr(ord("A") + i - 1) for i in range(1, custom_idx + 1)]
+        choices = [str(i) for i in range(1, custom_idx + 1)] + alpha_choices
         choice = Prompt.ask(
             "  Select option",
             choices=choices,
             default=str(default_index if options else custom_idx),
             console=console,
         )
-
-        selected = int(choice)
+        c = (choice or "").strip().upper()
+        if len(c) == 1 and "A" <= c <= "Z":
+            selected = ord(c) - ord("A") + 1
+        else:
+            selected = int(choice)
         if selected == custom_idx:
             custom = Prompt.ask("  Custom answer", default="", console=console).strip()
             return custom if custom else (options[default_index - 1] if options else "")

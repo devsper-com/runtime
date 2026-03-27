@@ -21,8 +21,10 @@ from devsper.types.task import Task, TaskStatus
 from devsper.types.event import Event, events
 from devsper.utils.event_logger import EventLog
 from devsper.events import ClarificationRequest, ClarificationResponse
+from devsper.telemetry import annotate_span, get_tracer, record_exception
 
 from devsper.agents.agent import Agent
+from devsper.budget import BudgetExceededError, BudgetManager
 from devsper.swarm.scheduler import Scheduler
 from devsper.swarm.planner import Planner
 from devsper.intelligence.adaptation import create_alternative_subtasks_for_failed
@@ -81,6 +83,8 @@ class Executor:
         hitl_resolver: object = None,
         clarification_bus: queue.Queue | None = None,
         project_id: str | None = None,
+        budget_manager: BudgetManager | None = None,
+        agent_registry: object = None,
     ) -> None:
         self.scheduler = scheduler
         self.agent = agent
@@ -113,6 +117,8 @@ class Executor:
         self.clarification_bus = clarification_bus  # sync queue for TUI to read requests
         self._pending_clarification_queues: dict[str, tuple[queue.Queue, str]] = {}  # request_id -> (response_queue, task_id)
         self._pending_clarification_lock = threading.Lock()
+        self.budget_manager = budget_manager
+        self.agent_registry = agent_registry
 
     def _apply_project_memory_namespace(self) -> None:
         ns = f"project:{self._project_id}" if getattr(self, "_project_id", None) else None
@@ -246,91 +252,30 @@ class Executor:
 
     async def _execute_task(self, task: Task, is_speculative: bool) -> str:
         """Run one task (cache lookup, agent run, cache store). Returns task.id. No state stored on self."""
-        loop = asyncio.get_running_loop()
-        cached, hit_info = self._get_cached_result(task)
-        if cached is not None:
-            if not is_speculative:
-                self.scheduler.mark_completed(task.id, cached)
-                self.scheduler.confirm_speculative_for(task.id)
-            if hit_info:
-                self._emit(
-                    events.TASK_CACHE_HIT,
-                    {
-                        "task_id": task.id,
-                        "similarity": hit_info["similarity"],
-                        "original_description": hit_info["original_description"],
-                    },
-                )
-            return task.id
+        tracer = get_tracer()
+        run_id = getattr(self.scheduler, "run_id", "") or ""
+        with tracer.start_as_current_span("executor.execute") as exec_span:
+            annotate_span(exec_span, run_id=run_id, task_id=task.id)
+            exec_span.set_attribute("task_type", getattr(task, "role", None) or "general")
+            loop = asyncio.get_running_loop()
+            cached, hit_info = self._get_cached_result(task)
+            if cached is not None:
+                if not is_speculative:
+                    self.scheduler.mark_completed(task.id, cached)
+                    self.scheduler.confirm_speculative_for(task.id)
+                if hit_info:
+                    self._emit(
+                        events.TASK_CACHE_HIT,
+                        {
+                            "task_id": task.id,
+                            "similarity": hit_info["similarity"],
+                            "original_description": hit_info["original_description"],
+                        },
+                    )
+                return task.id
 
-        self._apply_project_memory_namespace()
-        self._publish_bus("task.started", task.to_dict())
-        if self.audit_logger is not None and self.scheduler is not None:
-            try:
-                from devsper.audit.logger import make_audit_record
-                run_id = getattr(self.scheduler, "run_id", "") or ""
-                rec = make_audit_record(
-                    run_id=run_id,
-                    task_id=task.id,
-                    event_type="TASK_STARTED",
-                    actor=run_id,
-                    resource=getattr(task, "role", "") or "agent",
-                    input_text=task.description or "",
-                    output_text="",
-                )
-                self.audit_logger.log(rec)
-            except Exception:
-                pass
-
-        prefetch_result = None
-        if self.prefetcher:
-            prefetch_result = self.prefetcher.consume(task.id)
-            if prefetch_result is not None:
-                age_seconds = (
-                    datetime.now(timezone.utc) - prefetch_result.computed_at
-                ).total_seconds()
-                self._emit(
-                    events.PREFETCH_HIT,
-                    {"task_id": task.id, "age_seconds": round(age_seconds, 2)},
-                )
-            else:
-                self._emit(
-                    events.PREFETCH_MISS,
-                    {"task_id": task.id, "reason": "stale_or_missing"},
-                )
-
-        model_override = None
-        if self.complexity_router and self.models_config:
-            model_override = self._model_for_task(task)
-        try:
-            if self.clarification_bus is not None:
-                self.agent.clarification_requester = self
-                self.agent.current_task_id = task.id
-                self.agent.role = getattr(task, "role", None) or "agent"
-            use_sandbox = (
-                self.sandbox_config is not None
-                and getattr(self.sandbox_config, "enabled", False)
-            )
-            if use_sandbox:
-                from devsper.sandbox.sandbox import AgentSandbox, get_quota_for_role
-                request = self.agent.build_request(
-                    task, model_override=model_override, prefetch_result=prefetch_result
-                )
-                quota = get_quota_for_role(self.sandbox_config, getattr(task, "role", None))
-                sandbox = AgentSandbox(self.agent)
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: sandbox.run(request, quota),
-                )
-                self.agent.apply_response(task, response)
-            else:
-                await loop.run_in_executor(
-                    None,
-                    lambda t=task, m=model_override, p=prefetch_result: self.agent.run_task(
-                        t, model_override=m, prefetch_result=p
-                    ),
-                )
-        except Exception as err:
+            self._apply_project_memory_namespace()
+            self._publish_bus("task.started", task.to_dict())
             if self.audit_logger is not None and self.scheduler is not None:
                 try:
                     from devsper.audit.logger import make_audit_record
@@ -338,280 +283,389 @@ class Executor:
                     rec = make_audit_record(
                         run_id=run_id,
                         task_id=task.id,
-                        event_type="TASK_FAILED",
+                        event_type="TASK_STARTED",
                         actor=run_id,
-                        resource="",
+                        resource=getattr(task, "role", "") or "agent",
                         input_text=task.description or "",
-                        output_text=str(err),
-                        success=False,
+                        output_text="",
                     )
                     self.audit_logger.log(rec)
                 except Exception:
                     pass
-            self.scheduler.mark_failed(task.id, str(err))
-            if is_speculative:
-                self.scheduler.discard_speculative_for(task.id)
-            else:
-                self._emit(
-                    events.TASK_FAILED,
-                    {"task_id": task.id, "error": str(err)},
-                )
-                self._publish_bus("task.failed", {"task_id": task.id, "error": str(err)})
-                if self.adaptive and self.planner:
-                    alt = create_alternative_subtasks_for_failed(
-                        task, self.planner, self.scheduler
+
+            prefetch_result = None
+            if self.prefetcher:
+                prefetch_result = self.prefetcher.consume(task.id)
+                if prefetch_result is not None:
+                    age_seconds = (
+                        datetime.now(timezone.utc) - prefetch_result.computed_at
+                    ).total_seconds()
+                    self._emit(
+                        events.PREFETCH_HIT,
+                        {"task_id": task.id, "age_seconds": round(age_seconds, 2)},
                     )
-                    if alt:
-                        self.scheduler.add_tasks(alt)
-            return task.id
-
-        result = task.result or ""
-        self._set_cached_result(task, result)
-
-        last_critic_score: float | None = None
-        # v1.7: critic loop — only for non-speculative, eligible roles, not already retried
-        role = getattr(task, "role", None) or ""
-        retry_count = getattr(task, "retry_count", 0)
-        if (
-            not is_speculative
-            and self.critic_enabled
-            and self.critic_agent
-            and role in self.critic_roles
-            and retry_count < 1
-        ):
-            from devsper.agents.critic import CriticAgent
-
-            critique = await self.critic_agent.critique(
-                task, result, model=self.fast_model
-            )
-            last_critic_score = critique.score
-            self._emit(
-                events.TASK_CRITIQUED,
-                {
-                    "task_id": task.id,
-                    "score": critique.score,
-                    "issues": critique.issues,
-                    "retry_requested": critique.retry,
-                },
-            )
-            if critique.retry and retry_count < 1:
-                retry_prompt = await self.critic_agent.get_retry_prompt(
-                    task, result, critique
-                )
-                task.description = retry_prompt
-                task.retry_count = retry_count + 1
-                task.result = None
-                task.status = TaskStatus.PENDING
-                return await self._execute_task(task, is_speculative)
-
-        # v2.1: HITL — if escalation triggered, create approval request and wait
-        if not is_speculative and self.hitl_enabled and self.hitl_escalation_checker:
-            from devsper.agents.agent import AgentResponse
-            from devsper.explainability.decision_tree import DecisionRecord
-            from devsper.hitl.escalation import EscalationTrigger
-            from devsper.hitl.approval import ApprovalRequest, ApprovalStore
-            from datetime import timedelta
-
-            fake_response = AgentResponse(
-                task_id=task.id,
-                result=result,
-                tools_called=getattr(task, "tools_called", []) or [],
-                broadcasts=[],
-                tokens_used=None,
-                duration_seconds=0.0,
-                error=None,
-                success=True,
-            )
-            fake_decision = DecisionRecord(
-                task_id=task.id,
-                task_description=task.description or "",
-                strategy_selected="",
-                strategy_reason="",
-                critic_score=last_critic_score,
-                confidence=float(last_critic_score) if last_critic_score is not None else 0.0,
-            )
-            match = self.hitl_escalation_checker.evaluate(task, fake_response, fake_decision)
-            if match is not None:
-                trigger, hitl_policy = match
-                request_id = str(__import__("uuid").uuid4())
-                now = datetime.now(timezone.utc)
-                timeout_sec = getattr(hitl_policy, "timeout_seconds", 3600)
-                expires = now + timedelta(seconds=timeout_sec)
-                approval = ApprovalRequest(
-                    request_id=request_id,
-                    task=task,
-                    proposed_result=result,
-                    decision_record=fake_decision,
-                    trigger=trigger,
-                    created_at=now.isoformat(),
-                    expires_at=expires.isoformat(),
-                    status="pending",
-                )
-                store = self.hitl_approval_store
-                if store is not None:
-                    store.save(approval)
-                if self.hitl_notifier is not None:
-                    await self.hitl_notifier.notify(approval, hitl_policy)
-                # In-process resolver or poll store
-                approved_result = True
-                if self.hitl_resolver is not None:
-                    resolver = self.hitl_resolver
-                    try:
-                        if asyncio.iscoroutinefunction(resolver):
-                            approved_result = await resolver(approval, hitl_policy)
-                        else:
-                            approved_result = await asyncio.to_thread(resolver, approval, hitl_policy)
-                    except Exception:
-                        approved_result = False
-                    if store is not None:
-                        store.resolve(request_id, approved_result, "")
-                    if not approved_result:
-                        self.scheduler.mark_failed(task.id, "Rejected by human reviewer")
-                        self._emit(
-                            events.TASK_REJECTED_BY_HUMAN,
-                            {"task_id": task.id, "request_id": request_id},
-                        )
-                        return task.id
-                    # approved: fall through to mark_completed
                 else:
-                    # Poll for resolution every 5s up to timeout
-                    poll_interval = 5
-                    elapsed = 0
-                    while store is not None and elapsed < timeout_sec:
-                        await asyncio.sleep(min(poll_interval, timeout_sec - elapsed))
-                        elapsed += poll_interval
-                        req = store.get(request_id)
-                        if req is None:
-                            break
-                        if req.status == "approved":
-                            break
-                        if req.status == "rejected":
+                    self._emit(
+                        events.PREFETCH_MISS,
+                        {"task_id": task.id, "reason": "stale_or_missing"},
+                    )
+
+            model_override = None
+            if self.complexity_router and self.models_config:
+                model_override = self._model_for_task(task)
+            if self.agent_registry is not None:
+                try:
+                    identity = self.agent_registry.assign_to_task(task)
+                    if identity is not None:
+                        model_override = identity.model or model_override
+                        if getattr(self.agent, "memory_namespace", None) != identity.memory_namespace:
+                            self.agent.memory_namespace = identity.memory_namespace
+                except Exception:
+                    pass
+            try:
+                if self.clarification_bus is not None:
+                    self.agent.clarification_requester = self
+                    self.agent.current_task_id = task.id
+                    self.agent.role = getattr(task, "role", None) or "agent"
+                use_sandbox = (
+                    self.sandbox_config is not None
+                    and getattr(self.sandbox_config, "enabled", False)
+                )
+                if use_sandbox:
+                    from devsper.sandbox.sandbox import AgentSandbox, get_quota_for_role
+                    request = self.agent.build_request(
+                        task, model_override=model_override, prefetch_result=prefetch_result
+                    )
+                    quota = get_quota_for_role(self.sandbox_config, getattr(task, "role", None))
+                    sandbox = AgentSandbox(self.agent)
+                    response = await loop.run_in_executor(
+                        None,
+                        lambda: sandbox.run(request, quota),
+                    )
+                    self.agent.apply_response(task, response)
+                else:
+                    with tracer.start_as_current_span("agent.call") as agent_span:
+                        model_name = model_override or getattr(self.agent, "model_name", "unknown")
+                        annotate_span(agent_span, run_id=run_id, task_id=task.id, model=model_name)
+                        agent_span.set_attribute(
+                            "provider",
+                            str(model_name).split(":", 1)[0] if ":" in str(model_name) else "default",
+                        )
+                        await loop.run_in_executor(
+                            None,
+                            lambda t=task, m=model_override, p=prefetch_result: self.agent.run_task(
+                                t, model_override=m, prefetch_result=p
+                            ),
+                        )
+            except Exception as err:
+                record_exception(exec_span, err)
+                if self.audit_logger is not None and self.scheduler is not None:
+                    try:
+                        from devsper.audit.logger import make_audit_record
+                        run_id = getattr(self.scheduler, "run_id", "") or ""
+                        rec = make_audit_record(
+                            run_id=run_id,
+                            task_id=task.id,
+                            event_type="TASK_FAILED",
+                            actor=run_id,
+                            resource="",
+                            input_text=task.description or "",
+                            output_text=str(err),
+                            success=False,
+                        )
+                        self.audit_logger.log(rec)
+                    except Exception:
+                        pass
+                self.scheduler.mark_failed(task.id, str(err))
+                if is_speculative:
+                    self.scheduler.discard_speculative_for(task.id)
+                else:
+                    self._emit(
+                        events.TASK_FAILED,
+                        {"task_id": task.id, "error": str(err)},
+                    )
+                    self._publish_bus("task.failed", {"task_id": task.id, "error": str(err)})
+                    if self.adaptive and self.planner:
+                        alt = create_alternative_subtasks_for_failed(
+                            task, self.planner, self.scheduler
+                        )
+                        if alt:
+                            self.scheduler.add_tasks(alt)
+                return task.id
+
+            result = task.result or ""
+            self._set_cached_result(task, result)
+            if self.budget_manager is not None:
+                model_name = model_override or getattr(self.agent, "model_name", "unknown")
+                prompt_tokens = getattr(task, "prompt_tokens", None)
+                completion_tokens = getattr(task, "completion_tokens", None)
+                if completion_tokens is None and getattr(task, "tokens_used", None) is not None:
+                    completion_tokens = getattr(task, "tokens_used", None)
+                    prompt_tokens = prompt_tokens or 0
+                try:
+                    cost = self.budget_manager.consume(
+                        model=model_name,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                    )
+                    task.cost_usd = cost
+                    if cost is not None:
+                        exec_span.set_attribute("devsper.cost.usd", float(cost))
+                except BudgetExceededError:
+                    if self.budget_manager.on_exceeded == "raise":
+                        raise
+
+            last_critic_score: float | None = None
+            role = getattr(task, "role", None) or ""
+            retry_count = getattr(task, "retry_count", 0)
+            if (
+                not is_speculative
+                and self.critic_enabled
+                and self.critic_agent
+                and role in self.critic_roles
+                and retry_count < 1
+            ):
+                from devsper.agents.critic import CriticAgent
+
+                critique = await self.critic_agent.critique(
+                    task, result, model=self.fast_model
+                )
+                last_critic_score = critique.score
+                self._emit(
+                    events.TASK_CRITIQUED,
+                    {
+                        "task_id": task.id,
+                        "score": critique.score,
+                        "issues": critique.issues,
+                        "retry_requested": critique.retry,
+                    },
+                )
+                if critique.retry and retry_count < 1:
+                    retry_prompt = await self.critic_agent.get_retry_prompt(
+                        task, result, critique
+                    )
+                    task.description = retry_prompt
+                    task.retry_count = retry_count + 1
+                    task.result = None
+                    task.status = TaskStatus.PENDING
+                    return await self._execute_task(task, is_speculative)
+
+            if not is_speculative and self.hitl_enabled and self.hitl_escalation_checker:
+                from devsper.agents.agent import AgentResponse
+                from devsper.explainability.decision_tree import DecisionRecord
+                from devsper.hitl.approval import ApprovalRequest, ApprovalStore
+                from datetime import timedelta
+
+                fake_response = AgentResponse(
+                    task_id=task.id,
+                    result=result,
+                    tools_called=getattr(task, "tools_called", []) or [],
+                    broadcasts=[],
+                    tokens_used=None,
+                    duration_seconds=0.0,
+                    error=None,
+                    success=True,
+                )
+                fake_decision = DecisionRecord(
+                    task_id=task.id,
+                    task_description=task.description or "",
+                    strategy_selected="",
+                    strategy_reason="",
+                    critic_score=last_critic_score,
+                    confidence=float(last_critic_score) if last_critic_score is not None else 0.0,
+                )
+                match = self.hitl_escalation_checker.evaluate(task, fake_response, fake_decision)
+                if match is not None:
+                    trigger, hitl_policy = match
+                    request_id = str(__import__("uuid").uuid4())
+                    now = datetime.now(timezone.utc)
+                    timeout_sec = getattr(hitl_policy, "timeout_seconds", 3600)
+                    expires = now + timedelta(seconds=timeout_sec)
+                    approval = ApprovalRequest(
+                        request_id=request_id,
+                        task=task,
+                        proposed_result=result,
+                        decision_record=fake_decision,
+                        trigger=trigger,
+                        created_at=now.isoformat(),
+                        expires_at=expires.isoformat(),
+                        status="pending",
+                    )
+                    store = self.hitl_approval_store
+                    if store is not None:
+                        store.save(approval)
+                    if self.hitl_notifier is not None:
+                        await self.hitl_notifier.notify(approval, hitl_policy)
+                    approved_result = True
+                    if self.hitl_resolver is not None:
+                        resolver = self.hitl_resolver
+                        try:
+                            if asyncio.iscoroutinefunction(resolver):
+                                approved_result = await resolver(approval, hitl_policy)
+                            else:
+                                approved_result = await asyncio.to_thread(resolver, approval, hitl_policy)
+                        except Exception:
+                            approved_result = False
+                        if store is not None:
+                            store.resolve(request_id, approved_result, "")
+                        if not approved_result:
                             self.scheduler.mark_failed(task.id, "Rejected by human reviewer")
                             self._emit(
                                 events.TASK_REJECTED_BY_HUMAN,
                                 {"task_id": task.id, "request_id": request_id},
                             )
                             return task.id
-                    # After loop: approved or timeout
-                    req = store.get(request_id) if store else None
-                    if req is not None and req.status == "rejected":
-                        self.scheduler.mark_failed(task.id, "Rejected by human reviewer")
-                        self._emit(
-                            events.TASK_REJECTED_BY_HUMAN,
-                            {"task_id": task.id, "request_id": request_id},
-                        )
-                        return task.id
-                    if req is not None and req.status == "pending" and elapsed >= timeout_sec:
-                        on_timeout = getattr(hitl_policy, "on_timeout", "auto_approve")
-                        if on_timeout == "auto_reject":
-                            self.scheduler.mark_failed(task.id, "Approval timeout (auto_reject)")
-                            if store:
-                                approval.status = "timeout"
-                                store.save(approval)
+                    else:
+                        poll_interval = 5
+                        elapsed = 0
+                        while store is not None and elapsed < timeout_sec:
+                            await asyncio.sleep(min(poll_interval, timeout_sec - elapsed))
+                            elapsed += poll_interval
+                            req = store.get(request_id)
+                            if req is None:
+                                break
+                            if req.status == "approved":
+                                break
+                            if req.status == "rejected":
+                                self.scheduler.mark_failed(task.id, "Rejected by human reviewer")
+                                self._emit(
+                                    events.TASK_REJECTED_BY_HUMAN,
+                                    {"task_id": task.id, "request_id": request_id},
+                                )
+                                return task.id
+                        req = store.get(request_id) if store else None
+                        if req is not None and req.status == "rejected":
+                            self.scheduler.mark_failed(task.id, "Rejected by human reviewer")
+                            self._emit(
+                                events.TASK_REJECTED_BY_HUMAN,
+                                {"task_id": task.id, "request_id": request_id},
+                            )
                             return task.id
-                        # auto_approve or escalate_further: treat as approve for now
-                    # approved or auto_approve: fall through to mark_completed
+                        if req is not None and req.status == "pending" and elapsed >= timeout_sec:
+                            on_timeout = getattr(hitl_policy, "on_timeout", "auto_approve")
+                            if on_timeout == "auto_reject":
+                                self.scheduler.mark_failed(task.id, "Approval timeout (auto_reject)")
+                                if store:
+                                    approval.status = "timeout"
+                                    store.save(approval)
+                                return task.id
 
-        if not is_speculative:
-            self.scheduler.mark_completed(task.id, result)
-            self.scheduler.confirm_speculative_for(task.id)
-            if self.checkpointer is not None:
-                self.checkpointer.on_task_completed(self.scheduler)
-            if self.audit_logger is not None and self.scheduler is not None:
-                try:
-                    from devsper.audit.logger import make_audit_record
-                    run_id = getattr(self.scheduler, "run_id", "") or ""
-                    rec = make_audit_record(
-                        run_id=run_id,
-                        task_id=task.id,
-                        event_type="TASK_COMPLETED",
-                        actor=run_id,
-                        resource=getattr(task, "role", "") or "agent",
-                        input_text=task.description or "",
-                        output_text=(result or "")[:5000],
-                        duration_ms=int((task.result and 0) or 0),
-                        success=True,
-                    )
-                    self.audit_logger.log(rec)
-                except Exception:
-                    pass
-            self._publish_bus(
-                "task.completed",
-                {
-                    "task_id": task.id,
-                    "result": result,
-                    "tokens_used": None,
-                    "duration_seconds": 0.0,
-                },
-            )
-            if self.adaptive and self.planner:
-                new_tasks = self.planner.expand_tasks(task)
-                if new_tasks:
-                    self.scheduler.add_tasks(new_tasks)
-        return task.id
+            if not is_speculative:
+                self.scheduler.mark_completed(task.id, result)
+                self.scheduler.confirm_speculative_for(task.id)
+                if self.checkpointer is not None:
+                    self.checkpointer.on_task_completed(self.scheduler)
+                if self.audit_logger is not None and self.scheduler is not None:
+                    try:
+                        from devsper.audit.logger import make_audit_record
+                        run_id = getattr(self.scheduler, "run_id", "") or ""
+                        rec = make_audit_record(
+                            run_id=run_id,
+                            task_id=task.id,
+                            event_type="TASK_COMPLETED",
+                            actor=run_id,
+                            resource=getattr(task, "role", "") or "agent",
+                            input_text=task.description or "",
+                            output_text=(result or "")[:5000],
+                            duration_ms=int((task.result and 0) or 0),
+                            success=True,
+                        )
+                        self.audit_logger.log(rec)
+                    except Exception:
+                        pass
+                self._publish_bus(
+                    "task.completed",
+                    {
+                        "task_id": task.id,
+                        "result": result,
+                        "tokens_used": None,
+                        "duration_seconds": 0.0,
+                    },
+                )
+                if self.adaptive and self.planner:
+                    new_tasks = self.planner.expand_tasks(task)
+                    if new_tasks:
+                        self.scheduler.add_tasks(new_tasks)
+            return task.id
 
     async def run(self) -> None:
         """Run the execution loop until all tasks are completed."""
         self._emit(events.EXECUTOR_STARTED, {})
+        tracer = get_tracer()
+        with tracer.start_as_current_span("scheduler.schedule") as schedule_span:
+            if schedule_span is not None:
+                schedule_span.set_attribute("parallelism", int(self.worker_count))
+                try:
+                    schedule_span.set_attribute("dag_edges", int(len(list(self.scheduler._graph.edges()))))
+                except Exception:
+                    schedule_span.set_attribute("dag_edges", 0)
 
-        sem = asyncio.Semaphore(self.worker_count)
-        running: dict[str, tuple[Task, bool, asyncio.Task]] = {}  # task_id -> (task, is_speculative, future)
+            sem = asyncio.Semaphore(self.worker_count)
+            running: dict[str, tuple[Task, bool, asyncio.Task]] = {}  # task_id -> (task, is_speculative, future)
 
-        async def run_with_sem(task: Task, is_spec: bool) -> str:
-            async with sem:
-                return await self._execute_task(task, is_spec)
+            async def run_with_sem(task: Task, is_spec: bool) -> str:
+                async with sem:
+                    return await self._execute_task(task, is_spec)
 
-        while not self.scheduler.is_finished():
-            if self.pause_event is not None and not self.pause_event.is_set():
-                await asyncio.sleep(0.2)
-                continue
-
-            ready = self.scheduler.get_ready_tasks()
-            speculative: list[Task] = []
-            if self.speculative_execution:
-                speculative = self.scheduler.get_speculative_tasks()
-                if self.prefetcher:
-                    for t in speculative:
-                        if t.id not in running:
-                            asyncio.create_task(self.prefetcher.prefetch(t))
-
-            if self.streaming_dag:
-                for task in ready + speculative:
-                    if task.id in running:
-                        continue
-                    if len(running) >= self.worker_count:
-                        break
-                    task.status = TaskStatus.RUNNING
-                    is_spec = task in speculative
-                    fut = asyncio.create_task(run_with_sem(task, is_spec))
-                    running[task.id] = (task, is_spec, fut)
-                if not running:
-                    if not ready and not speculative:
-                        await asyncio.sleep(0.01)
+            while not self.scheduler.is_finished():
+                if self.budget_manager is not None and self.budget_manager.should_stop():
+                    self._emit(events.BUDGET_WARNING, {"reason": "budget_exceeded"})
+                    for t in self.scheduler.get_all_tasks():
+                        if t.status == TaskStatus.PENDING:
+                            self.scheduler.mark_failed(t.id, "Skipped due to budget limit")
+                            self.budget_manager.add_skipped(1)
+                    break
+                if self.pause_event is not None and not self.pause_event.is_set():
+                    await asyncio.sleep(0.2)
                     continue
-                done, _ = await asyncio.wait(
-                    [f for _, _, f in running.values()],
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                for f in done:
-                    try:
-                        tid = f.result()
-                    except Exception:
-                        tid = None
-                    if tid and tid in running:
-                        del running[tid]
-                continue
 
-            for task in ready:
-                task.status = TaskStatus.RUNNING
-            for task in speculative:
-                task.status = TaskStatus.RUNNING
-            await asyncio.gather(
-                *[run_with_sem(t, False) for t in ready],
-                *[run_with_sem(t, True) for t in speculative],
-            )
+                ready = self.scheduler.get_ready_tasks()
+                speculative: list[Task] = []
+                if self.speculative_execution:
+                    speculative = self.scheduler.get_speculative_tasks()
+                    if self.prefetcher:
+                        for t in speculative:
+                            if t.id not in running:
+                                asyncio.create_task(self.prefetcher.prefetch(t))
+
+                if self.streaming_dag:
+                    for task in ready + speculative:
+                        if task.id in running:
+                            continue
+                        if len(running) >= self.worker_count:
+                            break
+                        task.status = TaskStatus.RUNNING
+                        is_spec = task in speculative
+                        fut = asyncio.create_task(run_with_sem(task, is_spec))
+                        running[task.id] = (task, is_spec, fut)
+                    if not running:
+                        if not ready and not speculative:
+                            await asyncio.sleep(0.01)
+                        continue
+                    done, _ = await asyncio.wait(
+                        [f for _, _, f in running.values()],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    for f in done:
+                        try:
+                            tid = f.result()
+                        except Exception:
+                            tid = None
+                        if tid and tid in running:
+                            del running[tid]
+                    continue
+
+                for task in ready:
+                    task.status = TaskStatus.RUNNING
+                for task in speculative:
+                    task.status = TaskStatus.RUNNING
+                await asyncio.gather(
+                    *[run_with_sem(t, False) for t in ready],
+                    *[run_with_sem(t, True) for t in speculative],
+                )
 
         self._emit(events.EXECUTOR_FINISHED, {})
+        self._emit(events.RUN_COMPLETED, {})
 
     def _emit(self, event_type: events, payload: dict) -> None:
         self.event_log.append_event(

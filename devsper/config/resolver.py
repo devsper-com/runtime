@@ -35,6 +35,7 @@ from devsper.config.schema import (
     ComplianceConfig,
     SwarmConfig,
     TelemetryConfig,
+    BudgetConfig,
     ToolsConfig,
 )
 
@@ -147,6 +148,7 @@ def _build_merged_raw(
             "cache_enabled": False,
         },
         "agents": {"roles": ["research_agent", "code_agent", "analysis_agent", "critic_agent"]},
+        "agent_identities": [],
         "models": {"planner": planner_default, "worker": worker_default},
         "memory": {
             "enabled": True,
@@ -158,7 +160,15 @@ def _build_merged_raw(
         },
         "knowledge": {"guide_planning": True, "min_confidence": 0.30, "auto_extract": True},
         "tools": {"enabled": None, "top_k": 0},
-        "telemetry": {"enabled": True, "save_events": True},
+        "telemetry": {
+            "enabled": True,
+            "save_events": True,
+            "otel_enabled": True,
+            "otel_endpoint": "",
+            "otel_headers": {},
+            "cost_tracking": True,
+        },
+        "budget": {"limit_usd": 0.0, "on_exceeded": "warn", "alert_at_pct": 80},
         "cache": {
             "enabled": True,
             "semantic": False,
@@ -251,6 +261,7 @@ def resolve_config(config_path: str | None = None) -> devsperConfigModel:
     knowledge = KnowledgeConfig(**(merged.get("knowledge") or {}))
     tools = ToolsConfig(**(merged.get("tools") or {}))
     telemetry = TelemetryConfig(**(merged.get("telemetry") or {}))
+    budget = BudgetConfig(**(merged.get("budget") or {}))
     cache = CacheConfig(**(merged.get("cache") or {}))
     bus = BusConfig(**(merged.get("bus") or {}))
     nodes = NodesConfig(**(merged.get("nodes") or {}))
@@ -336,11 +347,13 @@ def resolve_config(config_path: str | None = None) -> devsperConfigModel:
     return devsperConfigModel(
         swarm=swarm,
         agents=agents,
+        agent_identities=list(merged.get("agent_identities") or []),
         models=models,
         memory=memory,
         knowledge=knowledge,
         tools=tools,
         telemetry=telemetry,
+        budget=budget,
         cache=cache,
         bus=bus,
         nodes=nodes,

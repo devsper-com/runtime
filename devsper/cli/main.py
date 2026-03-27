@@ -16,7 +16,8 @@ import subprocess
 import sys
 import threading
 import time
-import importlib.util
+import importlib
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -39,16 +40,33 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def _load_pool_module(rel_path: str, module_name: str):
-    """Load platform/pool module by file path, avoiding stdlib 'platform' name collision."""
+def _import_platform_pool(submodule: str):
+    """Import ``platform.pool.<submodule>`` with repo root on sys.path; avoid stdlib ``platform``."""
     root = _project_root().parent
-    mod_path = root / rel_path
-    spec = importlib.util.spec_from_file_location(module_name, mod_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load module at {mod_path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    if "platform" in sys.modules:
+        m = sys.modules["platform"]
+        if not getattr(m, "__path__", None):
+            del sys.modules["platform"]
+    return importlib.import_module(f"platform.pool.{submodule}")
+
+
+def _resolve_pool_redis_url(cli_override: str | None = None, profile: str | None = None) -> str:
+    """Same Redis URL for pool start, `devsper run` (local profile), and `devsper pool status`."""
+    if cli_override:
+        return cli_override
+    if os.environ.get("REDIS_URL"):
+        return os.environ["REDIS_URL"]
+    prof = (profile or os.environ.get("DEVSPER_PROFILE") or "").strip().lower()
+    if prof == "local":
+        try:
+            config_mod = _import_platform_pool("config")
+            return config_mod.load_pool_config("local").redis_url
+        except Exception:
+            return "redis://127.0.0.1:6379"
+    # Default for tooling (avoid loading prod.toml which points at non-local Redis).
+    return "redis://127.0.0.1:6379"
 
 
 def _run_example(script_path: Path, *args: str) -> int:
@@ -60,8 +78,303 @@ def _run_example(script_path: Path, *args: str) -> int:
     return subprocess.run(cmd, cwd=str(root), env=env).returncode
 
 
+def _conversion_events_path() -> Path:
+    data_dir = os.environ.get("DEVSPER_DATA_DIR", ".devsper")
+    p = Path(data_dir)
+    p.mkdir(parents=True, exist_ok=True)
+    return p / "conversion_events.jsonl"
+
+
+def _track_conversion_event(name: str, payload: dict | None = None) -> None:
+    try:
+        event = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "event": name,
+            "payload": payload or {},
+        }
+        with _conversion_events_path().open("a", encoding="utf-8") as f:
+            f.write(json.dumps(event) + "\n")
+    except Exception:
+        pass
+
+
+def _count_conversion_events(name: str) -> int:
+    p = _conversion_events_path()
+    if not p.exists():
+        return 0
+    count = 0
+    try:
+        for line in p.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            if str(row.get("event", "")) == name:
+                count += 1
+    except Exception:
+        return 0
+    return count
+
+
+def _platform_api_builder():
+    from devsper.credentials.store import CredentialStore
+    from devsper.platform.request_builder import PlatformAPIRequestBuilder
+
+    cs = CredentialStore()
+    base_url = os.environ.get("DEVSPER_PLATFORM_API_URL") or cs.get("platform", "api_url") or ""
+    org = os.environ.get("DEVSPER_PLATFORM_ORG") or cs.get("platform", "org") or ""
+    token = os.environ.get("DEVSPER_PLATFORM_TOKEN") or cs.get("platform", "token") or ""
+    return PlatformAPIRequestBuilder(base_url=base_url, org_slug=org, token=token)
+
+
+def _is_platform_default_enabled(args: object) -> bool:
+    if getattr(args, "local_runtime", False):
+        return False
+    # Shadow mode explicitly compares both paths; do not default-route.
+    if getattr(args, "shadow", False):
+        return False
+    if (os.environ.get("DEVSPER_PROFILE", "").strip().lower() == "local"):
+        return False
+    if str(os.environ.get("DEVSPER_RUN_DEFAULT", "platform")).strip().lower() in {"runtime", "local"}:
+        return False
+    api = _platform_api_builder()
+    return api.enabled()
+
+
+def _extract_platform_run_fields(payload: dict) -> tuple[str, str, int, int, int]:
+    status = str(payload.get("status", ""))
+    run_id = str(payload.get("run_id", ""))
+    tin = int(payload.get("tokens_in", 0) or 0)
+    tout = int(payload.get("tokens_out", 0) or 0)
+    tsave = int(payload.get("tokens_saved", 0) or 0)
+    return run_id, status, tin, tout, tsave
+
+
+def _run_platform_once(task: str, args: object) -> tuple[int, dict, float]:
+    from devsper.platform.request_builder import PlatformAPIError
+
+    api = _platform_api_builder()
+    if not api.enabled():
+        print(
+            "Platform routing is not configured. Run `devsper platform connect` first.",
+            file=sys.stderr,
+        )
+        return 2, {}, 0.0
+    project_id = getattr(args, "project_id", None)
+    manifest_path = (getattr(args, "manifest_file", "") or "").strip()
+    manifest = {}
+    if manifest_path:
+        try:
+            manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"Invalid manifest file: {e}", file=sys.stderr)
+            return 2, {}, 0.0
+    started = time.time()
+    try:
+        created = api.create_run(task=task, project_id=project_id or "", manifest=manifest)
+        run_id = str(created.get("run_id", "") or "")
+        final = api.poll_run(run_id, timeout_seconds=float(getattr(args, "platform_timeout", 180.0)))
+        elapsed = time.time() - started
+        return 0, final or {}, elapsed
+    except TimeoutError as e:
+        print(str(e), file=sys.stderr)
+        return 1, {}, time.time() - started
+    except PlatformAPIError as e:
+        print(f"Platform API error: {e}", file=sys.stderr)
+        if getattr(e, "body", None):
+            print(str(e.body), file=sys.stderr)
+        return 1, {}, time.time() - started
+    except Exception as e:
+        print(f"Platform run failed: {e}", file=sys.stderr)
+        return 1, {}, time.time() - started
+
+
+def _run_platform_only(args: object) -> int:
+    task = getattr(args, "task", "Summarize swarm intelligence in one paragraph.")
+    _track_conversion_event("platform_run_started", {"mode": "platform_only"})
+    code, payload, elapsed = _run_platform_once(task, args)
+    if code != 0:
+        _track_conversion_event("platform_run_failed", {"mode": "platform_only"})
+        return code
+    run_id, status, tin, tout, tsave = _extract_platform_run_fields(payload)
+    out = {
+        "run_id": run_id,
+        "status": status,
+        "latency_seconds": round(elapsed, 3),
+        "tokens_in": tin,
+        "tokens_out": tout,
+        "tokens_saved": tsave,
+        "platform": True,
+    }
+    if getattr(args, "json_output", False):
+        print(json.dumps(out))
+    else:
+        print(f"[platform] run_id={run_id} status={status} latency={elapsed:.2f}s")
+        if tin or tout or tsave:
+            print(f"[platform] usage tokens_in={tin} tokens_out={tout} tokens_saved={tsave}")
+    if _count_conversion_events("first_platform_run") == 0:
+        _track_conversion_event("first_platform_run", {"run_id": run_id, "status": status})
+        print("Suggestion: next step -> `devsper platform connect --show-roi` or create a project/team invite.")
+    else:
+        _track_conversion_event("second_platform_run", {"run_id": run_id, "status": status})
+    return 0 if status == "completed" else 1
+
+
+def _run_shadow_mode(args: object) -> int:
+    task = getattr(args, "task", "Summarize swarm intelligence in one paragraph.")
+    _track_conversion_event("platform_shadow_started", {"task_len": len(task)})
+
+    # Local runtime path executed via subprocess to avoid code-path drift.
+    local_cmd = [
+        sys.executable,
+        "-m",
+        "devsper.cli.main",
+        "run",
+        task,
+        "--quiet",
+        "--json",
+        "--local-runtime",
+    ]
+    local_started = time.time()
+    local_proc = subprocess.run(local_cmd, capture_output=True, text=True)
+    local_elapsed = time.time() - local_started
+    local_out = (local_proc.stdout or "").strip()
+    local_score = len(local_out)
+
+    p_code, p_payload, p_elapsed = _run_platform_once(task, args)
+    run_id, p_status, tin, tout, tsave = _extract_platform_run_fields(p_payload)
+    reliability_runtime = 1 if local_proc.returncode == 0 else 0
+    reliability_platform = 1 if p_code == 0 and p_status == "completed" else 0
+    quality_platform = len(json.dumps(p_payload, default=str))
+
+    print("Shadow run comparison")
+    print(f"- runtime:  status={'ok' if reliability_runtime else 'failed'} latency={local_elapsed:.2f}s quality_score={local_score}")
+    print(f"- platform: status={'ok' if reliability_platform else p_status or 'failed'} latency={p_elapsed:.2f}s quality_score={quality_platform}")
+    if tin or tout or tsave:
+        print(f"- platform usage: tokens_in={tin} tokens_out={tout} tokens_saved={tsave}")
+    if run_id:
+        print(f"- platform run_id: {run_id}")
+
+    _track_conversion_event(
+        "platform_shadow_completed",
+        {
+            "runtime_ok": reliability_runtime,
+            "platform_ok": reliability_platform,
+            "runtime_latency_s": round(local_elapsed, 3),
+            "platform_latency_s": round(p_elapsed, 3),
+            "platform_run_id": run_id,
+        },
+    )
+    if local_proc.returncode != 0:
+        err = (local_proc.stderr or "").strip()
+        if err:
+            print(f"[runtime stderr] {err}", file=sys.stderr)
+    return 0 if reliability_runtime and reliability_platform else 1
+
+
+def _upsert_project_platform_memory_config(api_url: str, org_slug: str) -> None:
+    path = Path.cwd() / "devsper.toml"
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    if "[memory]" not in text:
+        text = text.rstrip() + "\n\n[memory]\n"
+    if "backend = " in text and "[memory]" in text:
+        text = text.replace('backend = "local"', 'backend = "hybrid"')
+    if "platform_api_url" in text:
+        lines = []
+        for line in text.splitlines():
+            if line.strip().startswith("platform_api_url"):
+                lines.append(f'platform_api_url = "{api_url}"')
+            elif line.strip().startswith("platform_org_slug"):
+                lines.append(f'platform_org_slug = "{org_slug}"')
+            else:
+                lines.append(line)
+        text = "\n".join(lines) + "\n"
+    else:
+        text = text.rstrip() + f'\nplatform_api_url = "{api_url}"\nplatform_org_slug = "{org_slug}"\nbackend = "hybrid"\n'
+    path.write_text(text, encoding="utf-8")
+
+
+def _run_platform_connect(args: object) -> int:
+    from devsper.credentials.store import CredentialStore
+    from devsper.platform.request_builder import PlatformAPIRequestBuilder
+
+    cs = CredentialStore()
+    api_url = (getattr(args, "api_url", None) or os.environ.get("DEVSPER_PLATFORM_API_URL") or cs.get("platform", "api_url") or "").strip()
+    org_slug = (getattr(args, "org", None) or os.environ.get("DEVSPER_PLATFORM_ORG") or cs.get("platform", "org") or "").strip()
+    token = (getattr(args, "token", None) or os.environ.get("DEVSPER_PLATFORM_TOKEN") or cs.get("platform", "token") or "").strip()
+    if not api_url or not org_slug:
+        print("Missing platform config. Provide --api-url and --org.", file=sys.stderr)
+        return 1
+    if not token:
+        print("Missing platform token. Provide --token or set DEVSPER_PLATFORM_TOKEN.", file=sys.stderr)
+        return 1
+
+    _track_conversion_event("platform_connect_started", {"api_url": api_url, "org": org_slug})
+    api = PlatformAPIRequestBuilder(base_url=api_url, org_slug=org_slug, token=token)
+    try:
+        _ = api.get_json("/health")
+        _ = api.get_json(f"/orgs/{org_slug}/runs", params={"limit": 1, "offset": 0})
+    except Exception as e:
+        print(f"Platform connect verification failed: {e}", file=sys.stderr)
+        _track_conversion_event("platform_connect_failed", {"reason": str(e)})
+        return 1
+
+    cs.set("platform", "api_url", api_url)
+    cs.set("platform", "org", org_slug)
+    cs.set("platform", "token", token)
+    os.environ["DEVSPER_PLATFORM_API_URL"] = api_url
+    os.environ["DEVSPER_PLATFORM_ORG"] = org_slug
+    os.environ["DEVSPER_PLATFORM_TOKEN"] = token
+
+    if not getattr(args, "skip_toml", False):
+        try:
+            _upsert_project_platform_memory_config(api_url, org_slug)
+        except Exception:
+            pass
+
+    print(f"Connected platform: api={api_url} org={org_slug}")
+    print("`devsper run` will now default to platform. Use `--local-runtime` to bypass.")
+    _track_conversion_event("platform_connect_succeeded", {"org": org_slug})
+    return 0
+
+
+def _run_platform_roi() -> int:
+    p = _conversion_events_path()
+    if not p.exists():
+        print("No conversion telemetry yet.")
+        return 0
+    rows = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except Exception:
+            continue
+    counts: dict[str, int] = {}
+    for r in rows:
+        e = str(r.get("event", ""))
+        counts[e] = counts.get(e, 0) + 1
+    print("Conversion ROI dashboard (local)")
+    for k in sorted(counts.keys()):
+        print(f"- {k}: {counts[k]}")
+    return 0
+
+
 def _run_swarm(args: object) -> int:
     """Run swarm. Uses live view unless --quiet, --plain, or non-TTY."""
+    _track_conversion_event("runtime_user_detected", {"command": "run"})
+    if getattr(args, "shadow", False):
+        return _run_shadow_mode(args)
+    if _is_platform_default_enabled(args):
+        return _run_platform_only(args)
+    if not getattr(args, "local_runtime", False):
+        # Contextual nudge when users are still runtime-only.
+        print("Tip: run `devsper platform connect` to unlock retries, audit history, billing controls, and team workflows.")
     # Local profile fast-path: route through platform pool + local workers.
     if os.environ.get("DEVSPER_PROFILE", "").strip().lower() == "local":
         try:
@@ -229,12 +542,14 @@ def _run_swarm_via_local_pool(args: object) -> int:
     run_id = str(uuid.uuid4())
     org_id = os.environ.get("DEVSPER_ORG_ID", "local-org")
     user_id = os.environ.get("DEVSPER_USER_ID", "local-user")
-    redis_url = os.environ.get("REDIS_URL") or "redis://localhost:6379"
+    redis_url = _resolve_pool_redis_url(profile="local")
 
-    crypto_mod = _load_pool_module("platform/pool/crypto.py", "devsper_platform_pool_crypto")
-    manager_mod = _load_pool_module("platform/pool/manager.py", "devsper_platform_pool_manager")
-    models_mod = _load_pool_module("platform/pool/models.py", "devsper_platform_pool_models")
-    store_mod = _load_pool_module("platform/pool/store.py", "devsper_platform_pool_store")
+    pool_cfg = _import_platform_pool("config").load_pool_config("local")
+
+    crypto_mod = _import_platform_pool("crypto")
+    manager_mod = _import_platform_pool("manager")
+    models_mod = _import_platform_pool("models")
+    store_mod = _import_platform_pool("store")
     encrypt_payload = crypto_mod.encrypt_payload
     generate_org_keypair = crypto_mod.generate_org_keypair
     PoolManager = manager_mod.PoolManager
@@ -285,8 +600,7 @@ def _run_swarm_via_local_pool(args: object) -> int:
     async def _run_once() -> int:
         store = RedisPoolStore(redis_url)
         bus = _Bus(redis_url)
-        cfg = type("Cfg", (), {"profile": "local", "max_tasks_per_minute": 60, "max_payload_bytes": 1_048_576, "max_queue_depth": 100, "worker_timeout_secs": 90})()
-        pool = PoolManager(store=store, bus=bus, config=cfg)
+        pool = PoolManager(store=store, bus=bus, config=pool_cfg)
         qt = QueuedTask(task_id=run_id, org_id=org_id, user_id=user_id, priority=1, payload_enc=payload_enc)
         await pool.enqueue(qt)
 
@@ -1333,7 +1647,7 @@ def _run_node_logs(args) -> int:
 
 def _run_pool_status(args) -> int:
     """Show pool worker counts by tier (Redis-backed best effort)."""
-    redis_url = getattr(args, "redis_url", None) or os.environ.get("REDIS_URL") or "redis://localhost:6379"
+    redis_url = _resolve_pool_redis_url(getattr(args, "redis_url", None))
     try:
         import redis
     except Exception as e:
@@ -1354,7 +1668,7 @@ def _run_pool_status(args) -> int:
 
 def _run_pool_workers(args) -> int:
     """List worker ids by tier (Redis-backed best effort)."""
-    redis_url = getattr(args, "redis_url", None) or os.environ.get("REDIS_URL") or "redis://localhost:6379"
+    redis_url = _resolve_pool_redis_url(getattr(args, "redis_url", None))
     try:
         import redis
     except Exception:
@@ -1388,6 +1702,8 @@ def _run_pool_start(args) -> int:
     env["DEVSPER_PROFILE"] = "local"
     root = str(_project_root().parent.resolve())
     env["PYTHONPATH"] = root + os.pathsep + env.get("PYTHONPATH", "")
+    if not env.get("REDIS_URL"):
+        env["REDIS_URL"] = _resolve_pool_redis_url(profile="local")
     cmd = [sys.executable, "-m", "platform.pool.local_pool", "--workers", str(workers)]
     return subprocess.call(cmd, env=env)
 
@@ -1395,7 +1711,7 @@ def _run_pool_start(args) -> int:
 def _run_org_keygen(args) -> int:
     """Generate org E2EE keypair and store private key in keyring."""
     try:
-        crypto_mod = _load_pool_module("platform/pool/crypto.py", "devsper_platform_pool_crypto")
+        crypto_mod = _import_platform_pool("crypto")
         generate_org_keypair = crypto_mod.generate_org_keypair
         from devsper.credentials.store import CredentialStore
     except Exception as e:
@@ -1462,6 +1778,89 @@ def _run_replay(run_id: str, events_dir: str | None) -> int:
     if "No event log found" in transcript or "Empty event log" in transcript:
         return 1
     return 0
+
+
+def _run_trace(run_id: str, events_dir: str | None) -> int:
+    """Print trace-style hierarchy for one run from event logs."""
+    from devsper.runtime.replay_engine import list_run_ids
+    from devsper.runtime.trace_tree import render_trace_for_run
+
+    try:
+        from devsper.config import get_config
+
+        cfg = get_config()
+        events_dir = events_dir or cfg.events_dir
+    except Exception:
+        events_dir = events_dir or ".devsper/events"
+    rid = (run_id or "").strip()
+    if not rid:
+        ids_ = list_run_ids(events_dir)
+        if not ids_:
+            print("No run logs found.", file=sys.stderr)
+            return 1
+        rid = ids_[0]
+    out = render_trace_for_run(rid, events_dir)
+    print(out)
+    if out.startswith("No event log found") or out.startswith("Empty event log"):
+        return 1
+    return 0
+
+
+def _run_budget(run_id: str, events_dir: str | None) -> int:
+    from devsper.runtime.replay_engine import list_run_ids
+    from devsper.server.topology import topology_snapshot
+
+    try:
+        from devsper.config import get_config
+
+        cfg = get_config()
+        events_dir = events_dir or cfg.events_dir
+    except Exception:
+        events_dir = events_dir or ".devsper/events"
+    rid = (run_id or "").strip()
+    if not rid:
+        ids_ = list_run_ids(events_dir)
+        if not ids_:
+            print("No run logs found.", file=sys.stderr)
+            return 1
+        rid = ids_[0]
+    snap = topology_snapshot(events_dir, rid)
+    print(
+        json.dumps(
+            {
+                "run_id": rid,
+                "total_cost_usd": snap.get("summary", {}).get("total_cost_usd", 0.0),
+                "tasks_done": snap.get("summary", {}).get("tasks_done", 0),
+                "tasks_total": snap.get("summary", {}).get("tasks_total", 0),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _run_protocol_serve(host: str, port: int) -> int:
+    from devsper.protocol.server import serve
+
+    return serve(host=host, port=port)
+
+
+def _run_events_api_serve(port: int, host: str, events_dir: str | None) -> int:
+    from devsper.server.events import serve_api
+
+    return serve_api(port=port, host=host, events_dir=events_dir or ".devsper/events")
+
+
+def _run_export_package(name: str, out_dir: str) -> int:
+    from devsper.cli.export import run_export_package
+
+    return run_export_package(name=name, out_dir=out_dir)
+
+
+def _run_run_package(path: str, task: str) -> int:
+    from devsper.cli.export import run_package
+
+    return run_package(package_path=path, task=task)
 
 
 def _run_graph(run_id: str | None) -> int:
@@ -2336,6 +2735,32 @@ Examples:
         action="store_true",
         help="Only print run summary, not task results",
     )
+    run_parser.add_argument(
+        "--local-runtime",
+        action="store_true",
+        help="Force local runtime path even when platform is connected.",
+    )
+    run_parser.add_argument(
+        "--shadow",
+        action="store_true",
+        help="Run runtime and platform paths and print side-by-side comparison.",
+    )
+    run_parser.add_argument(
+        "--project-id",
+        default="",
+        help="Optional project id for platform run compatibility.",
+    )
+    run_parser.add_argument(
+        "--manifest-file",
+        default="",
+        help="Path to JSON manifest to attach to platform run.",
+    )
+    run_parser.add_argument(
+        "--platform-timeout",
+        type=float,
+        default=180.0,
+        help="Platform run polling timeout seconds.",
+    )
     run_parser.set_defaults(func=lambda a: _run_swarm(a))
 
     meta_parser = subparsers.add_parser(
@@ -2832,6 +3257,25 @@ Examples:
     org_keygen_p.set_defaults(func=lambda a: _run_org_keygen(a))
     org_parser.set_defaults(org_cmd=None, func=lambda a: org_parser.print_help() or 0)
 
+    platform_parser = subparsers.add_parser(
+        "platform",
+        help="Platform migration and conversion commands",
+        description="Connect runtime users to platform and track migration ROI.",
+    )
+    platform_sub = platform_parser.add_subparsers(dest="platform_cmd", help="Subcommand")
+    platform_connect_p = platform_sub.add_parser(
+        "connect",
+        help="One-command onboarding bridge to platform.",
+    )
+    platform_connect_p.add_argument("--api-url", default=None, help="Platform API base URL")
+    platform_connect_p.add_argument("--org", default=None, help="Platform org slug")
+    platform_connect_p.add_argument("--token", default=None, help="Platform JWT token")
+    platform_connect_p.add_argument("--skip-toml", action="store_true", help="Do not update local devsper.toml memory config")
+    platform_connect_p.set_defaults(func=lambda a: _run_platform_connect(a))
+    platform_roi_p = platform_sub.add_parser("roi", help="Show conversion funnel counters")
+    platform_roi_p.set_defaults(func=lambda a: _run_platform_roi())
+    platform_parser.set_defaults(platform_cmd=None, func=lambda a: platform_parser.print_help() or 0)
+
     graph_parser = subparsers.add_parser(
         "graph",
         help="Export task DAG as Mermaid",
@@ -2850,6 +3294,70 @@ Examples:
         help="Run ID (default: latest)",
     )
     graph_parser.set_defaults(func=lambda a: _run_graph(a.run_id))
+
+    trace_parser = subparsers.add_parser(
+        "trace",
+        help="Print span tree for a run",
+        description="Pretty-print a trace-style tree for a run using the event log.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    trace_parser.add_argument(
+        "run_id",
+        nargs="?",
+        default="",
+        help="Run ID (default: latest)",
+    )
+    trace_parser.add_argument(
+        "--events-dir",
+        default=None,
+        help="Events directory (default: config)",
+    )
+    trace_parser.set_defaults(func=lambda a: _run_trace(a.run_id, a.events_dir))
+
+    budget_parser = subparsers.add_parser(
+        "budget",
+        help="Show run budget/cost summary",
+        description="Show cost summary for a run from event logs.",
+    )
+    budget_parser.add_argument("run_id", nargs="?", default="", help="Run ID (default: latest)")
+    budget_parser.add_argument("--events-dir", default=None, help="Events directory")
+    budget_parser.set_defaults(func=lambda a: _run_budget(a.run_id, a.events_dir))
+
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Serve polyglot agent protocol",
+        description="Start HTTP protocol server (/health, /agent, /agent/execute).",
+    )
+    serve_parser.add_argument("--host", default="0.0.0.0")
+    serve_parser.add_argument("--port", type=int, default=8080)
+    serve_parser.set_defaults(func=lambda a: _run_protocol_serve(a.host, a.port))
+
+    serve_api_parser = subparsers.add_parser(
+        "serve-api",
+        help="Serve events/topology API",
+        description="Start sidecar API for runs/events/topology.",
+    )
+    serve_api_parser.add_argument("--host", default="0.0.0.0")
+    serve_api_parser.add_argument("--port", type=int, default=7474)
+    serve_api_parser.add_argument("--events-dir", default=None)
+    serve_api_parser.set_defaults(func=lambda a: _run_events_api_serve(a.port, a.host, a.events_dir))
+
+    export_pkg_parser = subparsers.add_parser(
+        "export",
+        help="Export deployable agent package",
+        description="Create a .devsper package.",
+    )
+    export_pkg_parser.add_argument("--name", default="my-agent")
+    export_pkg_parser.add_argument("--out", default="./dist")
+    export_pkg_parser.set_defaults(func=lambda a: _run_export_package(a.name, a.out))
+
+    run_pkg_parser = subparsers.add_parser(
+        "run-package",
+        help="Run exported .devsper package",
+    )
+    run_pkg_parser.add_argument("package_path")
+    run_pkg_parser.add_argument("task")
+    run_pkg_parser.set_defaults(func=lambda a: _run_run_package(a.package_path, a.task))
 
     analytics_parser = subparsers.add_parser(
         "analytics",

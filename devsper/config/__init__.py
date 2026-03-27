@@ -9,6 +9,8 @@ and legacy .devsper/config.toml.
 from devsper.config.resolver import resolve_config
 from devsper.config.schema import (
     A2AConfig,
+    AgentIdentityConfig,
+    BudgetConfig,
     devsperConfigModel,
     KnowledgeConfig,
     MCPConfig,
@@ -37,6 +39,8 @@ def get_config(config_path: str | None = None) -> devsperConfigModel:
 
 __all__ = [
     "A2AConfig",
+    "AgentIdentityConfig",
+    "BudgetConfig",
     "get_config",
     "devsperConfig",
     "devsperConfigModel",
