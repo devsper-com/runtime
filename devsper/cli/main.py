@@ -2510,6 +2510,36 @@ def _run_simulate(args: object) -> int:
         return 1
 
 
+def _run_version(args: object) -> int:
+    """Print installed devsper version. With global ``--json``, emit a small JSON object."""
+    import platform
+
+    try:
+        from devsper import __version__ as ver_mod
+
+        ver = str(ver_mod)
+    except Exception:
+        try:
+            from importlib.metadata import version
+
+            ver = version("devsper")
+        except Exception:
+            ver = "unknown"
+    if getattr(args, "json_output", False):
+        print(
+            json.dumps(
+                {
+                    "version": ver,
+                    "python": sys.version.split()[0],
+                    "platform": platform.system(),
+                }
+            )
+        )
+    else:
+        print(f"devsper {ver}")
+    return 0
+
+
 def _run_health(args: object) -> int:
     """Run health checks. Exit 0 if healthy, 1 otherwise. Print ✓/✗ per check."""
     import asyncio
@@ -2662,6 +2692,19 @@ Examples:
     except ImportError:
         pass
     global_grp = parser.add_argument_group("Global options")
+    try:
+        from devsper import __version__ as _cli_pkg_version
+
+        _cli_version_str = str(_cli_pkg_version)
+    except Exception:
+        _cli_version_str = "unknown"
+    global_grp.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"%(prog)s {_cli_version_str}",
+        help="Print devsper version and exit",
+    )
     global_grp.add_argument(
         "--debug", action="store_true", help="Enable DEBUG log level"
     )
@@ -3698,6 +3741,19 @@ Examples:
         "--cost", action="store_true", help="Print cost estimate only"
     )
     simulate_parser.set_defaults(func=_run_simulate)
+
+    version_parser = subparsers.add_parser(
+        "version",
+        help="Print devsper version",
+        description="Print the installed devsper package version. Use global --json for machine-readable output.",
+        epilog="""
+Examples:
+  devsper version
+  devsper --json version
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    version_parser.set_defaults(func=_run_version)
 
     health_parser = subparsers.add_parser(
         "health",

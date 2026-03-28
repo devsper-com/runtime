@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-03-28
+
+### Added
+
+- **Supermemory ranking backend** — `[memory] backend = "supermemory"` (default) uses the Rust `supermemory-core` ranker for hybrid lexical (+ optional embedding) memory retrieval, deduplication, and recency-aware context formatting.
+- **Platform memory backends** — `[memory] backend` can be `platform` or `hybrid` with `platform_api_url` and `platform_org_slug`; config resolver honors `DEVSPER_PLATFORM_API_URL` and `DEVSPER_PLATFORM_ORG` when set.
+- **Remote platform workflows** — `load_workflow("org/pkg@N")` fetches workflow specs from the Devsper Platform API when `DEVSPER_PLATFORM_API_URL`, `DEVSPER_PLATFORM_ORG`, and (when required) `DEVSPER_PLATFORM_TOKEN` are configured.
+- **Local worker pool** — `devsper pool` subcommands to run the local worker pool manager (foreground spawner) alongside improved swarm execution when using pool-backed paths.
+- **Devsper Cloud CLI** — `devsper cloud login`, `logout`, `run`, `status`, and `logs` for JWT authentication (OS keychain) and runs against the platform API.
+
+### Changed
+
+- **Telemetry** — OpenTelemetry configuration and OTLP export wiring expanded (`otel_endpoint`, `otel_headers`, and related options).
+- **Documentation** — README refresh; removed outdated standalone docs where superseded by the current `docs/` tree.
+
 ## [2.1.8] — 2026-03-24
 
 ### Changed
