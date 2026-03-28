@@ -271,6 +271,8 @@ uv run python examples/distributed/run_controller.py "Your task" --parallel
 
 Rust workers: set `DEVSPER_WORKER_MODEL=github:gpt-4o` (or your model), `DEVSPER_PYTHON_BIN=.venv/bin/python`, `DEVSPER_RPC_PORT=0` for multiple workers on one host. Credentials load from keychain in the subprocess.
 
+**Multi-process pool (Rust default):** with `devsper[distributed]` installed, `python -m devsper.pool.local_pool --workers N` supervises *N* `devsper-worker` processes against Redis (`REDIS_URL`). Override the worker command in `devsper/pool/profiles/local.toml` (`local_worker_cmd`) if you need the Python `devsper.pool.worker_runner` for debugging. The monorepo builds a combined image via `runtime/Dockerfile.local-pool` (used as `pool-manager` in the root `docker-compose.yml`).
+
 ---
 
 ## Examples

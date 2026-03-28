@@ -40,16 +40,9 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def _import_platform_pool(submodule: str):
-    """Import ``platform.pool.<submodule>`` with repo root on sys.path; avoid stdlib ``platform``."""
-    root = _project_root().parent
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-    if "platform" in sys.modules:
-        m = sys.modules["platform"]
-        if not getattr(m, "__path__", None):
-            del sys.modules["platform"]
-    return importlib.import_module(f"platform.pool.{submodule}")
+def _import_pool_submodule(submodule: str):
+    """Import ``devsper.pool.<submodule>`` (distributed worker pool; lives in the runtime package)."""
+    return importlib.import_module(f"devsper.pool.{submodule}")
 
 
 def _resolve_pool_redis_url(cli_override: str | None = None, profile: str | None = None) -> str:
@@ -61,7 +54,7 @@ def _resolve_pool_redis_url(cli_override: str | None = None, profile: str | None
     prof = (profile or os.environ.get("DEVSPER_PROFILE") or "").strip().lower()
     if prof == "local":
         try:
-            config_mod = _import_platform_pool("config")
+            config_mod = _import_pool_submodule("config")
             return config_mod.load_pool_config("local").redis_url
         except Exception:
             return "redis://127.0.0.1:6379"
@@ -544,12 +537,12 @@ def _run_swarm_via_local_pool(args: object) -> int:
     user_id = os.environ.get("DEVSPER_USER_ID", "local-user")
     redis_url = _resolve_pool_redis_url(profile="local")
 
-    pool_cfg = _import_platform_pool("config").load_pool_config("local")
+    pool_cfg = _import_pool_submodule("config").load_pool_config("local")
 
-    crypto_mod = _import_platform_pool("crypto")
-    manager_mod = _import_platform_pool("manager")
-    models_mod = _import_platform_pool("models")
-    store_mod = _import_platform_pool("store")
+    crypto_mod = _import_pool_submodule("crypto")
+    manager_mod = _import_pool_submodule("manager")
+    models_mod = _import_pool_submodule("models")
+    store_mod = _import_pool_submodule("store")
     encrypt_payload = crypto_mod.encrypt_payload
     generate_org_keypair = crypto_mod.generate_org_keypair
     PoolManager = manager_mod.PoolManager
@@ -1704,14 +1697,14 @@ def _run_pool_start(args) -> int:
     env["PYTHONPATH"] = root + os.pathsep + env.get("PYTHONPATH", "")
     if not env.get("REDIS_URL"):
         env["REDIS_URL"] = _resolve_pool_redis_url(profile="local")
-    cmd = [sys.executable, "-m", "platform.pool.local_pool", "--workers", str(workers)]
+    cmd = [sys.executable, "-m", "devsper.pool.local_pool", "--workers", str(workers)]
     return subprocess.call(cmd, env=env)
 
 
 def _run_org_keygen(args) -> int:
     """Generate org E2EE keypair and store private key in keyring."""
     try:
-        crypto_mod = _import_platform_pool("crypto")
+        crypto_mod = _import_pool_submodule("crypto")
         generate_org_keypair = crypto_mod.generate_org_keypair
         from devsper.credentials.store import CredentialStore
     except Exception as e:

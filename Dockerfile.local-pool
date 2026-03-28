@@ -1,0 +1,22 @@
+# Local pool supervisor: runs `devsper.pool.local_pool`, which spawns N `devsper-worker` processes.
+# Build: docker build -f Dockerfile.local-pool -t devsper-local-pool .
+# Context must be the `runtime/` directory.
+
+FROM rust:1.82-slim AS rust-builder
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY worker/Cargo.toml worker/Cargo.lock ./
+COPY worker/src ./src
+RUN cargo build --release --features subprocess-executor
+
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 curl \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=rust-builder /build/target/release/devsper-worker /usr/local/bin/
+WORKDIR /app
+COPY pyproject.toml README.md LICENSE ./
+COPY devsper ./devsper
+RUN pip install --no-cache-dir -e ".[distributed]"
+ENV DEVSPER_PROFILE=local
+CMD ["python", "-m", "devsper.pool.local_pool", "--workers", "2"]

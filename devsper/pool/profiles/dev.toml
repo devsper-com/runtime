@@ -1,0 +1,22 @@
+[pool]
+profile              = "dev"
+min_global_workers   = 2
+min_org_workers      = 1
+max_tasks_per_minute = 30
+heartbeat_interval   = 30
+worker_timeout_secs  = 90
+redis_url            = "redis://localhost:6379"
+tls_mode             = "self-signed"
+worker_auth          = "jwt"
+payload_encryption   = true
+aws_spot_enabled     = false
+ecs_cluster          = "devsper-nodes-dev"
+
+[pool.logging]
+level  = "INFO"
+format = "json"
+
+[pool.limits]
+max_payload_bytes = 1_048_576
+max_queue_depth   = 500
+
