@@ -31,6 +31,7 @@ class EventLog:
         events_folder_path: str = ".devsper/events",
         bus: object = None,
         run_id: str | None = None,
+        platform_sink: object | None = None,
     ):
         os.makedirs(events_folder_path, exist_ok=True)
         self.log_path = os.path.join(
@@ -38,6 +39,7 @@ class EventLog:
         )
         self._bus = bus
         self._run_id = run_id
+        self._platform_sink = platform_sink
 
     @property
     def run_id(self) -> str:
@@ -51,6 +53,13 @@ class EventLog:
             f.write(event.model_dump_json() + "\n")
         if self._bus is not None:
             self._publish_to_bus(event)
+        if self._platform_sink is not None:
+            try:
+                on = getattr(self._platform_sink, "on_devsper_event", None)
+                if callable(on):
+                    on(event)
+            except Exception:
+                pass
 
     def _publish_to_bus(self, event: Event) -> None:
         try:

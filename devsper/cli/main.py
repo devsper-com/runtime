@@ -2599,43 +2599,29 @@ def _run_upgrade(args: object) -> int:
     return run_upgrade(args)
 
 
-def _run_reg_dispatch(args: object) -> int:
-    """Registry commands."""
-    cmd = getattr(args, "reg_cmd", None)
+def _run_cloud_dispatch(args: object) -> int:
+    """Devsper Platform (cloud): login, run, status, logs."""
+    cmd = getattr(args, "cloud_cmd", None)
     if not cmd:
         return 0
-    from devsper.cli.commands.reg import (
-        cmd_login,
-        cmd_logout,
-        cmd_whoami,
-        cmd_publish,
-        cmd_search,
-        cmd_info,
-        cmd_test,
-        cmd_versions,
-        cmd_yank,
+    from devsper.cli.commands.cloud import (
+        cmd_cloud_login,
+        cmd_cloud_logout,
+        cmd_cloud_run,
+        cmd_cloud_logs,
+        cmd_cloud_status,
     )
 
     cmds = {
-        "login": cmd_login,
-        "logout": cmd_logout,
-        "whoami": cmd_whoami,
-        "publish": cmd_publish,
-        "search": cmd_search,
-        "info": cmd_info,
-        "test": cmd_test,
-        "versions": cmd_versions,
-        "yank": cmd_yank,
+        "login": cmd_cloud_login,
+        "logout": cmd_cloud_logout,
+        "run": cmd_cloud_run,
+        "status": cmd_cloud_status,
+        "logs": cmd_cloud_logs,
     }
     if cmd in cmds:
         return cmds[cmd](args)
     return 0
-
-
-def _run_plugins_dispatch(args: object) -> int:
-    cmd = getattr(args, "plugins_cmd", None)
-    args.reg_cmd = cmd
-    return _run_reg_dispatch(args)
 
 
 def main() -> int:
@@ -2657,10 +2643,12 @@ def main() -> int:
 Quick start:
   devsper init                    # Set up a new project
   devsper run "your task here"    # Run the swarm
+  devsper cloud login             # Authenticate to Devsper Cloud (optional)
   devsper tui                     # Launch the terminal UI
 
 Examples:
   devsper run "Analyze diffusion models and summarize key papers"
+  devsper cloud run "Summarize the README in three bullets."
   devsper build "fastapi todo app" -o ./myapp
   devsper credentials migrate     # Import API keys from .env
   devsper doctor                  # Check your setup
@@ -3524,78 +3512,72 @@ Examples:
     )
     credentials_parser.set_defaults(func=lambda a: _run_credentials(a))
 
-    reg_parser = subparsers.add_parser(
-        "reg",
-        help="Registry commands: login, publish, search, etc.",
-        description="Login to registry, publish plugins, search, etc.",
+    cloud_parser = subparsers.add_parser(
+        "cloud",
+        help="Devsper Cloud: login, queue runs, poll status",
+        description="Authenticate to the hosted platform API and submit background jobs.",
         epilog="""
 Examples:
-  devsper reg login
-  devsper reg publish
-  devsper reg search <query>
+  devsper cloud login --api-url http://localhost:8080 --email you@example.com
+  devsper cloud run "Summarize the platform README in three bullets."
+  devsper cloud status <run_id>
+  devsper cloud logs <run_id>
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    reg_sub = reg_parser.add_subparsers(dest="reg_cmd", help="Subcommand")
+    cloud_sub = cloud_parser.add_subparsers(dest="cloud_cmd", help="Subcommand")
 
-    reg_login_p = reg_sub.add_parser("login", help="Login to devsper Registry")
-    reg_login_p.set_defaults(reg_cmd="login")
+    cloud_login_p = cloud_sub.add_parser("login", help="Login (stores JWT in OS keychain)")
+    cloud_login_p.add_argument("--api-url", default=None, help="Platform API base URL (default: http://localhost:8080 or keyring)")
+    cloud_login_p.add_argument("--email", required=True, help="Account email")
+    cloud_login_p.add_argument("--password", default=None, help="Password (omit to be prompted)")
+    cloud_login_p.add_argument("--org", default=None, help="Default org slug (default: personal org from /me)")
+    cloud_login_p.set_defaults(cloud_cmd="login")
 
-    reg_logout_p = reg_sub.add_parser("logout", help="Logout of devsper Registry")
-    reg_logout_p.set_defaults(reg_cmd="logout")
+    cloud_logout_p = cloud_sub.add_parser("logout", help="Clear stored cloud credentials")
+    cloud_logout_p.set_defaults(cloud_cmd="logout")
 
-    reg_whoami_p = reg_sub.add_parser("whoami", help="Show current logged in user")
-    reg_whoami_p.set_defaults(reg_cmd="whoami")
-
-    reg_publish_p = reg_sub.add_parser("publish", help="Publish a plugin")
-    reg_publish_p.add_argument("--dir", default=".", help="Plugin directory")
-    reg_publish_p.add_argument(
-        "--skip-build", action="store_true", help="Skip building dist"
+    cloud_run_p = cloud_sub.add_parser("run", help="Submit a task and wait for completion")
+    cloud_run_p.add_argument("task", help="Natural language task")
+    cloud_run_p.add_argument("--api-url", default=None, help="Override platform API URL")
+    cloud_run_p.add_argument("--org", default=None, help="Override org slug")
+    cloud_run_p.add_argument("--token", default=None, help="Override JWT (default: keyring)")
+    cloud_run_p.add_argument("--project-id", default="", help="Optional project UUID")
+    cloud_run_p.add_argument("--manifest", default="", help="JSON file merged into run manifest")
+    cloud_run_p.add_argument(
+        "--workflow",
+        default="",
+        help="Workflow name from workflow.devsper.toml (snapshot embedded in manifest)",
     )
-    reg_publish_p.add_argument("--dry-run", action="store_true", help="Dry run")
-    reg_publish_p.set_defaults(reg_cmd="publish")
-
-    reg_search_p = reg_sub.add_parser("search", help="Search for plugins")
-    reg_search_p.add_argument("query", help="Search query")
-    reg_search_p.add_argument("--verified", action="store_true", help="Verified only")
-    reg_search_p.add_argument("--limit", type=int, default=10, help="Limit")
-    reg_search_p.set_defaults(reg_cmd="search")
-
-    reg_info_p = reg_sub.add_parser("info", help="Get plugin info")
-    reg_info_p.add_argument("package", help="Package name")
-    reg_info_p.set_defaults(reg_cmd="info")
-
-    reg_test_p = reg_sub.add_parser("test", help="Test plugin for publishing")
-    reg_test_p.add_argument("--dir", default=".", help="Plugin directory")
-    reg_test_p.set_defaults(reg_cmd="test")
-
-    reg_versions_p = reg_sub.add_parser("versions", help="List versions")
-    reg_versions_p.add_argument("package", help="Package name")
-    reg_versions_p.set_defaults(reg_cmd="versions")
-
-    reg_yank_p = reg_sub.add_parser("yank", help="Yank a version")
-    reg_yank_p.add_argument("package", help="Package name")
-    reg_yank_p.add_argument("version", help="Version")
-    reg_yank_p.add_argument("--reason", required=True, help="Reason")
-    reg_yank_p.set_defaults(reg_cmd="yank")
-
-    reg_parser.set_defaults(func=_run_reg_dispatch)
-
-    plugins_parser = subparsers.add_parser(
-        "plugins",
-        help="Alias for reg commands",
-        description="Alias for reg commands",
+    cloud_run_p.add_argument("--config", default="", help="JSON file merged into run config")
+    cloud_run_p.add_argument(
+        "--manifest-version",
+        default=None,
+        help="Optional x-devsper-run-manifest-version header",
     )
-    plugins_sub = plugins_parser.add_subparsers(dest="plugins_cmd", help="Subcommand")
-    plugins_sub.add_parser("login", help="Alias for reg login").set_defaults(
-        plugins_cmd="login"
-    )
-    p_pub = plugins_sub.add_parser("publish", help="Alias for reg publish")
-    p_pub.add_argument("dir", nargs="?", default=".")
-    p_pub.add_argument("--skip-build", action="store_true")
-    p_pub.add_argument("--dry-run", action="store_true")
-    p_pub.set_defaults(plugins_cmd="publish")
-    plugins_parser.set_defaults(func=_run_plugins_dispatch)
+    cloud_run_p.add_argument("--no-wait", action="store_true", help="Print run_id only; do not poll")
+    cloud_run_p.add_argument("--timeout", type=float, default=300.0, help="Poll timeout seconds")
+    cloud_run_p.add_argument("--interval", type=float, default=2.0, help="Poll interval seconds")
+    cloud_run_p.add_argument("--json", action="store_true", dest="json_output", help="Machine-readable output")
+    cloud_run_p.set_defaults(cloud_cmd="run")
+
+    cloud_status_p = cloud_sub.add_parser("status", help="Show run snapshot")
+    cloud_status_p.add_argument("run_id", help="Run UUID")
+    cloud_status_p.add_argument("--api-url", default=None, help="Override platform API URL")
+    cloud_status_p.add_argument("--org", default=None, help="Override org slug")
+    cloud_status_p.add_argument("--token", default=None, help="Override JWT")
+    cloud_status_p.add_argument("--json", action="store_true", dest="json_output", help="Print full JSON")
+    cloud_status_p.set_defaults(cloud_cmd="status")
+
+    cloud_logs_p = cloud_sub.add_parser("logs", help="List run events (history)")
+    cloud_logs_p.add_argument("run_id", help="Run UUID")
+    cloud_logs_p.add_argument("--api-url", default=None, help="Override platform API URL")
+    cloud_logs_p.add_argument("--org", default=None, help="Override org slug")
+    cloud_logs_p.add_argument("--token", default=None, help="Override JWT")
+    cloud_logs_p.add_argument("--json", action="store_true", dest="json_output", help="Print raw JSON")
+    cloud_logs_p.set_defaults(cloud_cmd="logs")
+
+    cloud_parser.set_defaults(func=_run_cloud_dispatch)
 
     completion_parser = subparsers.add_parser(
         "completion",

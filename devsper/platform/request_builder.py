@@ -196,7 +196,7 @@ class PlatformAPIRequestBuilder:
         *,
         interval_seconds: float = 2.0,
         timeout_seconds: float = 120.0,
-        terminal_statuses: tuple[str, ...] = ("completed", "failed", "cancelled"),
+        terminal_statuses: tuple[str, ...] = ("completed", "failed", "cancelled", "timeout"),
     ) -> dict[str, Any]:
         start = time.time()
         while True:

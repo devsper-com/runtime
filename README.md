@@ -175,6 +175,7 @@ See [Configuration](docs/configuration.md#credentials-api-keys) and [CLI](docs/c
 | `devsper analytics` | Tool usage stats |
 | `devsper build "app description" [-o dir]` | Autonomous app builder |
 | `devsper upgrade [--check \| -y]` | Check for updates / upgrade |
+| `devsper cloud login` / `devsper cloud run` / `status` / `logs` | Hosted platform: auth (keychain), queue a job, poll results |
 
 Run `devsper --help` or `devsper <command> --help` for examples and options.
 
@@ -300,7 +301,7 @@ Full docs (with versioning and dark mode): **[docs.devsper.com](https://docs.dev
 | [Architecture](https://docs.devsper.com/docs/architecture) | Planner, Scheduler, Executor, Agents, Tools, Memory, strategies |
 | [Configuration](https://docs.devsper.com/docs/configuration) | TOML schema, locations, env, **credentials** |
 | [Swarm runtime](https://docs.devsper.com/docs/swarm_runtime) | Task lifecycle, flow, map-reduce |
-| [Tools](https://docs.devsper.com/docs/tools) | Registry, runner, smart selection, plugins |
+| [Tools](https://docs.devsper.com/docs/tools) | Tool registration, runner, smart selection, plugins |
 | [Memory](https://docs.devsper.com/docs/memory_system) | Types, store, retrieval, knowledge graph |
 | [Providers](https://docs.devsper.com/docs/providers) | Provider routing, Azure, GitHub Models, auto routing |
 | [CLI](https://docs.devsper.com/docs/cli) | All commands, **credentials**, completion |
