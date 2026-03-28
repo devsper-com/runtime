@@ -45,7 +45,9 @@ def _import_pool_submodule(submodule: str):
     return importlib.import_module(f"devsper.pool.{submodule}")
 
 
-def _resolve_pool_redis_url(cli_override: str | None = None, profile: str | None = None) -> str:
+def _resolve_pool_redis_url(
+    cli_override: str | None = None, profile: str | None = None
+) -> str:
     """Same Redis URL for pool start, `devsper run` (local profile), and `devsper pool status`."""
     if cli_override:
         return cli_override
@@ -116,9 +118,15 @@ def _platform_api_builder():
     from devsper.platform.request_builder import PlatformAPIRequestBuilder
 
     cs = CredentialStore()
-    base_url = os.environ.get("DEVSPER_PLATFORM_API_URL") or cs.get("platform", "api_url") or ""
+    base_url = (
+        os.environ.get("DEVSPER_PLATFORM_API_URL")
+        or cs.get("platform", "api_url")
+        or ""
+    )
     org = os.environ.get("DEVSPER_PLATFORM_ORG") or cs.get("platform", "org") or ""
-    token = os.environ.get("DEVSPER_PLATFORM_TOKEN") or cs.get("platform", "token") or ""
+    token = (
+        os.environ.get("DEVSPER_PLATFORM_TOKEN") or cs.get("platform", "token") or ""
+    )
     return PlatformAPIRequestBuilder(base_url=base_url, org_slug=org, token=token)
 
 
@@ -128,9 +136,12 @@ def _is_platform_default_enabled(args: object) -> bool:
     # Shadow mode explicitly compares both paths; do not default-route.
     if getattr(args, "shadow", False):
         return False
-    if (os.environ.get("DEVSPER_PROFILE", "").strip().lower() == "local"):
+    if os.environ.get("DEVSPER_PROFILE", "").strip().lower() == "local":
         return False
-    if str(os.environ.get("DEVSPER_RUN_DEFAULT", "platform")).strip().lower() in {"runtime", "local"}:
+    if str(os.environ.get("DEVSPER_RUN_DEFAULT", "platform")).strip().lower() in {
+        "runtime",
+        "local",
+    }:
         return False
     api = _platform_api_builder()
     return api.enabled()
@@ -166,9 +177,13 @@ def _run_platform_once(task: str, args: object) -> tuple[int, dict, float]:
             return 2, {}, 0.0
     started = time.time()
     try:
-        created = api.create_run(task=task, project_id=project_id or "", manifest=manifest)
+        created = api.create_run(
+            task=task, project_id=project_id or "", manifest=manifest
+        )
         run_id = str(created.get("run_id", "") or "")
-        final = api.poll_run(run_id, timeout_seconds=float(getattr(args, "platform_timeout", 180.0)))
+        final = api.poll_run(
+            run_id, timeout_seconds=float(getattr(args, "platform_timeout", 180.0))
+        )
         elapsed = time.time() - started
         return 0, final or {}, elapsed
     except TimeoutError as e:
@@ -206,12 +221,20 @@ def _run_platform_only(args: object) -> int:
     else:
         print(f"[platform] run_id={run_id} status={status} latency={elapsed:.2f}s")
         if tin or tout or tsave:
-            print(f"[platform] usage tokens_in={tin} tokens_out={tout} tokens_saved={tsave}")
+            print(
+                f"[platform] usage tokens_in={tin} tokens_out={tout} tokens_saved={tsave}"
+            )
     if _count_conversion_events("first_platform_run") == 0:
-        _track_conversion_event("first_platform_run", {"run_id": run_id, "status": status})
-        print("Suggestion: next step -> `devsper platform connect --show-roi` or create a project/team invite.")
+        _track_conversion_event(
+            "first_platform_run", {"run_id": run_id, "status": status}
+        )
+        print(
+            "Suggestion: next step -> `devsper platform connect --show-roi` or create a project/team invite."
+        )
     else:
-        _track_conversion_event("second_platform_run", {"run_id": run_id, "status": status})
+        _track_conversion_event(
+            "second_platform_run", {"run_id": run_id, "status": status}
+        )
     return 0 if status == "completed" else 1
 
 
@@ -243,10 +266,16 @@ def _run_shadow_mode(args: object) -> int:
     quality_platform = len(json.dumps(p_payload, default=str))
 
     print("Shadow run comparison")
-    print(f"- runtime:  status={'ok' if reliability_runtime else 'failed'} latency={local_elapsed:.2f}s quality_score={local_score}")
-    print(f"- platform: status={'ok' if reliability_platform else p_status or 'failed'} latency={p_elapsed:.2f}s quality_score={quality_platform}")
+    print(
+        f"- runtime:  status={'ok' if reliability_runtime else 'failed'} latency={local_elapsed:.2f}s quality_score={local_score}"
+    )
+    print(
+        f"- platform: status={'ok' if reliability_platform else p_status or 'failed'} latency={p_elapsed:.2f}s quality_score={quality_platform}"
+    )
     if tin or tout or tsave:
-        print(f"- platform usage: tokens_in={tin} tokens_out={tout} tokens_saved={tsave}")
+        print(
+            f"- platform usage: tokens_in={tin} tokens_out={tout} tokens_saved={tsave}"
+        )
     if run_id:
         print(f"- platform run_id: {run_id}")
 
@@ -287,7 +316,10 @@ def _upsert_project_platform_memory_config(api_url: str, org_slug: str) -> None:
                 lines.append(line)
         text = "\n".join(lines) + "\n"
     else:
-        text = text.rstrip() + f'\nplatform_api_url = "{api_url}"\nplatform_org_slug = "{org_slug}"\nbackend = "hybrid"\n'
+        text = (
+            text.rstrip()
+            + f'\nplatform_api_url = "{api_url}"\nplatform_org_slug = "{org_slug}"\nbackend = "hybrid"\n'
+        )
     path.write_text(text, encoding="utf-8")
 
 
@@ -296,17 +328,37 @@ def _run_platform_connect(args: object) -> int:
     from devsper.platform.request_builder import PlatformAPIRequestBuilder
 
     cs = CredentialStore()
-    api_url = (getattr(args, "api_url", None) or os.environ.get("DEVSPER_PLATFORM_API_URL") or cs.get("platform", "api_url") or "").strip()
-    org_slug = (getattr(args, "org", None) or os.environ.get("DEVSPER_PLATFORM_ORG") or cs.get("platform", "org") or "").strip()
-    token = (getattr(args, "token", None) or os.environ.get("DEVSPER_PLATFORM_TOKEN") or cs.get("platform", "token") or "").strip()
+    api_url = (
+        getattr(args, "api_url", None)
+        or os.environ.get("DEVSPER_PLATFORM_API_URL")
+        or cs.get("platform", "api_url")
+        or ""
+    ).strip()
+    org_slug = (
+        getattr(args, "org", None)
+        or os.environ.get("DEVSPER_PLATFORM_ORG")
+        or cs.get("platform", "org")
+        or ""
+    ).strip()
+    token = (
+        getattr(args, "token", None)
+        or os.environ.get("DEVSPER_PLATFORM_TOKEN")
+        or cs.get("platform", "token")
+        or ""
+    ).strip()
     if not api_url or not org_slug:
         print("Missing platform config. Provide --api-url and --org.", file=sys.stderr)
         return 1
     if not token:
-        print("Missing platform token. Provide --token or set DEVSPER_PLATFORM_TOKEN.", file=sys.stderr)
+        print(
+            "Missing platform token. Provide --token or set DEVSPER_PLATFORM_TOKEN.",
+            file=sys.stderr,
+        )
         return 1
 
-    _track_conversion_event("platform_connect_started", {"api_url": api_url, "org": org_slug})
+    _track_conversion_event(
+        "platform_connect_started", {"api_url": api_url, "org": org_slug}
+    )
     api = PlatformAPIRequestBuilder(base_url=api_url, org_slug=org_slug, token=token)
     try:
         _ = api.get_json("/health")
@@ -330,7 +382,9 @@ def _run_platform_connect(args: object) -> int:
             pass
 
     print(f"Connected platform: api={api_url} org={org_slug}")
-    print("`devsper run` will now default to platform. Use `--local-runtime` to bypass.")
+    print(
+        "`devsper run` will now default to platform. Use `--local-runtime` to bypass."
+    )
     _track_conversion_event("platform_connect_succeeded", {"org": org_slug})
     return 0
 
@@ -367,13 +421,18 @@ def _run_swarm(args: object) -> int:
         return _run_platform_only(args)
     if not getattr(args, "local_runtime", False):
         # Contextual nudge when users are still runtime-only.
-        print("Tip: run `devsper platform connect` to unlock retries, audit history, billing controls, and team workflows.")
+        print(
+            "Tip: run `devsper platform connect` to unlock retries, audit history, billing controls, and team workflows."
+        )
     # Local profile fast-path: route through platform pool + local workers.
     if os.environ.get("DEVSPER_PROFILE", "").strip().lower() == "local":
         try:
             return _run_swarm_via_local_pool(args)
         except Exception as e:
-            print(f"Local pool failed, falling back to in-process swarm: {e}", file=sys.stderr)
+            print(
+                f"Local pool failed, falling back to in-process swarm: {e}",
+                file=sys.stderr,
+            )
     from devsper.config import get_config
     from devsper.utils.event_logger import EventLog
     from devsper.swarm.swarm import Swarm
@@ -403,6 +462,7 @@ def _run_swarm(args: object) -> int:
     clarification_queue = None
     if use_live_view:
         import queue
+
         clarification_queue = queue.Queue()
     swarm = Swarm(
         worker_count=workers,
@@ -585,6 +645,7 @@ def _run_swarm_via_local_pool(args: object) -> int:
     class _Bus:
         def __init__(self, url: str):
             import redis
+
             self._r = redis.Redis.from_url(url, decode_responses=True)
 
         def publish(self, channel: str, payload: dict):
@@ -594,10 +655,17 @@ def _run_swarm_via_local_pool(args: object) -> int:
         store = RedisPoolStore(redis_url)
         bus = _Bus(redis_url)
         pool = PoolManager(store=store, bus=bus, config=pool_cfg)
-        qt = QueuedTask(task_id=run_id, org_id=org_id, user_id=user_id, priority=1, payload_enc=payload_enc)
+        qt = QueuedTask(
+            task_id=run_id,
+            org_id=org_id,
+            user_id=user_id,
+            priority=1,
+            payload_enc=payload_enc,
+        )
         await pool.enqueue(qt)
 
         import redis.asyncio as aioredis
+
         r = aioredis.from_url(redis_url, decode_responses=True)
         pubsub = r.pubsub()
         await pubsub.subscribe(f"devsper:task:{run_id}:result")
@@ -1080,7 +1148,14 @@ def _run_export_runs(args: object) -> int:
     console.print(f"[green]Export complete[/]  runs={manifest.get('run_count', 0)}")
     console.print(f"Output: [cyan]{manifest.get('output_dir', out_dir)}[/]")
     files = manifest.get("files", {}) or {}
-    for k in ("all_runs_md", "all_runs_rst", "all_runs_tex", "all_runs_bib", "all_runs_html", "all_runs_docx"):
+    for k in (
+        "all_runs_md",
+        "all_runs_rst",
+        "all_runs_tex",
+        "all_runs_bib",
+        "all_runs_html",
+        "all_runs_docx",
+    ):
         if k in files:
             console.print(f"  - {k}: {files[k]}")
     pdf_out = manifest.get("pdf_outputs", {}) or {}
@@ -1644,7 +1719,10 @@ def _run_pool_status(args) -> int:
     try:
         import redis
     except Exception as e:
-        print("Pool commands require redis package. Install devsper[distributed].", file=sys.stderr)
+        print(
+            "Pool commands require redis package. Install devsper[distributed].",
+            file=sys.stderr,
+        )
         return 1
     try:
         r = redis.Redis.from_url(redis_url, decode_responses=True)
@@ -1665,7 +1743,10 @@ def _run_pool_workers(args) -> int:
     try:
         import redis
     except Exception:
-        print("Pool commands require redis package. Install devsper[distributed].", file=sys.stderr)
+        print(
+            "Pool commands require redis package. Install devsper[distributed].",
+            file=sys.stderr,
+        )
         return 1
     try:
         r = redis.Redis.from_url(redis_url, decode_responses=True)
@@ -1675,7 +1756,11 @@ def _run_pool_workers(args) -> int:
             for wid in sorted(r.smembers(f"pool:tier:{t}:workers") or []):
                 raw = r.get(f"pool:worker:{wid}")
                 rows.append({"tier": t, "worker_id": wid, "raw": raw})
-        print(json.dumps({"workers": rows}) if getattr(args, "json_output", False) else "\n".join([f"{w['tier']}\t{w['worker_id']}" for w in rows]))
+        print(
+            json.dumps({"workers": rows})
+            if getattr(args, "json_output", False)
+            else "\n".join([f"{w['tier']}\t{w['worker_id']}" for w in rows])
+        )
         return 0
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -1684,7 +1769,11 @@ def _run_pool_workers(args) -> int:
 
 def _run_pool_queue(args) -> int:
     """Wait queue depth is process-local; report N/A for now."""
-    print(json.dumps({"queue_depth": None, "note": "wait queue is in pool-manager process"}))
+    print(
+        json.dumps(
+            {"queue_depth": None, "note": "wait queue is in pool-manager process"}
+        )
+    )
     return 0
 
 
@@ -2292,9 +2381,7 @@ def _run_checkpoint_list(args: object) -> int:
 
     try:
         cfg = get_config()
-        events_dir = (
-            getattr(cfg, "events_dir", ".devsper/events") or ".devsper/events"
-        )
+        events_dir = getattr(cfg, "events_dir", ".devsper/events") or ".devsper/events"
     except Exception:
         events_dir = ".devsper/events"
     ckp = SchedulerCheckpointer(events_dir=events_dir)
@@ -2356,9 +2443,7 @@ def _run_checkpoint_restore(run_id: str) -> int:
     run_id = run_id.strip()
     try:
         cfg = get_config()
-        events_dir = (
-            getattr(cfg, "events_dir", ".devsper/events") or ".devsper/events"
-        )
+        events_dir = getattr(cfg, "events_dir", ".devsper/events") or ".devsper/events"
     except Exception:
         events_dir = ".devsper/events"
     ckp = SchedulerCheckpointer(events_dir=events_dir)
@@ -2640,6 +2725,7 @@ def _run_cloud_dispatch(args: object) -> int:
         cmd_cloud_run,
         cmd_cloud_logs,
         cmd_cloud_status,
+        cmd_cloud_import_keys,
     )
 
     cmds = {
@@ -2648,6 +2734,7 @@ def _run_cloud_dispatch(args: object) -> int:
         "run": cmd_cloud_run,
         "status": cmd_cloud_status,
         "logs": cmd_cloud_logs,
+        "import-keys": cmd_cloud_import_keys,
     }
     if cmd in cmds:
         return cmds[cmd](args)
@@ -3258,18 +3345,28 @@ Examples:
     )
     pool_sub = pool_parser.add_subparsers(dest="pool_cmd", help="Subcommand")
     pool_status_p = pool_sub.add_parser("status", help="Show worker counts by tier")
-    pool_status_p.add_argument("--redis-url", type=str, default=None, help="Redis URL override")
+    pool_status_p.add_argument(
+        "--redis-url", type=str, default=None, help="Redis URL override"
+    )
     pool_status_p.set_defaults(func=lambda a: _run_pool_status(a))
     pool_workers_p = pool_sub.add_parser("workers", help="List workers by tier")
-    pool_workers_p.add_argument("--redis-url", type=str, default=None, help="Redis URL override")
+    pool_workers_p.add_argument(
+        "--redis-url", type=str, default=None, help="Redis URL override"
+    )
     pool_workers_p.set_defaults(func=lambda a: _run_pool_workers(a))
     pool_queue_p = pool_sub.add_parser("queue", help="Show wait queue depth")
     pool_queue_p.set_defaults(func=lambda a: _run_pool_queue(a))
-    pool_start_p = pool_sub.add_parser("start", help="Start local worker pool (foreground)")
+    pool_start_p = pool_sub.add_parser(
+        "start", help="Start local worker pool (foreground)"
+    )
     pool_start_p.add_argument("--local", action="store_true", help="Start local pool")
-    pool_start_p.add_argument("--workers", type=int, default=2, help="Number of local workers")
+    pool_start_p.add_argument(
+        "--workers", type=int, default=2, help="Number of local workers"
+    )
     pool_start_p.set_defaults(func=lambda a: _run_pool_start(a))
-    pool_parser.set_defaults(pool_cmd=None, func=lambda a: pool_parser.print_help() or 0)
+    pool_parser.set_defaults(
+        pool_cmd=None, func=lambda a: pool_parser.print_help() or 0
+    )
 
     org_parser = subparsers.add_parser(
         "org",
@@ -3277,7 +3374,9 @@ Examples:
         description="Org-scoped operations for pool and E2EE keys.",
     )
     org_sub = org_parser.add_subparsers(dest="org_cmd", help="Subcommand")
-    org_keygen_p = org_sub.add_parser("keygen", help="Generate org E2EE keypair (store private in keyring)")
+    org_keygen_p = org_sub.add_parser(
+        "keygen", help="Generate org E2EE keypair (store private in keyring)"
+    )
     org_keygen_p.set_defaults(func=lambda a: _run_org_keygen(a))
     org_parser.set_defaults(org_cmd=None, func=lambda a: org_parser.print_help() or 0)
 
@@ -3286,19 +3385,31 @@ Examples:
         help="Platform migration and conversion commands",
         description="Connect runtime users to platform and track migration ROI.",
     )
-    platform_sub = platform_parser.add_subparsers(dest="platform_cmd", help="Subcommand")
+    platform_sub = platform_parser.add_subparsers(
+        dest="platform_cmd", help="Subcommand"
+    )
     platform_connect_p = platform_sub.add_parser(
         "connect",
         help="One-command onboarding bridge to platform.",
     )
-    platform_connect_p.add_argument("--api-url", default=None, help="Platform API base URL")
+    platform_connect_p.add_argument(
+        "--api-url", default=None, help="Platform API base URL"
+    )
     platform_connect_p.add_argument("--org", default=None, help="Platform org slug")
     platform_connect_p.add_argument("--token", default=None, help="Platform JWT token")
-    platform_connect_p.add_argument("--skip-toml", action="store_true", help="Do not update local devsper.toml memory config")
+    platform_connect_p.add_argument(
+        "--skip-toml",
+        action="store_true",
+        help="Do not update local devsper.toml memory config",
+    )
     platform_connect_p.set_defaults(func=lambda a: _run_platform_connect(a))
-    platform_roi_p = platform_sub.add_parser("roi", help="Show conversion funnel counters")
+    platform_roi_p = platform_sub.add_parser(
+        "roi", help="Show conversion funnel counters"
+    )
     platform_roi_p.set_defaults(func=lambda a: _run_platform_roi())
-    platform_parser.set_defaults(platform_cmd=None, func=lambda a: platform_parser.print_help() or 0)
+    platform_parser.set_defaults(
+        platform_cmd=None, func=lambda a: platform_parser.print_help() or 0
+    )
 
     graph_parser = subparsers.add_parser(
         "graph",
@@ -3343,7 +3454,9 @@ Examples:
         help="Show run budget/cost summary",
         description="Show cost summary for a run from event logs.",
     )
-    budget_parser.add_argument("run_id", nargs="?", default="", help="Run ID (default: latest)")
+    budget_parser.add_argument(
+        "run_id", nargs="?", default="", help="Run ID (default: latest)"
+    )
     budget_parser.add_argument("--events-dir", default=None, help="Events directory")
     budget_parser.set_defaults(func=lambda a: _run_budget(a.run_id, a.events_dir))
 
@@ -3364,7 +3477,9 @@ Examples:
     serve_api_parser.add_argument("--host", default="0.0.0.0")
     serve_api_parser.add_argument("--port", type=int, default=7474)
     serve_api_parser.add_argument("--events-dir", default=None)
-    serve_api_parser.set_defaults(func=lambda a: _run_events_api_serve(a.port, a.host, a.events_dir))
+    serve_api_parser.set_defaults(
+        func=lambda a: _run_events_api_serve(a.port, a.host, a.events_dir)
+    )
 
     export_pkg_parser = subparsers.add_parser(
         "export",
@@ -3570,54 +3685,108 @@ Examples:
     )
     cloud_sub = cloud_parser.add_subparsers(dest="cloud_cmd", help="Subcommand")
 
-    cloud_login_p = cloud_sub.add_parser("login", help="Login (stores JWT in OS keychain)")
-    cloud_login_p.add_argument("--api-url", default=None, help="Platform API base URL (default: http://localhost:8080 or keyring)")
-    cloud_login_p.add_argument("--email", required=True, help="Account email")
-    cloud_login_p.add_argument("--password", default=None, help="Password (omit to be prompted)")
-    cloud_login_p.add_argument("--org", default=None, help="Default org slug (default: personal org from /me)")
+    cloud_login_p = cloud_sub.add_parser(
+        "login", help="Login (stores JWT in OS keychain)"
+    )
+    cloud_login_p.add_argument(
+        "--api-url",
+        default=None,
+        help="Platform API base URL (default: http://localhost:8080 or keyring)",
+    )
+    cloud_login_p.add_argument("--email", default=None, help="Account email")
+    cloud_login_p.add_argument(
+        "--password", default=None, help="Password (omit to be prompted)"
+    )
+    cloud_login_p.add_argument(
+        "--org", default=None, help="Default org slug (default: personal org from /me)"
+    )
     cloud_login_p.set_defaults(cloud_cmd="login")
 
-    cloud_logout_p = cloud_sub.add_parser("logout", help="Clear stored cloud credentials")
+    cloud_logout_p = cloud_sub.add_parser(
+        "logout", help="Clear stored cloud credentials"
+    )
     cloud_logout_p.set_defaults(cloud_cmd="logout")
 
-    cloud_run_p = cloud_sub.add_parser("run", help="Submit a task and wait for completion")
+    cloud_import_keys_p = cloud_sub.add_parser(
+        "import-keys", help="Import local API keys to the platform organization"
+    )
+    cloud_import_keys_p.add_argument(
+        "provider", nargs="?", help="Specific provider to import (e.g. openai)"
+    )
+    cloud_import_keys_p.add_argument(
+        "--api-url", default=None, help="Override platform API URL"
+    )
+    cloud_import_keys_p.add_argument("--org", default=None, help="Override org slug")
+    cloud_import_keys_p.add_argument("--token", default=None, help="Override JWT")
+    cloud_import_keys_p.set_defaults(cloud_cmd="import-keys")
+
+    cloud_run_p = cloud_sub.add_parser(
+        "run", help="Submit a task and wait for completion"
+    )
     cloud_run_p.add_argument("task", help="Natural language task")
-    cloud_run_p.add_argument("--api-url", default=None, help="Override platform API URL")
+    cloud_run_p.add_argument(
+        "--api-url", default=None, help="Override platform API URL"
+    )
     cloud_run_p.add_argument("--org", default=None, help="Override org slug")
-    cloud_run_p.add_argument("--token", default=None, help="Override JWT (default: keyring)")
+    cloud_run_p.add_argument(
+        "--token", default=None, help="Override JWT (default: keyring)"
+    )
     cloud_run_p.add_argument("--project-id", default="", help="Optional project UUID")
-    cloud_run_p.add_argument("--manifest", default="", help="JSON file merged into run manifest")
+    cloud_run_p.add_argument(
+        "--manifest", default="", help="JSON file merged into run manifest"
+    )
     cloud_run_p.add_argument(
         "--workflow",
         default="",
         help="Workflow name from workflow.devsper.toml (snapshot embedded in manifest)",
     )
-    cloud_run_p.add_argument("--config", default="", help="JSON file merged into run config")
+    cloud_run_p.add_argument(
+        "--config", default="", help="JSON file merged into run config"
+    )
     cloud_run_p.add_argument(
         "--manifest-version",
         default=None,
         help="Optional x-devsper-run-manifest-version header",
     )
-    cloud_run_p.add_argument("--no-wait", action="store_true", help="Print run_id only; do not poll")
-    cloud_run_p.add_argument("--timeout", type=float, default=300.0, help="Poll timeout seconds")
-    cloud_run_p.add_argument("--interval", type=float, default=2.0, help="Poll interval seconds")
-    cloud_run_p.add_argument("--json", action="store_true", dest="json_output", help="Machine-readable output")
+    cloud_run_p.add_argument(
+        "--no-wait", action="store_true", help="Print run_id only; do not poll"
+    )
+    cloud_run_p.add_argument(
+        "--timeout", type=float, default=300.0, help="Poll timeout seconds"
+    )
+    cloud_run_p.add_argument(
+        "--interval", type=float, default=2.0, help="Poll interval seconds"
+    )
+    cloud_run_p.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Machine-readable output",
+    )
     cloud_run_p.set_defaults(cloud_cmd="run")
 
     cloud_status_p = cloud_sub.add_parser("status", help="Show run snapshot")
     cloud_status_p.add_argument("run_id", help="Run UUID")
-    cloud_status_p.add_argument("--api-url", default=None, help="Override platform API URL")
+    cloud_status_p.add_argument(
+        "--api-url", default=None, help="Override platform API URL"
+    )
     cloud_status_p.add_argument("--org", default=None, help="Override org slug")
     cloud_status_p.add_argument("--token", default=None, help="Override JWT")
-    cloud_status_p.add_argument("--json", action="store_true", dest="json_output", help="Print full JSON")
+    cloud_status_p.add_argument(
+        "--json", action="store_true", dest="json_output", help="Print full JSON"
+    )
     cloud_status_p.set_defaults(cloud_cmd="status")
 
     cloud_logs_p = cloud_sub.add_parser("logs", help="List run events (history)")
     cloud_logs_p.add_argument("run_id", help="Run UUID")
-    cloud_logs_p.add_argument("--api-url", default=None, help="Override platform API URL")
+    cloud_logs_p.add_argument(
+        "--api-url", default=None, help="Override platform API URL"
+    )
     cloud_logs_p.add_argument("--org", default=None, help="Override org slug")
     cloud_logs_p.add_argument("--token", default=None, help="Override JWT")
-    cloud_logs_p.add_argument("--json", action="store_true", dest="json_output", help="Print raw JSON")
+    cloud_logs_p.add_argument(
+        "--json", action="store_true", dest="json_output", help="Print raw JSON"
+    )
     cloud_logs_p.set_defaults(cloud_cmd="logs")
 
     cloud_parser.set_defaults(func=_run_cloud_dispatch)

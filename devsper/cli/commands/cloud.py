@@ -34,7 +34,9 @@ def _builder_from_args(
 ) -> PlatformAPIRequestBuilder:
     cs = CredentialStore()
     base = (api_url or _default_api_url() or "http://localhost:8080").rstrip("/")
-    org_slug = (org or os.environ.get("DEVSPER_PLATFORM_ORG") or cs.get("platform", "org") or "").strip()
+    org_slug = (
+        org or os.environ.get("DEVSPER_PLATFORM_ORG") or cs.get("platform", "org") or ""
+    ).strip()
     tok = (
         token
         or os.environ.get("DEVSPER_PLATFORM_TOKEN")
@@ -55,52 +57,149 @@ def _pick_org_slug(orgs: list[dict[str, Any]], explicit: str | None) -> str:
     return ""
 
 
-def cmd_cloud_login(args: Any) -> int:
-    api_url = (getattr(args, "api_url", None) or "").strip().rstrip("/") or _default_api_url() or "http://localhost:8080"
-    email = (getattr(args, "email", None) or "").strip()
-    if not email:
-        console.print("[red]--email is required.[/red]")
-        return 1
-    password = getattr(args, "password", None) or ""
-    if not password:
-        password = getpass.getpass("Password: ")
+def _do_browser_login(api_url: str) -> dict[str, Any] | None:
+    import http.server
+    import socketserver
+    import webbrowser
+    import urllib.parse
+    import json
 
-    try:
-        with httpx.Client(timeout=60.0) as client:
-            r = client.post(
-                f"{api_url}/auth/login",
-                json={"email": email, "password": password},
-                headers={"Content-Type": "application/json"},
+    # We will run a local server
+    class RequestHandler(http.server.SimpleHTTPRequestHandler):
+        def do_OPTIONS(self):
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.end_headers()
+
+        def do_POST(self):
+            if self.path == "/callback":
+                content_length = int(self.headers.get("Content-Length", 0))
+                post_data = self.rfile.read(content_length)
+                try:
+                    data = json.loads(post_data.decode("utf-8"))
+                    self.server.login_data = data
+                    self.send_response(200)
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(b'{"status":"ok"}')
+                except Exception as e:
+                    self.send_response(400)
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(b'{"error":"bad_request"}')
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    with socketserver.TCPServer(("127.0.0.1", 0), RequestHandler) as httpd:
+        port = httpd.server_address[1]
+        httpd.login_data = None
+
+        # Open browser to the web app
+        web_url = api_url.replace(":8080", ":5173")  # Hacky local replacement
+        if "api." in web_url:
+            web_url = web_url.replace("api.", "app.")
+
+        login_url = f"{web_url}/cli-login?port={port}"
+
+        from rich.panel import Panel
+        from rich.align import Align
+
+        console.print()
+        console.print(
+            Panel(
+                f"Please authenticate in your browser.\n\n"
+                f"[cyan underline]{login_url}[/]\n\n"
+                "[dim]If your browser does not open automatically, click the link above.[/dim]",
+                title="[bold blue]☁️ Devsper Cloud Login[/bold blue]",
+                border_style="blue",
+                expand=False,
             )
-    except httpx.RequestError as e:
-        console.print(f"[red]Could not reach platform API:[/red] {e}")
-        return 1
+        )
+        console.print()
 
-    if r.status_code == 403:
+        webbrowser.open(login_url)
+
+        with console.status(
+            "[bold cyan]Waiting for authentication in browser...[/bold cyan]",
+            spinner="dots",
+        ):
+            # Wait for the callback (blocking)
+            while httpd.login_data is None:
+                httpd.handle_request()
+
+        return httpd.login_data
+
+
+def cmd_cloud_login(args: Any) -> int:
+    api_url = (
+        (getattr(args, "api_url", None) or "").strip().rstrip("/")
+        or _default_api_url()
+        or "http://localhost:8080"
+    )
+    email = (getattr(args, "email", None) or "").strip()
+
+    access = ""
+    refresh = ""
+
+    if not email:
+        # Browser login flow
+        data = _do_browser_login(api_url)
+        if not data or not data.get("token"):
+            console.print("[red]Browser login failed or cancelled.[/red]")
+            return 1
+        access = data["token"]
+        refresh = data.get("refresh_token", "")
+    else:
+        password = getattr(args, "password", None) or ""
+        if not password:
+            password = getpass.getpass("Password: ")
+
         try:
-            err = r.json().get("error", "")
-        except Exception:
-            err = ""
-        if err == "email_not_verified":
+            with httpx.Client(timeout=60.0) as client:
+                r = client.post(
+                    f"{api_url}/auth/login",
+                    json={"email": email, "password": password},
+                    headers={"Content-Type": "application/json"},
+                )
+        except httpx.RequestError as e:
+            console.print(f"[red]Could not reach platform API:[/red] {e}")
+            return 1
+
+        if r.status_code == 403:
+            try:
+                err = r.json().get("error", "")
+            except Exception:
+                err = ""
+            if err == "email_not_verified":
+                console.print(
+                    "[yellow]Email not verified.[/yellow] Open Mailhog at http://localhost:8025 (local compose) "
+                    "and complete verification, or set EMAIL_VERIFICATION_ENABLED=false for local dev."
+                )
+                return 1
+        if r.status_code != 200:
             console.print(
-                "[yellow]Email not verified.[/yellow] Open Mailhog at http://localhost:8025 (local compose) "
-                "and complete verification, or set EMAIL_VERIFICATION_ENABLED=false for local dev."
+                f"[red]Login failed[/red] HTTP {r.status_code}: {r.text[:500]}"
             )
             return 1
-    if r.status_code != 200:
-        console.print(f"[red]Login failed[/red] HTTP {r.status_code}: {r.text[:500]}")
-        return 1
 
-    data = r.json()
-    if data.get("mfa_required"):
-        console.print("[red]This account has MFA enabled.[/red] Use a token from the web app or add MFA support to the CLI.")
-        return 1
+        data = r.json()
+        if data.get("mfa_required"):
+            console.print(
+                "[red]This account has MFA enabled.[/red] Use a token from the web app or add MFA support to the CLI."
+            )
+            return 1
 
-    access = (data.get("access_token") or "").strip()
-    refresh = (data.get("refresh_token") or "").strip()
-    if not access:
-        console.print("[red]No access_token in response.[/red]")
-        return 1
+        access = (data.get("access_token") or "").strip()
+        refresh = (data.get("refresh_token") or "").strip()
+        if not access:
+            console.print("[red]No access_token in response.[/red]")
+            return 1
 
     try:
         with httpx.Client(timeout=60.0) as client:
@@ -122,7 +221,9 @@ def cmd_cloud_login(args: Any) -> int:
         orgs = []
     org_slug = _pick_org_slug(orgs, getattr(args, "org", None))
     if not org_slug:
-        console.print("[red]No org slug available. Create an org via the API or pass --org.[/red]")
+        console.print(
+            "[red]No org slug available. Create an org via the API or pass --org.[/red]"
+        )
         return 1
 
     cs = CredentialStore()
@@ -140,7 +241,21 @@ def cmd_cloud_login(args: Any) -> int:
     os.environ["DEVSPER_PLATFORM_ORG"] = org_slug
     os.environ["DEVSPER_PLATFORM_TOKEN"] = access
 
-    console.print(f"[green]Logged in.[/green] api={api_url} org={org_slug}")
+    from rich.panel import Panel
+
+    console.print()
+    user_email = me_body.get("email") or me_body.get("name") or "User"
+    console.print(
+        Panel(
+            f"Successfully authenticated as [bold cyan]{user_email}[/bold cyan]!\n\n"
+            f"[dim]API URL:[/dim] {api_url}\n"
+            f"[dim]Organization:[/dim] [bold green]{org_slug}[/bold green]",
+            title="[bold green]✅ Login Complete[/bold green]",
+            border_style="green",
+            expand=False,
+        )
+    )
+    console.print()
     return 0
 
 
@@ -148,9 +263,26 @@ def cmd_cloud_logout(_args: Any) -> int:
     cs = CredentialStore()
     for key in ("api_url", "org", "token", "refresh_token"):
         cs.delete("platform", key)
-    for env in ("DEVSPER_PLATFORM_API_URL", "DEVSPER_PLATFORM_ORG", "DEVSPER_PLATFORM_TOKEN"):
+    for env in (
+        "DEVSPER_PLATFORM_API_URL",
+        "DEVSPER_PLATFORM_ORG",
+        "DEVSPER_PLATFORM_TOKEN",
+    ):
         os.environ.pop(env, None)
-    console.print("[dim]Cloud credentials cleared from keyring.[/dim]")
+
+    from rich.panel import Panel
+
+    console.print()
+    console.print(
+        Panel(
+            "You have been successfully logged out.\n\n"
+            "[dim]Cloud credentials cleared from keychain.[/dim]",
+            title="[bold yellow]👋 Logged Out[/bold yellow]",
+            border_style="yellow",
+            expand=False,
+        )
+    )
+    console.print()
     return 0
 
 
@@ -162,7 +294,9 @@ def _load_json_file(path: str) -> dict[str, Any]:
     return data
 
 
-def _build_manifest_and_config(args: Any) -> tuple[dict[str, Any], dict[str, Any], str | None]:
+def _build_manifest_and_config(
+    args: Any,
+) -> tuple[dict[str, Any], dict[str, Any], str | None]:
     manifest: dict[str, Any] = {}
     config: dict[str, Any] = {}
     manifest_version: str | None = None
@@ -189,6 +323,92 @@ def _build_manifest_and_config(args: Any) -> tuple[dict[str, Any], dict[str, Any
         manifest_version = str(mv).strip()
 
     return manifest, config, manifest_version
+
+
+def cmd_cloud_import_keys(args: Any) -> int:
+    from devsper.credentials import list_credentials, get_credential
+
+    api = _builder_from_args(
+        getattr(args, "api_url", None),
+        getattr(args, "org", None),
+        getattr(args, "token", None),
+    )
+    if not api.enabled():
+        console.print(
+            "[red]Platform not configured.[/red] Run [bold]devsper cloud login[/bold] or set "
+            "DEVSPER_PLATFORM_API_URL + DEVSPER_PLATFORM_ORG + DEVSPER_PLATFORM_TOKEN."
+        )
+        return 1
+
+    if not api.org_slug:
+        console.print(
+            "[red]No org specified.[/red] Run login again or set DEVSPER_PLATFORM_ORG."
+        )
+        return 1
+
+    creds = list_credentials()
+    if not creds:
+        console.print(
+            "No local credentials found. Use [bold]devsper credentials set[/bold] first."
+        )
+        return 0
+
+    target_provider = getattr(args, "provider", None)
+    if target_provider:
+        target_provider = target_provider.strip().lower()
+
+    success_count = 0
+    from rich.panel import Panel
+
+    console.print(
+        f"Importing local credentials to platform org: [bold cyan]{api.org_slug}[/bold cyan]\n"
+    )
+
+    for c in creds:
+        provider = c["provider"]
+        key = c["key"]
+
+        if target_provider and provider != target_provider:
+            continue
+
+        if key not in ("api_key", "token"):
+            # Only push the main API key / token to the platform for now
+            continue
+
+        val = get_credential(provider, key)
+        if not val:
+            continue
+
+        try:
+            # The platform API expects PUT /orgs/{slug}/provider-keys/{provider} with {"key": val}
+            api.request(
+                "PUT",
+                f"/orgs/{api.org_slug}/provider-keys/{provider}",
+                json_body={"key": val},
+            )
+            console.print(f"✅ [green]Successfully imported {provider} ({key})[/green]")
+            success_count += 1
+        except Exception as e:
+            console.print(f"❌ [red]Failed to import {provider}: {e}[/red]")
+
+    if success_count > 0:
+        console.print()
+        console.print(
+            Panel(
+                f"Successfully synced {success_count} provider key(s) to Devsper Cloud.\n"
+                "Your backend workers can now use these keys for LLM completions.",
+                title="[bold green]Import Complete[/bold green]",
+                expand=False,
+            )
+        )
+    else:
+        if target_provider:
+            console.print(
+                f"No suitable credentials found for provider '{target_provider}'."
+            )
+        else:
+            console.print("No supported provider keys found to import.")
+    return 0
 
 
 def cmd_cloud_run(args: Any) -> int:
@@ -241,7 +461,11 @@ def cmd_cloud_run(args: Any) -> int:
 
     if no_wait:
         if json_out:
-            print(json.dumps({"run_id": run_id, "status": created.get("status", "pending")}))
+            print(
+                json.dumps(
+                    {"run_id": run_id, "status": created.get("status", "pending")}
+                )
+            )
         else:
             console.print(f"[green]Queued[/green] run_id={run_id}")
         return 0
@@ -262,7 +486,9 @@ def cmd_cloud_run(args: Any) -> int:
 
     status = str(final.get("status") or "")
     if json_out:
-        print(json.dumps({"run_id": run_id, "status": status, "raw": final}, default=str))
+        print(
+            json.dumps({"run_id": run_id, "status": status, "raw": final}, default=str)
+        )
     else:
         console.print(f"run_id={run_id} status={status}")
         result = final.get("result")
