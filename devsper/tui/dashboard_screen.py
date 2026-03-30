@@ -21,6 +21,7 @@ from devsper.tui.reasoning_graph_view import ReasoningGraphView
 from devsper.tui.agent_role_view import AgentRoleActivityView
 from devsper.tui.adaptive_tasks_view import AdaptiveTasksView
 from devsper.tui.dev_view import DevView
+from devsper.tui.mission_view import MissionView
 
 
 class DashboardScreen(Screen[None]):
@@ -133,6 +134,10 @@ class DashboardScreen(Screen[None]):
                 with Vertical(classes="d-panel"):
                     yield Static("Adaptive Task Creation", classes="d-panel-title")
                     yield AdaptiveTasksView(id="adaptive-tasks-view")
+            with Horizontal(id="dashboard-mission-row"):
+                with Vertical(classes="d-panel"):
+                    yield Static("Mission View", classes="d-panel-title")
+                    yield MissionView(id="mission-view")
             with Horizontal(id="dashboard-dev-row"):
                 with Vertical(classes="d-panel"):
                     yield Static("Dev — Repository tree | Test results | File changes", classes="d-panel-title")
@@ -269,6 +274,20 @@ class DashboardScreen(Screen[None]):
             atv.set_events_folder(events_folder)
             atv.set_log_path(getattr(self, "_event_log_path", None))
             atv.refresh_adaptive_events()
+        except Exception:
+            pass
+        try:
+            mvw = self.query_one("#mission-view", MissionView)
+            mission_snapshot = getattr(app, "_last_mission_snapshot", None) or {}
+            mvw.set_mission(
+                goal=mission_snapshot.get("goal", ""),
+                dag=mission_snapshot.get("dag", {}),
+                iteration={
+                    "quality_score": mission_snapshot.get("quality_score"),
+                    "iterations": mission_snapshot.get("iterations"),
+                    "history": mission_snapshot.get("iteration_history", []),
+                },
+            )
         except Exception:
             pass
 

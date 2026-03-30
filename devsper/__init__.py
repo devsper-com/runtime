@@ -20,7 +20,7 @@ except Exception:  # pragma: no cover - missing dist metadata (e.g. bare checkou
 
 from devsper.config import get_config
 
-__all__ = ["Swarm", "get_config", "__version__"]
+__all__ = ["Swarm", "MissionRunner", "get_config", "__version__"]
 
 
 def __getattr__(name: str):
@@ -29,4 +29,8 @@ def __getattr__(name: str):
         from devsper.swarm.swarm import Swarm  # local import
 
         return Swarm
+    if name == "MissionRunner":
+        from devsper.missions import MissionRunner  # local import
+
+        return MissionRunner
     raise AttributeError(name)

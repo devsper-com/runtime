@@ -92,6 +92,7 @@ class devsperTUI(App[None]):
         self._current_swarm = None
         self._paused = False
         self._default_subtitle = "Distributed AI Swarm Runtime"
+        self._last_mission_snapshot: dict = {}
 
     def compose(self) -> ComposeResult:
         yield devsperLayout()
@@ -109,6 +110,11 @@ class devsperTUI(App[None]):
     def _run_swarm_worker(self, prompt: str) -> None:
         """Run swarm in background thread."""
         try:
+            mission_prompt = (prompt or "").strip()
+            mission_prefixes = ("mission:research", "mission:coding", "mission:experiment")
+            if mission_prompt.lower().startswith(mission_prefixes):
+                self._run_mission_worker(mission_prompt)
+                return
             from devsper.config import get_config
             from devsper.utils.event_logger import EventLog
             from devsper.swarm.swarm import Swarm
@@ -144,6 +150,40 @@ class devsperTUI(App[None]):
         except Exception as err:
             msg = str(err)
             self.call_from_thread(lambda: self._on_swarm_error(msg))
+
+    def _run_mission_worker(self, prompt: str) -> None:
+        from devsper.missions import MissionRunner, MissionType
+
+        raw = (prompt or "").strip()
+        prefix, _, goal = raw.partition(" ")
+        mission_type_raw = prefix.split(":", 1)[1] if ":" in prefix else "research"
+        mission_type = MissionType(mission_type_raw)
+        runner = MissionRunner()
+        result = runner.run(goal=goal.strip(), mission_type=mission_type)
+        self._last_mission_snapshot = {
+            "mission_id": result.mission_id,
+            "goal": result.goal,
+            "dag": result.dag,
+            "quality_score": result.quality_score,
+            "iterations": result.iterations,
+            "iteration_history": result.iteration_history,
+        }
+        self._last_scheduler = None
+        self._last_reasoning_store = None
+        self.call_from_thread(lambda: self._on_mission_finished(result.output))
+
+    def _on_mission_finished(self, output: str) -> None:
+        self._run_thread = None
+        self._stop_loading_timer()
+        try:
+            rv = self._get_results_view()
+            if rv is not None and hasattr(rv, "set_loading"):
+                rv.set_loading(False)
+            if rv is not None and hasattr(rv, "set_exchange"):
+                rv.set_exchange(self._last_prompt, output)
+        except Exception:
+            pass
+        self.notify("Mission complete.", severity="information")
 
     def _on_swarm_finished(self) -> None:
         self._update_ui_after_run()

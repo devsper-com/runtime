@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-03-30
+
+### Added
+
+- **Autonomous Missions capability layer** — New `devsper.missions` package for long-horizon autonomous execution across research, coding, and experiment workflows.
+- **Mission planner and DAG generation** — Added `missions/mission_planner.py` to break goals into mission tasks, assign role agents, and define dependency graphs.
+- **Research mission workflow** — Added mission agents (`researcher_agent`, `reviewer_agent`, `writer_agent`, `editor_agent`) and end-to-end flow: research → critique → improve → finalize.
+- **Coding mission workflow** — Added mission agents (`architect_agent`, `coder_agent`, `tester_agent`, `debugger_agent`, `docs_agent`) and end-to-end flow: design → code → test → fix → document.
+- **Iteration engine** — Added `missions/iteration_loop.py` for quality-threshold-driven iterative execution with critique/improvement cycles.
+- **Mission memory** — Added `missions/mission_memory.py` to persist research findings, decisions, and experiment artifacts per mission.
+- **Long-running mission support** — Added checkpointing/resume support in `missions/mission_runner.py` plus HITL task-gating callback support.
+- **Mission UI** — Added dashboard `MissionView` and TUI mission execution path (`mission:research ...`, `mission:coding ...`, `mission:experiment ...`) to show goal, DAG, and iteration progress.
+
+### Changed
+
+- **SDK surface** — Exported `MissionRunner` from `devsper` package root for straightforward mission execution from Python.
+- **Testing** — Added runtime tests for mission DAG planning and checkpoint creation.
+
 ## [2.2.0] — 2026-03-28
 
 ### Added
