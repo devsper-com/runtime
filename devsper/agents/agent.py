@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from devsper.types.task import Task, TaskStatus
@@ -14,7 +14,6 @@ from devsper.utils.models import generate
 from devsper.events import (
     ClarificationField,
     ClarificationRequest,
-    ClarificationResponse,
 )
 
 log = logging.getLogger(__name__)
@@ -23,6 +22,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class AgentRequest:
     """Serializable input for Agent.run. All context comes in via this object."""
+
     task: Task
     memory_context: str
     tools: list[str]  # tool names only
@@ -31,7 +31,9 @@ class AgentRequest:
     prefetch_used: bool
     # Distributed tool protocol: controller runs tools, worker sends tool_calls and receives tool_results.
     tool_results: list[dict] | None = None  # [{"name": str, "result": str}, ...]
-    distributed_tools: bool = False  # if True, return tool_calls in response instead of running locally
+    distributed_tools: bool = (
+        False  # if True, return tool_calls in response instead of running locally
+    )
 
     def to_dict(self) -> dict:
         out = {
@@ -68,6 +70,7 @@ class AgentRequest:
 @dataclass
 class AgentResponse:
     """Serializable output from Agent.run."""
+
     task_id: str
     result: str
     tools_called: list[str]
@@ -120,7 +123,10 @@ class AgentResponse:
             tool_calls=tc,
         )
 
-BROADCAST_PREFIX = re.compile(r"^\s*BROADCAST:\s*(.+?)(?=\n\n|\n[A-Z]|\Z)", re.DOTALL | re.IGNORECASE)
+
+BROADCAST_PREFIX = re.compile(
+    r"^\s*BROADCAST:\s*(.+?)(?=\n\n|\n[A-Z]|\Z)", re.DOTALL | re.IGNORECASE
+)
 
 PROMPT_TEMPLATE = """{role_prefix}
 
@@ -129,7 +135,10 @@ Task:
 {memory_section}
 {message_bus_section}
 
-Produce the best possible output. Output only the requested content; do not describe your role or other projects."""
+Produce the best possible output. Output only the requested content; do not describe your role or other projects.
+
+If user input is required, state exactly what information is missing.
+"""
 
 PROMPT_TEMPLATE_WITH_TOOLS = """{role_prefix} You may use tools.
 
@@ -152,6 +161,12 @@ When the task requires listing files, reading/writing files, or running commands
 You are in an automated workflow. Do not ask the user for their OS, environment, or to specify paths—use the task description and call tools with the paths/data given there.
 
 If you do not need a tool, respond with your final answer only (no TOOL: line).
+
+If you need user input before continuing, call this tool exactly:
+TOOL: hitl.request
+INPUT: {{"context":"one sentence reason","priority":1,"timeout_seconds":120,"fields":[{{"type":"mcq","question":"Select one option","options":["Option A","Option B"],"default":null,"required":true}}]}}
+
+Do not ask free-form clarification questions in plain text. Use `hitl.request`.
 """
 
 BROADCAST_INSTRUCTION = """
@@ -172,6 +187,9 @@ class ClarificationDetector:
         r"(could|can|would) you (please )?(provide|share|tell|give|confirm|specify)",
         r"to (proceed|continue|help you), (i need|please provide)",
         r"answer these (quick )?questions",
+        r"please choose",
+        r"choose one of",
+        r"which path",
         r"^\d+\)\s+.+",  # numbered list of questions
         r"before i (can |)(proceed|start|begin|continue)",
     ]
@@ -181,7 +199,101 @@ class ClarificationDetector:
         r"\(choose one\)",
         r"select one of",
         r"options?:.*\n.*-",
+        # A) / B) / Option A — / Option B: style letter choices
+        r"(?m)^\s*(?:[0-9a-fA-F-]{4,}\s*:\s*)?(?:Option\s+)?[A-D]\s*(?:\)|:|\.|\u2014|\u2013|\u2212|-)\s+.+",
     ]
+
+    def _parse_hitl_request_directive(self, text: str) -> ClarificationRequest | None:
+        """
+        Parse a deterministic HITL directive line:
+
+            HITL_REQUEST: { ...json... }
+
+        Returns a ClarificationRequest if parsing/validation succeeds, else None
+        (callers fall back to regex detection).
+        """
+
+        token = "HITL_REQUEST:"
+        pos = (text or "").find(token)
+        if pos < 0:
+            return None
+
+        # Extract JSON starting at the first '{' after the token. We use raw_decode
+        # to allow trailing characters after the JSON block.
+        after = text[pos + len(token) :]
+        brace_pos = after.find("{")
+        if brace_pos < 0:
+            return None
+
+        decoder = json.JSONDecoder()
+        try:
+            data, _end = decoder.raw_decode(after[brace_pos:])
+        except Exception:
+            return None
+
+        if not isinstance(data, dict):
+            return None
+
+        fields_raw = data.get("fields") or []
+        if not isinstance(fields_raw, list) or not fields_raw:
+            return None
+
+        fields: list[ClarificationField] = []
+        for f in fields_raw:
+            if not isinstance(f, dict):
+                return None
+            f_type = f.get("type")
+            q = f.get("question")
+            if not isinstance(f_type, str) or not isinstance(q, str):
+                return None
+            options = f.get("options")
+            if options is None:
+                options_val = None
+            elif isinstance(options, list):
+                options_val = [str(x) for x in options]
+            else:
+                options_val = None
+
+            default_val = f.get("default")
+            default_str = None if default_val is None else str(default_val)
+            required_val = f.get("required", True)
+            required_bool = bool(required_val)
+
+            fields.append(
+                ClarificationField(
+                    type=f_type,  # type: ignore[arg-type]
+                    question=q,
+                    options=options_val,
+                    default=default_str,
+                    required=required_bool,
+                )
+            )
+
+        context = data.get("context")
+        context_str = context if isinstance(context, str) else self._extract_context(text)
+        if not context_str:
+            context_str = ""
+
+        priority_raw = data.get("priority", 1)
+        timeout_raw = data.get("timeout_seconds", data.get("timeout", 120))
+        try:
+            priority = int(priority_raw)
+        except Exception:
+            priority = 1
+        try:
+            timeout_seconds = int(timeout_raw)
+        except Exception:
+            timeout_seconds = 120
+
+        return ClarificationRequest(
+            request_id=str(uuid.uuid4()),
+            task_id="",  # filled by caller
+            agent_role="",  # filled by caller
+            fields=fields,
+            context=context_str,
+            priority=priority,
+            timeout_seconds=timeout_seconds,
+        )
 
     def detect(self, text: str) -> ClarificationRequest | None:
         """
@@ -190,6 +302,12 @@ class ClarificationDetector:
         """
         if not (text or "").strip():
             return None
+
+        # Primary path: deterministic HITL directive emitted by the model.
+        directive = self._parse_hitl_request_directive(text)
+        if directive is not None:
+            return directive
+
         ask_score = sum(
             1
             for p in self.ASK_PATTERNS
@@ -197,7 +315,10 @@ class ClarificationDetector:
         )
         if ask_score < 2:
             # Allow explicit structured MCQ blocks even if only one ASK pattern matched.
-            if any(re.search(p, text, re.IGNORECASE | re.MULTILINE) for p in self.MCQ_PATTERNS):
+            if any(
+                re.search(p, text, re.IGNORECASE | re.MULTILINE)
+                for p in self.MCQ_PATTERNS
+            ):
                 pass
             # Single yes/no question: allow with 1 pattern if we parse a confirm
             elif not re.search(r"\(yes/no\)|\(y/n\)", text, re.IGNORECASE):
@@ -234,6 +355,56 @@ class ClarificationDetector:
                     )
                 )
                 return fields
+
+        # Lettered choices like:
+        # A) Upload / point to a dataset you already have
+        # ...
+        # B) I collect public-source data for you
+        letter_opt_re = re.compile(
+            r"(?m)^\s*(?:[0-9a-fA-F-]{4,}\s*:\s*)?(?:Option\s+)?([A-D])\s*(?:\)|:|\.|\u2014|\u2013|\u2212|-)\s*(.*)$",
+            flags=re.IGNORECASE,
+        )
+        matches = list(letter_opt_re.finditer(text))
+        if len(matches) >= 2:
+            # Build each option from the start line through just before the next option start.
+            opts: list[str] = []
+            letters: list[str] = []
+            for i, m in enumerate(matches):
+                letters.append((m.group(1) or "").upper())
+                start_to_next = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+                raw = text[m.end() : start_to_next].strip()
+                first_line_tail = (m.group(2) or "").strip()
+                full = (first_line_tail + " " + raw).strip()
+                full = re.sub(r"\s+", " ", full)
+                if full:
+                    opts.append(full)
+
+            if len(opts) >= 2:
+                # Try to extract a reasonable question; fall back to a generic one.
+                question = "Select one option"
+                m_q = re.search(
+                    r"(?is)(choose one of the two paths[^:\n]*|which path[^:\n]*|choose one[^:\n]*)",
+                    text,
+                )
+                if m_q:
+                    question = m_q.group(0).strip()
+                else:
+                    # Common phrasing from existing prompts
+                    m_q2 = re.search(r"(?is)tell me which path[^.\n]*", text)
+                    if m_q2:
+                        question = m_q2.group(0).strip()
+                if len(question) > 5:
+                    fields.append(
+                        ClarificationField(
+                            type="mcq",
+                            question=question[:500],
+                            options=opts[:4],  # UI supports A-D; keep consistent
+                            default=None,
+                            required=True,
+                        )
+                    )
+                    return fields
+
         # Split on numbered items: "1)", "2)", etc.
         items = re.split(r"\n\d+\)", text)
         for item in items[1:]:
@@ -281,17 +452,20 @@ INPUT_PREFIX = re.compile(r"INPUT:\s*", re.IGNORECASE)
 def _format_tools_section(tools: list | None = None) -> str:
     if tools is None:
         from devsper.tools.registry import list_tools
+
         tools = list_tools()
     lines = []
     for t in tools:
+        schema = getattr(t, "input_schema", None) or getattr(t, "schema", {}) or {}
         lines.append(f"- {t.name}: {t.description}")
-        lines.append(f"  input_schema: {json.dumps(t.input_schema)}")
+        lines.append(f"  input_schema: {json.dumps(schema)}")
     return "\n".join(lines)
 
 
 def _get_tools_by_names(names: list[str]) -> list:
     """Resolve tool names to tool objects from registry."""
     from devsper.tools.registry import get
+
     out = []
     for n in names:
         t = get(n)
@@ -399,7 +573,10 @@ class Agent:
         self.store_result_to_memory = store_result_to_memory
         self.reasoning_store = reasoning_store
         self.user_task = user_task
-        self.parallel_tools = parallel_tools and os.environ.get("DEVSPER_DISABLE_PARALLEL_TOOLS", "").strip() != "1"
+        self.parallel_tools = (
+            parallel_tools
+            and os.environ.get("DEVSPER_DISABLE_PARALLEL_TOOLS", "").strip() != "1"
+        )
         self.message_bus = message_bus
         self.audit_logger = audit_logger
         self.audit_run_id = audit_run_id or ""
@@ -415,6 +592,7 @@ class Agent:
         ctx = attach_memory_context(
             getattr(self.memory_router, "store", None) if self.memory_router else None,
             self.memory_namespace,
+            getattr(self.event_log, "run_id", None),
         )
         try:
             self._emit(events.AGENT_STARTED, {"task_id": task_id})
@@ -422,7 +600,10 @@ class Agent:
 
             memory_section = ""
             if request.memory_context:
-                memory_section = "\n\nRELEVANT MEMORY\n(previous research notes etc.)\n\n" + request.memory_context
+                memory_section = (
+                    "\n\nRELEVANT MEMORY\n(previous research notes etc.)\n\n"
+                    + request.memory_context
+                )
 
             if self.use_tools and request.tools:
                 tools_objs = _get_tools_by_names(request.tools)
@@ -457,24 +638,50 @@ class Agent:
 
             # Clarification: detect ask-for-input and optionally block for user response
             requester = getattr(self, "clarification_requester", None)
-            if requester is not None:
+            clarification = None
+            # Strict protocol for tool-enabled runs: HITL must be expressed via
+            # deterministic `hitl.request` tool call.
+            if not (self.use_tools and "hitl.request" in (request.tools or [])):
                 detector = ClarificationDetector()
                 clarification = detector.detect(text)
-                if clarification is not None:
-                    clarification.task_id = request.task.id
-                    clarification.agent_role = (
-                        getattr(request.task, "role", None) or "agent"
-                    )
+
+            if clarification is not None:
+                clarification.task_id = request.task.id
+                clarification.agent_role = (
+                    getattr(request.task, "role", None) or "agent"
+                )
+                if requester is not None:
                     response = requester.request_clarification(clarification)
                     if response.skipped:
                         return self._run_without_clarification(request)
-                    enriched_task = self._enrich_task(
-                        request.task, response.answers
-                    )
+                    enriched_task = self._enrich_task(request.task, response.answers)
                     new_request = self.build_request(enriched_task)
                     return self.run(new_request)
+                else:
+                    duration = time.perf_counter() - t0
+                    self._emit(
+                        events.TASK_FAILED,
+                        {
+                            "task_id": task_id,
+                            "error": f"Human-in-the-Loop required: {clarification.question}",
+                        },
+                    )
+                    return AgentResponse(
+                        task_id=task_id,
+                        result=text,
+                        tools_called=tools_called,
+                        broadcasts=broadcasts,
+                        tokens_used=None,
+                        duration_seconds=duration,
+                        error=f"Human-in-the-Loop required: {clarification.question}",
+                        success=False,
+                    )
 
-            if self.store_result_to_memory and text and getattr(self.memory_router, "store", None):
+            if (
+                self.store_result_to_memory
+                and text
+                and getattr(self.memory_router, "store", None)
+            ):
                 self._store_result_to_memory(request.task, text)
             if self.reasoning_store and text:
                 try:
@@ -483,7 +690,10 @@ class Agent:
                         task_id=task_id,
                         content=text[:10000],
                     )
-                    self._emit(events.REASONING_NODE_ADDED, {"node_id": node.id, "task_id": task_id})
+                    self._emit(
+                        events.REASONING_NODE_ADDED,
+                        {"node_id": node.id, "task_id": task_id},
+                    )
                 except Exception:
                     pass
             self._emit(events.TASK_COMPLETED, {"task_id": task_id})
@@ -548,9 +758,16 @@ class Agent:
         if message_bus_section:
             memory_section = (memory_section + "\n\n" + message_bus_section).strip()
         from devsper.agents.roles import get_role_config
+
         role_config = get_role_config(getattr(task, "role", None))
-        broadcast_instruction = BROADCAST_INSTRUCTION if (self.message_bus and message_bus_section) else ""
-        system_prompt = role_config.prompt_prefix + broadcast_instruction if broadcast_instruction else role_config.prompt_prefix
+        broadcast_instruction = (
+            BROADCAST_INSTRUCTION if (self.message_bus and message_bus_section) else ""
+        )
+        system_prompt = (
+            role_config.prompt_prefix + broadcast_instruction
+            if broadcast_instruction
+            else role_config.prompt_prefix
+        )
         tools_names: list[str] = []
         if self.use_tools:
             if prefetch_result and getattr(prefetch_result, "tools", None):
@@ -559,6 +776,7 @@ class Agent:
                 try:
                     from devsper.tools.selector import get_tools_for_task
                     from devsper.tools.scoring import get_default_score_store
+
                     score_store = get_default_score_store()
                 except Exception:
                     score_store = None
@@ -568,6 +786,14 @@ class Agent:
                     score_store=score_store,
                 )
                 tools_names = [t.name for t in tools]
+            if getattr(self, "clarification_requester", None) is not None:
+                # Ensure synthetic tool is registered in process before use.
+                try:
+                    import devsper.tools.hitl_request  # noqa: F401
+                except Exception:
+                    pass
+                if "hitl.request" not in tools_names:
+                    tools_names.append("hitl.request")
         model = model_override if model_override else self.model_name
         return AgentRequest(
             task=task,
@@ -596,7 +822,9 @@ class Agent:
         prefetch_result=None,
     ) -> str:
         """Backward-compat: build AgentRequest from task and prefetch, run, mutate task, return result."""
-        request = self.build_request(task, model_override=model_override, prefetch_result=prefetch_result)
+        request = self.build_request(
+            task, model_override=model_override, prefetch_result=prefetch_result
+        )
         try:
             # Preferred: Agent.run(AgentRequest)
             response = self.run(request)
@@ -674,7 +902,9 @@ class Agent:
         new_request = self.build_request(task)
         return self.run(new_request)
 
-    def _strip_broadcast_and_collect(self, task_id: str, text: str) -> tuple[str, list[str]]:
+    def _strip_broadcast_and_collect(
+        self, task_id: str, text: str
+    ) -> tuple[str, list[str]]:
         """If text starts with BROADCAST:, optionally emit to message_bus, strip; return (rest, list of findings)."""
         collected: list[str] = []
         rest = text
@@ -686,7 +916,7 @@ class Agent:
             collected.append(finding)
             if self.message_bus:
                 self.message_bus.broadcast_sync(task_id, finding, tags=[])
-            rest = rest[m.end():].lstrip()
+            rest = rest[m.end() :].lstrip()
         return (rest, collected)
 
     def _strip_broadcast_and_emit(self, task: Task, text: str) -> str:
@@ -750,7 +980,7 @@ class Agent:
             tool_calls = _parse_all_tool_calls(response)
             if not tool_calls:
                 return (response.strip(), tools_called, None)
-            for (tool_name, _) in tool_calls:
+            for tool_name, _ in tool_calls:
                 tools_called.append(tool_name)
             if distributed:
                 return (
@@ -758,13 +988,37 @@ class Agent:
                     tools_called,
                     [{"name": n, "arguments": a} for n, a in tool_calls],
                 )
+            has_hitl_request = any(n == "hitl.request" for n, _ in tool_calls)
+            if has_hitl_request:
+                # HITL is blocking and ordering-sensitive; run sequentially.
+                conversation.append(f"Response:\n{response}")
+                for tool_name, tool_args in tool_calls:
+                    if tool_name == "hitl.request":
+                        result = self._run_hitl_tool_call(request, tool_args)
+                    else:
+                        result = run_tool(tool_name, tool_args, task_type=task_type)
+                    self._emit_tool_called_audit(task.id, tool_name, result)
+                    self._emit(
+                        events.TOOL_CALLED,
+                        {
+                            "task_id": task.id,
+                            "tool": tool_name,
+                            "result_preview": (result or "")[:200],
+                        },
+                    )
+                    conversation.append(f"Tool result ({tool_name}):\n{result or ''}")
+                continue
             if len(tool_calls) == 1 or not self.parallel_tools:
                 tool_name, tool_args = tool_calls[0]
                 result = run_tool(tool_name, tool_args, task_type=task_type)
                 self._emit_tool_called_audit(task.id, tool_name, result)
                 self._emit(
                     events.TOOL_CALLED,
-                    {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
+                    {
+                        "task_id": task.id,
+                        "tool": tool_name,
+                        "result_preview": (result or "")[:200],
+                    },
                 )
                 conversation.append(f"Response:\n{response}")
                 conversation.append(f"Tool result ({tool_name}):\n{result or ''}")
@@ -775,10 +1029,18 @@ class Agent:
                 self._emit_tool_called_audit(task.id, tool_name, result)
                 self._emit(
                     events.TOOL_CALLED,
-                    {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
+                    {
+                        "task_id": task.id,
+                        "tool": tool_name,
+                        "result_preview": (result or "")[:200],
+                    },
                 )
                 conversation.append(f"Tool result ({tool_name}):\n{result or ''}")
-        return (conversation[-1].strip() or "Max tool iterations reached.", tools_called, None)
+        return (
+            conversation[-1].strip() or "Max tool iterations reached.",
+            tools_called,
+            None,
+        )
 
     def _run_with_tools(
         self,
@@ -801,6 +1063,7 @@ class Agent:
             score_store = None
             try:
                 from devsper.tools.scoring import get_default_score_store
+
                 score_store = get_default_score_store()
             except Exception:
                 score_store = None
@@ -824,13 +1087,44 @@ class Agent:
             tool_calls = _parse_all_tool_calls(response)
             if not tool_calls:
                 return response.strip()
+            has_hitl_request = any(n == "hitl.request" for n, _ in tool_calls)
+            if has_hitl_request:
+                conversation.append(f"Response:\n{response}")
+                req = AgentRequest(
+                    task=task,
+                    memory_context=memory_section,
+                    tools=[t.name for t in tools],
+                    model=model,
+                    system_prompt=role_prefix,
+                    prefetch_used=False,
+                )
+                for tool_name, tool_args in tool_calls:
+                    if tool_name == "hitl.request":
+                        result = self._run_hitl_tool_call(req, tool_args)
+                    else:
+                        result = run_tool(tool_name, tool_args, task_type=task_type)
+                    self._emit_tool_called_audit(task.id, tool_name, result)
+                    self._emit(
+                        events.TOOL_CALLED,
+                        {
+                            "task_id": task.id,
+                            "tool": tool_name,
+                            "result_preview": (result or "")[:200],
+                        },
+                    )
+                    conversation.append(f"Tool result ({tool_name}):\n{result or ''}")
+                continue
             if len(tool_calls) == 1 or not self.parallel_tools:
                 tool_name, tool_args = tool_calls[0]
                 result = run_tool(tool_name, tool_args, task_type=task_type)
                 self._emit_tool_called_audit(task.id, tool_name, result)
                 self._emit(
                     events.TOOL_CALLED,
-                    {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
+                    {
+                        "task_id": task.id,
+                        "tool": tool_name,
+                        "result_preview": (result or "")[:200],
+                    },
                 )
                 conversation.append(f"Response:\n{response}")
                 conversation.append(f"Tool result ({tool_name}):\n{result or ''}")
@@ -841,7 +1135,11 @@ class Agent:
                 self._emit_tool_called_audit(task.id, tool_name, result)
                 self._emit(
                     events.TOOL_CALLED,
-                    {"task_id": task.id, "tool": tool_name, "result_preview": (result or "")[:200]},
+                    {
+                        "task_id": task.id,
+                        "tool": tool_name,
+                        "result_preview": (result or "")[:200],
+                    },
                 )
                 conversation.append(f"Tool result ({tool_name}):\n{result or ''}")
         return conversation[-1].strip() or "Max tool iterations reached."
@@ -854,15 +1152,19 @@ class Agent:
     ) -> list[str]:
         """Run multiple tool calls in parallel (sync entry point)."""
         from devsper.tools.tool_runner import run_tool
+
         loop = asyncio.new_event_loop()
         try:
+
             async def run_one(name: str, args: dict) -> str:
                 return await loop.run_in_executor(
                     None, lambda n=name, a=args: run_tool(n, a, task_type=task_type)
                 )
+
             async def run_all() -> list[str]:
                 tasks = [run_one(name, args) for name, args in tool_calls]
                 return list(await asyncio.gather(*tasks, return_exceptions=True))
+
             raw = loop.run_until_complete(run_all())
             out: list[str] = []
             for r in raw:
@@ -874,11 +1176,66 @@ class Agent:
         finally:
             loop.close()
 
-    def _emit_tool_called_audit(self, task_id: str, tool_name: str, result: str) -> None:
+    def _run_hitl_tool_call(self, request: AgentRequest, tool_args: dict) -> str:
+        requester = getattr(self, "clarification_requester", None)
+        if requester is None:
+            return json.dumps({"error": "hitl requester unavailable"})
+
+        fields_raw = tool_args.get("fields") or []
+        if not isinstance(fields_raw, list) or not fields_raw:
+            return json.dumps({"error": "hitl.request requires fields[]"})
+
+        fields: list[ClarificationField] = []
+        for f in fields_raw:
+            if not isinstance(f, dict):
+                continue
+            f_type = str(f.get("type") or "text")
+            q = str(f.get("question") or "").strip()
+            if not q:
+                continue
+            opts_raw = f.get("options")
+            opts = [str(x) for x in opts_raw] if isinstance(opts_raw, list) else None
+            default_val = f.get("default")
+            default_str = None if default_val is None else str(default_val)
+            fields.append(
+                ClarificationField(
+                    type=f_type,  # type: ignore[arg-type]
+                    question=q,
+                    options=opts,
+                    default=default_str,
+                    required=bool(f.get("required", True)),
+                )
+            )
+
+        if not fields:
+            return json.dumps({"error": "hitl.request has no valid fields"})
+
+        req = ClarificationRequest(
+            request_id=str(uuid.uuid4()),
+            task_id=request.task.id,
+            agent_role=getattr(request.task, "role", None) or "agent",
+            fields=fields,
+            context=str(tool_args.get("context") or "Need user input"),
+            priority=int(tool_args.get("priority", 1)),
+            timeout_seconds=int(tool_args.get("timeout_seconds", 120)),
+        )
+        resp = requester.request_clarification(req)
+        return json.dumps(
+            {
+                "request_id": req.request_id,
+                "skipped": bool(resp.skipped),
+                "answers": resp.answers or {},
+            }
+        )
+
+    def _emit_tool_called_audit(
+        self, task_id: str, tool_name: str, result: str
+    ) -> None:
         if not self.audit_logger or not self.audit_run_id:
             return
         try:
             from devsper.audit.logger import make_audit_record
+
             rec = make_audit_record(
                 run_id=self.audit_run_id,
                 task_id=task_id,
@@ -894,5 +1251,7 @@ class Agent:
 
     def _emit(self, event_type: events, payload: dict) -> None:
         self.event_log.append_event(
-            Event(timestamp=datetime.now(timezone.utc), type=event_type, payload=payload)
+            Event(
+                timestamp=datetime.now(timezone.utc), type=event_type, payload=payload
+            )
         )

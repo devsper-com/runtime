@@ -13,7 +13,9 @@ class BaseProvider(ABC):
     """Common interface for OpenAI, Anthropic, Gemini, GitHub, and mock."""
 
     @abstractmethod
-    def generate(self, model: str, prompt: str, stream: bool = False) -> str | Iterator[str]:
+    def generate(
+        self, model: str, prompt: str, stream: bool = False
+    ) -> str | Iterator[str]:
         """Return model output (str or iterator of chunks when stream=True)."""
         ...
 
@@ -50,7 +52,7 @@ def _mock_agent_response(prompt: str) -> str:
         rest = prompt[task_start:].strip()
         first_line = rest.split("\n")[0].strip()[:100]
         return (
-            f"[Mock] Summary for: {first_line}\n\n"
+            f"Summary for: {first_line}\n\n"
             "Swarm intelligence is collective behavior that emerges from many simple agents "
             "following local rules (e.g. ants, bees, flocks). No central controller is needed; "
             "coordination arises from stigmergy, feedback, and self-organization."
@@ -61,7 +63,9 @@ def _mock_agent_response(prompt: str) -> str:
 class MockProvider(BaseProvider):
     """In-memory provider for tests and default stub. No API key required."""
 
-    def generate(self, model: str, prompt: str, stream: bool = False) -> str | Iterator[str]:
+    def generate(
+        self, model: str, prompt: str, stream: bool = False
+    ) -> str | Iterator[str]:
         if "Break the following task" in prompt or "5 smaller steps" in prompt:
             text = _mock_planner_response(prompt)
         elif "You are an AI worker" in prompt or "Task:" in prompt:
@@ -69,7 +73,9 @@ class MockProvider(BaseProvider):
         else:
             text = f"Completed: {prompt[:200]}{'...' if len(prompt) > 200 else ''}"
         if stream:
+
             def _gen() -> Iterator[str]:
                 yield text
+
             return _gen()
         return text

@@ -38,9 +38,11 @@ from devsper.cluster.state_backend import StateBackend
 from devsper.cluster.router import TaskRouter
 from devsper.swarm.scheduler import Scheduler
 from devsper.runtime.clarification_manager import ClarificationManager
+from devsper.events import ClarificationRequest
 from devsper.types.task import TaskStatus as TaskStatusEnum
 from devsper.runtime.task_state import TaskStateMachine
 from devsper.tools.registry import ToolRegistry
+from devsper.core.runtime.durability import ClarificationStore, RunStateStore
 
 log = logging.getLogger(__name__)
 
@@ -128,6 +130,9 @@ class ControllerNode:
         self._run_view: object | None = None
         self._state: TaskStateMachine | None = None
         self._dispatch_wakeup = asyncio.Event()
+        self._pending_clarifications: dict[str, dict] = {}
+        self._clarification_store = ClarificationStore()
+        self._run_state_store = RunStateStore()
 
     async def start(self) -> None:
         await self.registry.register(self.node_info)
@@ -217,6 +222,13 @@ class ControllerNode:
             return
         # Transition task to WAITING while prompt is active.
         try:
+            req_id = getattr(request, "request_id", "") or ""
+            if req_id:
+                self._pending_clarifications[req_id] = {
+                    "request": request.to_dict() if hasattr(request, "to_dict") else {},
+                    "node_id": node_id,
+                }
+                await self._save_durable_state()
             task_id = getattr(request, "task_id", "") or ""
             if task_id and self._state is not None:
                 self._state.mark_waiting(task_id)
@@ -239,13 +251,49 @@ class ControllerNode:
             await self.bus.publish_clarification_response(self.run_id, response)
         except Exception:
             pass
+        try:
+            req_id = getattr(response, "request_id", "") or ""
+            if req_id:
+                self._pending_clarifications.pop(req_id, None)
+                await self._save_durable_state()
+        except Exception:
+            pass
         # Wake dispatcher (new context may make task runnable again).
         try:
             task_id = getattr(request, "task_id", "") or ""
             if task_id and self._state is not None:
-                self._state.mark_running(task_id, worker_id=node_id)
+                # If the original worker crashed during the prompt, do not
+                # assume it is alive. Requeue to PENDING so any worker can
+                # pick up the task again.
+                worker_alive = False
+                try:
+                    stats = self._worker_stats.get(node_id) if node_id else None
+                    last_seen = stats.get("last_seen") if isinstance(stats, dict) else None
+                    if last_seen:
+                        now = datetime.now(timezone.utc)
+                        try:
+                            if hasattr(last_seen, "tzinfo"):
+                                dt = last_seen
+                            else:
+                                dt = datetime.fromisoformat(str(last_seen).replace("Z", "+00:00"))
+                            worker_alive = (now - dt).total_seconds() <= 30
+                        except Exception:
+                            worker_alive = False
+                except Exception:
+                    worker_alive = False
+
+                if worker_alive:
+                    self._state.mark_running(task_id, worker_id=node_id)
+                else:
+                    self._state.requeue(task_id)
+                    try:
+                        self.scheduler.set_task_status(task_id, TaskStatusEnum.PENDING)
+                    except Exception:
+                        pass
+
             if task_id and self._run_view is not None:
-                getattr(self._run_view, "on_task_status_changed")(task_id, "running", node_id)
+                status = "running" if self._worker_stats.get(node_id) else "pending"
+                getattr(self._run_view, "on_task_status_changed")(task_id, status, node_id)
         except Exception:
             pass
         self._dispatch_wakeup.set()
@@ -321,6 +369,10 @@ class ControllerNode:
                             self._state.mark_failed(tid, (getattr(t, "error", None) or "") or "")
                 except Exception:
                     log.warning("Failed to rebuild state machine after restore", exc_info=True)
+                try:
+                    await self._restore_durable_state(snapshot)
+                except Exception:
+                    log.warning("Failed to restore durable state", exc_info=True)
             else:
                 # Stale snapshot from a different run (e.g. new prompt); discard it
                 await self.state_backend.delete_snapshot(self.run_id)
@@ -573,8 +625,7 @@ class ControllerNode:
         while self._is_leader:
             await asyncio.sleep(30)
             try:
-                snapshot = self.scheduler.snapshot()
-                await self.state_backend.save_snapshot(self.run_id, snapshot)
+                await self._save_durable_state()
             except Exception:
                 pass
 
@@ -786,10 +837,48 @@ class ControllerNode:
             )
         self._dispatch_wakeup.set()
         try:
-            snapshot = self.scheduler.snapshot()
-            await self.state_backend.save_snapshot(self.run_id, snapshot)
+            await self._save_durable_state()
         except Exception:
             pass
+
+    def _build_durable_state(self) -> dict:
+        waiting_task_ids: list[str] = []
+        if self._state is not None:
+            try:
+                waiting_task_ids = [
+                    tid
+                    for tid in self._state.all_task_ids()
+                    if str(self._state.status_of(tid)) in ("TaskRunStatus.WAITING", "WAITING")
+                ]
+            except Exception:
+                waiting_task_ids = []
+        return {
+            "pause_state": {"waiting_task_ids": waiting_task_ids},
+            "active_assignments": {"pending_claims": dict(self._pending_claims)},
+        }
+
+    async def _save_durable_state(self) -> None:
+        snapshot = self.scheduler.snapshot()
+        self._clarification_store.save(snapshot, self._pending_clarifications)
+        self._run_state_store.save(snapshot, self._build_durable_state())
+        await self.state_backend.save_snapshot(self.run_id, snapshot)
+
+    async def _restore_durable_state(self, snapshot: dict) -> None:
+        pending = self._clarification_store.load(snapshot)
+        for req_id, item in pending.items():
+            if req_id in self._pending_clarifications:
+                continue
+            req_raw = (item or {}).get("request") if isinstance(item, dict) else {}
+            node_id = (item or {}).get("node_id", "restored") if isinstance(item, dict) else "restored"
+            try:
+                req = ClarificationRequest.from_dict(req_raw) if isinstance(req_raw, dict) else None
+            except Exception:
+                req = None
+            if req is None:
+                continue
+            self._pending_clarifications[req_id] = {"request": req.to_dict(), "node_id": node_id}
+            # Re-queue unresolved clarification after controller restart.
+            asyncio.create_task(self._handle_one_clarification(request=req, node_id=node_id))
 
     async def _on_task_failed(self, msg: object) -> None:
         payload = getattr(msg, "payload", {}) or {}

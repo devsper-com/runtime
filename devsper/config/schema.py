@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class BusConfig(BaseModel):
     """v1.9: message bus backend (memory or redis)."""
+
     backend: Literal["memory", "redis"] = "memory"
     redis_url: str = "redis://localhost:6379"
 
@@ -14,11 +15,15 @@ class BusConfig(BaseModel):
 class SwarmConfig(BaseModel):
     workers: int = 4
     adaptive_planning: bool = False
-    adaptive_execution: bool = False  # v1.2: real-time adaptation (slow/failed task handling)
+    adaptive_execution: bool = (
+        False  # v1.2: real-time adaptation (slow/failed task handling)
+    )
     max_iterations: int = 10
     speculative_execution: bool = False
     cache_enabled: bool = False
-    parallel_tools: bool = True  # v1.6: run independent tool calls in parallel within agents
+    parallel_tools: bool = (
+        True  # v1.6: run independent tool calls in parallel within agents
+    )
     # v1.7
     critic_enabled: bool = True
     critic_threshold: float = 0.70
@@ -34,6 +39,7 @@ class SwarmConfig(BaseModel):
 
 class CacheConfig(BaseModel):
     """v1.6: cache section for semantic task cache."""
+
     enabled: bool = True
     semantic: bool = False
     similarity_threshold: float = 0.92
@@ -42,7 +48,13 @@ class CacheConfig(BaseModel):
 
 class AgentsConfig(BaseModel):
     """Agent roles enabled for the swarm (research, analysis, critic, code)."""
-    roles: list[str] = ["research_agent", "code_agent", "analysis_agent", "critic_agent"]
+
+    roles: list[str] = [
+        "research_agent",
+        "code_agent",
+        "analysis_agent",
+        "critic_agent",
+    ]
 
 
 class AgentIdentityConfig(BaseModel):
@@ -56,8 +68,8 @@ class AgentIdentityConfig(BaseModel):
 
 
 class ModelsConfig(BaseModel):
-    planner: str = "mock"
-    worker: str = "mock"
+    planner: str = "gpt-4o"
+    worker: str = "gpt-4o"
     fast: str | None = None  # v1.6: simple tier (e.g. haiku/flash)
     quality: str | None = None  # v1.6: complex tier (defaults to planner)
 
@@ -73,6 +85,7 @@ class MemoryConfig(BaseModel):
 
 class KnowledgeConfig(BaseModel):
     """v1.8: knowledge-guided planning and auto-extraction."""
+
     guide_planning: bool = True
     min_confidence: float = 0.30
     auto_extract: bool = True
@@ -107,12 +120,14 @@ class ProviderAzureConfig(BaseModel):
 
 class ProviderOllamaConfig(BaseModel):
     """v2.0: Ollama local backend."""
+
     enabled: bool = False
     base_url: str = "http://localhost:11434"
 
 
 class ProviderVLLMConfig(BaseModel):
     """v2.0: vLLM OpenAI-compatible endpoint."""
+
     enabled: bool = False
     base_url: str = "http://localhost:8000"
     api_key: str = ""
@@ -120,6 +135,7 @@ class ProviderVLLMConfig(BaseModel):
 
 class ProviderCustomConfig(BaseModel):
     """v2.0: Custom OpenAI-compatible endpoint."""
+
     enabled: bool = False
     base_url: str = ""
     api_key: str = ""
@@ -136,6 +152,7 @@ class ProvidersConfig(BaseModel):
 
 class SandboxRoleConfig(BaseModel):
     """v2.0: per-role sandbox overrides."""
+
     role: str = ""
     max_tool_calls: int | None = None
     allowed_tool_categories: list[str] | None = None
@@ -145,6 +162,7 @@ class SandboxRoleConfig(BaseModel):
 
 class SandboxConfig(BaseModel):
     """v2.0: agent sandbox resource quotas."""
+
     enabled: bool = True
     default_max_memory_mb: int = 512
     default_max_cpu_seconds: int = 60
@@ -154,8 +172,11 @@ class SandboxConfig(BaseModel):
 
 class ComplianceConfig(BaseModel):
     """v2.0: PII redaction and audit."""
+
     pii_redaction: bool = True
-    pii_types: list[str] = Field(default_factory=lambda: ["EMAIL", "PHONE", "SSN", "CREDIT_CARD", "API_KEY"])
+    pii_types: list[str] = Field(
+        default_factory=lambda: ["EMAIL", "PHONE", "SSN", "CREDIT_CARD", "API_KEY"]
+    )
     gdpr_mode: bool = False
     audit_logging: bool = True
     data_residency: str = "us"
@@ -163,9 +184,12 @@ class ComplianceConfig(BaseModel):
 
 class NodesConfig(BaseModel):
     """v1.10: distributed node mode and RPC."""
+
     mode: Literal["single", "distributed"] = "single"
     role: Literal["controller", "worker", "hybrid"] = "hybrid"
-    run_id: str | None = None  # shared run_id for distributed demo; None = generate (controller) or env (worker)
+    run_id: str | None = (
+        None  # shared run_id for distributed demo; None = generate (controller) or env (worker)
+    )
     rpc_port: int = 7700
     rpc_token: str | None = None
     max_workers_per_node: int = 8
@@ -174,15 +198,22 @@ class NodesConfig(BaseModel):
     heartbeat_interval_seconds: float = 10.0
     task_claim_timeout_seconds: int = 120
     deregister_stale_workers: bool = False  # if False, workers are never removed from registry (only in-memory stats cleared)
-    claim_grant_wait_seconds: float = 15.0  # worker: max wait for TASK_CLAIM_GRANTED after claiming
-    task_execution_timeout_seconds: int = 90  # worker: fail task if agent.run exceeds this (0 = no limit)
+    claim_grant_wait_seconds: float = (
+        15.0  # worker: max wait for TASK_CLAIM_GRANTED after claiming
+    )
+    task_execution_timeout_seconds: int = (
+        90  # worker: fail task if agent.run exceeds this (0 = no limit)
+    )
 
 
 class MCPServerConfig(BaseModel):
     """v1.10.5: MCP server connection config."""
+
     name: str = ""
     transport: Literal["stdio", "http", "sse"] = "stdio"
-    command: list[str] | None = None  # stdio: e.g. ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    command: list[str] | None = (
+        None  # stdio: e.g. ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    )
     url: str | None = None  # http/sse: e.g. "http://localhost:3000"
     env: dict[str, str] = Field(default_factory=dict)
     timeout_seconds: int = 30
@@ -191,11 +222,13 @@ class MCPServerConfig(BaseModel):
 
 class MCPConfig(BaseModel):
     """v1.10.5: MCP servers from [[mcp.servers]]."""
+
     servers: list[MCPServerConfig] = Field(default_factory=list)
 
 
 class A2AAgentConfig(BaseModel):
     """v1.10.5: External A2A agent config."""
+
     name: str = ""
     url: str = ""
     auto_discover: bool = True  # fetch AgentCard on startup, register skills as tools
@@ -203,6 +236,7 @@ class A2AAgentConfig(BaseModel):
 
 class A2AConfig(BaseModel):
     """v1.10.5: A2A agents and optional server exposure."""
+
     agents: list[A2AAgentConfig] = Field(default_factory=list)
     serve: bool = False  # expose this devsper instance as A2A server
     serve_port: int = 8080
@@ -210,14 +244,18 @@ class A2AConfig(BaseModel):
 
 class HitlTriggerConfig(BaseModel):
     """v2.1: Single escalation trigger (e.g. cost_above, critic_score_below)."""
+
     type: str = "confidence_below"
     threshold: float | str = 0.5
 
 
 class HitlPolicyConfig(BaseModel):
     """v2.1: HITL policy with triggers and approvers."""
+
     name: str = ""
-    on_timeout: Literal["auto_approve", "auto_reject", "escalate_further"] = "auto_approve"
+    on_timeout: Literal["auto_approve", "auto_reject", "escalate_further"] = (
+        "auto_approve"
+    )
     timeout_seconds: int = 3600
     approvers: list[str] = Field(default_factory=list)
     triggers: list[HitlTriggerConfig] = Field(default_factory=list)
@@ -225,6 +263,7 @@ class HitlPolicyConfig(BaseModel):
 
 class HitlConfig(BaseModel):
     """v2.1: Human-in-the-loop escalation and approval."""
+
     enabled: bool = False
     policies: list[HitlPolicyConfig] = Field(default_factory=list)
 

@@ -58,6 +58,40 @@ def _field_get(field: Any, key: str, default: Any = None) -> Any:
     return getattr(field, key, default)
 
 
+def _first_pending_cloud_clarification(
+    log_path: str | None,
+    handled_ids: set[str],
+) -> dict[str, Any] | None:
+    """First clarification_requested event in log order whose request_id is not yet handled."""
+    if not log_path or not os.path.isfile(log_path):
+        return None
+    from devsper.types.event import Event
+
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = Event.from_json(line)
+                except Exception:
+                    try:
+                        ev = Event.model_validate_json(line)
+                    except Exception:
+                        continue
+                evname = getattr(ev.type, "value", str(ev.type))
+                if evname != "clarification_requested":
+                    continue
+                payload = ev.payload or {}
+                rid = (payload.get("request_id") or "").strip()
+                if rid and rid not in handled_ids:
+                    return dict(payload)
+    except Exception:
+        return None
+    return None
+
+
 class ClarificationWidget:
     """
     Pauses the live display and renders an interactive clarification prompt.
@@ -304,10 +338,17 @@ class RunViewState:
             total_cost_usd_accum: float = 0.0
             planner_done = False
             executor_done = False
+            waiting_input: set[str] = set()
             for e in events:
                 payload = e.payload or {}
                 tid = (payload.get("task_id") or "").strip()
                 ev = getattr(e.type, "value", str(e.type))
+                if ev in ("clarification_requested", "clarification_needed") and tid:
+                    waiting_input.add(tid)
+                elif ev == "clarification_received":
+                    otid = (payload.get("task_id") or "").strip()
+                    if otid:
+                        waiting_input.discard(otid)
                 if ev == "task_created" and tid:
                     task_descriptions[tid] = (payload.get("description") or "").strip()
                     task_roles[tid] = (payload.get("role") or "").strip()
@@ -316,6 +357,7 @@ class RunViewState:
                 elif ev == "task_completed" and tid:
                     completed.add(tid)
                     started.discard(tid)
+                    waiting_input.discard(tid)
                     dur = payload.get("duration_ms") or payload.get("duration_seconds")
                     if dur is not None:
                         task_duration_ms[tid] = int(dur) if isinstance(dur, (int, float)) else 0
@@ -325,6 +367,7 @@ class RunViewState:
                 elif ev == "task_failed" and tid:
                     failed.add(tid)
                     started.discard(tid)
+                    waiting_input.discard(tid)
                 elif ev in ("agent_finished") and tid and tid not in completed and tid not in failed:
                     completed.add(tid)
                     started.discard(tid)
@@ -346,7 +389,9 @@ class RunViewState:
                 desc = task_descriptions.get(tid, "")
                 role = task_roles.get(tid, "")
                 short = tid[:8] if len(tid) >= 8 else tid
-                if tid in cached:
+                if tid in waiting_input:
+                    status = "waiting_for_input"
+                elif tid in cached:
                     status = "cached"
                 elif tid in failed:
                     status = "failed"
@@ -430,6 +475,7 @@ def _render_live_layout(state: RunViewState) -> object:
     task_table = Table(show_header=False, box=None, padding=(0, 1))
     task_table.add_column("task", width=80)
     running_first = sorted(state.tasks, key=lambda t: (
+        0 if t.status == "waiting_for_input" else 1,
         0 if t.status == "running" else 1,
         1 if t.status == "pending" else 0,
         0 if t.status == "completed" else 1,
@@ -478,8 +524,13 @@ def run_live_view(
     stop_check: Callable[[], bool] | None = None,
     clarification_queue: queue.Queue | None = None,
     swarm: Any = None,
+    cloud_hitl_submit: Callable[[str, dict[str, Any], bool], None] | None = None,
 ) -> RunViewState:
-    """Run the live view until stop_check() returns True (e.g. swarm thread finished). Returns final state."""
+    """Run the live view until stop_check() returns True (e.g. swarm thread finished). Returns final state.
+
+    cloud_hitl_submit: when set (e.g. Devsper Cloud SSE runs), clarification_requested events
+    trigger an interactive prompt and POST answers to the platform API.
+    """
     from rich.live import Live
     state = RunViewState(
         run_id=run_id,
@@ -528,6 +579,7 @@ def run_live_view(
         screen=False,
         transient=False,
     ) as live:
+        handled_cloud_hitl: set[str] = set()
         while not is_finished():
             if clarification_queue is not None and swarm is not None:
                 executor = getattr(swarm, "_current_executor", None)
@@ -540,6 +592,28 @@ def run_live_view(
                         widget = ClarificationWidget(req, theme_style)
                         response = widget.render()
                         executor.receive_clarification(response)
+            if cloud_hitl_submit is not None:
+                payload = _first_pending_cloud_clarification(log_path, handled_cloud_hitl)
+                if payload:
+                    rid = (payload.get("request_id") or "").strip()
+                    if rid:
+                        handled_cloud_hitl.add(rid)
+                        try:
+                            from devsper.events import ClarificationRequest
+
+                            req = ClarificationRequest.from_dict(payload)
+                            widget = ClarificationWidget(req, theme_style)
+                            response = widget.render()
+                            cloud_hitl_submit(
+                                response.request_id,
+                                response.answers,
+                                response.skipped,
+                            )
+                        except Exception:
+                            handled_cloud_hitl.discard(rid)
+                            logging.getLogger("devsper.cli.run_view").exception(
+                                "cloud HITL prompt or submit failed"
+                            )
             time.sleep(poll_interval)
             live.update(get_renderable())
     state.finished = True

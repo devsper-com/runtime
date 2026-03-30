@@ -1,7 +1,9 @@
 import asyncio
 import os
 from datetime import datetime, timezone
+import logging
 
+from devsper.core.reporting import EventPublisher
 from devsper.types.event import Event, events
 
 
@@ -40,6 +42,14 @@ class EventLog:
         self._bus = bus
         self._run_id = run_id
         self._platform_sink = platform_sink
+        sinks = []
+        if self._bus is not None:
+            sinks.append(_BusSink(self))
+        if self._platform_sink is not None:
+            sinks.append(_PlatformSink(self._platform_sink))
+        self._publisher = EventPublisher(sinks) if sinks else None
+        self._seq = 0
+        self._log = logging.getLogger(__name__)
 
     @property
     def run_id(self) -> str:
@@ -49,17 +59,21 @@ class EventLog:
         return os.path.basename(self.log_path).replace(".jsonl", "")
 
     def append_event(self, event: Event) -> None:
+        # Assign per-run monotonic sequence for local ordering/replay hints.
+        if event.sequence_id is None:
+            self._seq += 1
+            event.sequence_id = self._seq
         with open(self.log_path, "a") as f:
             f.write(event.model_dump_json() + "\n")
-        if self._bus is not None:
-            self._publish_to_bus(event)
-        if self._platform_sink is not None:
-            try:
-                on = getattr(self._platform_sink, "on_devsper_event", None)
-                if callable(on):
-                    on(event)
-            except Exception:
-                pass
+        self._log.debug(
+            "event appended run_id=%s event_id=%s sequence_id=%s type=%s",
+            self.run_id,
+            event.event_id,
+            event.sequence_id,
+            event.type.value if hasattr(event.type, "value") else str(event.type),
+        )
+        if self._publisher is not None:
+            self._publisher.publish(event)
 
     def _publish_to_bus(self, event: Event) -> None:
         try:
@@ -106,3 +120,21 @@ class EventLog:
             self.append_event(event)
         except Exception:
             pass
+
+
+class _BusSink:
+    def __init__(self, event_log: EventLog) -> None:
+        self._event_log = event_log
+
+    def publish(self, event: Event) -> None:
+        self._event_log._publish_to_bus(event)
+
+
+class _PlatformSink:
+    def __init__(self, sink: object) -> None:
+        self._sink = sink
+
+    def publish(self, event: Event) -> None:
+        on = getattr(self._sink, "on_devsper_event", None)
+        if callable(on):
+            on(event)

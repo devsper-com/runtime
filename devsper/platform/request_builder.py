@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import random
 import time
@@ -189,6 +188,24 @@ class PlatformAPIRequestBuilder:
         data = self.get_json(f"/orgs/{self.org_slug}/runs/{run_id}")
         # API returns `result` as either a JSON object or string depending on server version.
         return data or {}
+
+    def submit_run_input(
+        self,
+        run_id: str,
+        *,
+        request_id: str,
+        answers: Mapping[str, Any] | None = None,
+        skipped: bool = False,
+    ) -> dict[str, Any] | None:
+        """POST human-in-the-loop answer; API publishes to Redis for the swarmworker."""
+        if not self.enabled():
+            raise PlatformAPIError("Platform API is not enabled (missing base_url or org_slug).")
+        body: dict[str, Any] = {
+            "request_id": request_id,
+            "answers": dict(answers or {}),
+            "skipped": bool(skipped),
+        }
+        return self.post_json(f"/orgs/{self.org_slug}/runs/{run_id}/input", json_body=body)
 
     def poll_run(
         self,

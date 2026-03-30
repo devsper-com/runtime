@@ -2,7 +2,11 @@
 
 from devsper.tools.base import Tool
 from devsper.tools.registry import register
-from devsper.memory.context import get_effective_memory_namespace, get_effective_memory_store
+from devsper.memory.context import (
+    get_effective_memory_namespace,
+    get_effective_memory_store,
+    get_effective_run_id,
+)
 from devsper.memory.memory_store import generate_memory_id
 from devsper.memory.memory_types import MemoryRecord, MemoryType
 from devsper.memory.memory_index import MemoryIndex
@@ -43,6 +47,7 @@ class StoreMemoryTool(Tool):
             content=content,
             tags=tags,
             source_task=source_task,
+            run_id=get_effective_run_id() or "",
         )
         record = index.ensure_embedding(record)
         mid = store.store(record, namespace=ns)

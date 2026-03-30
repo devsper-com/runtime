@@ -2,12 +2,7 @@
 Tests for human-in-the-loop clarification protocol: detector, widget, agent enrichment.
 """
 
-import asyncio
-import os
-import sys
 from unittest.mock import patch, MagicMock
-
-import pytest
 
 from devsper.agents.agent import ClarificationDetector
 from devsper.events import (
@@ -178,7 +173,7 @@ class TestClarificationWidget_Timeout_ReturnsSkipped:
 
 class TestClarificationWidget_NonTTY_UsesDefaults:
     def test_no_prompt_asked_when_ci(self):
-        from devsper.cli.ui.run_view import ClarificationWidget, is_interactive
+        from devsper.cli.ui.run_view import ClarificationWidget
         from devsper.cli.ui.theme import ThemeStyle
 
         req = ClarificationRequest(
@@ -236,3 +231,88 @@ class TestAgentClarify_ResumeAfterResponse:
         executor._pending_clarification_queues["r1"][0].put(response)
         executor.receive_clarification(response)
         assert scheduler.get_task("t1").status == TaskStatus.RUNNING
+
+
+class TestClarificationDetector_HITLDirective:
+    def test_parses_hitl_request_directive_to_mcq(self):
+        detector = ClarificationDetector()
+        text = (
+            "Some preface text that should be ignored.\n"
+            "HITL_REQUEST: {"
+            '"context":"Choose one option to proceed.",'
+            '"priority":1,'
+            '"timeout_seconds":120,'
+            '"fields":[{'
+            '"type":"mcq",'
+            '"question":"Pick a path:",'
+            '"options":["A) Upload / point to a dataset you already have","B) Collect public data"],'
+            '"default":null,'
+            '"required":true'
+            "}]}"
+        )
+
+        result = detector.detect(text)
+        assert result is not None
+        assert isinstance(result, ClarificationRequest)
+        assert len(result.fields) == 1
+        f0 = result.fields[0]
+        f0_type = f0.get("type") if isinstance(f0, dict) else getattr(f0, "type", None)
+        assert f0_type == "mcq"
+
+    def test_malformed_hitl_directive_falls_back_to_none(self):
+        detector = ClarificationDetector()
+        # This contains the token but invalid JSON. Regex fallback should not
+        # trigger because there is no question/options content.
+        text = "HITL_REQUEST: {not valid json}"
+        result = detector.detect(text)
+        assert result is None
+
+
+class TestAgentHITLToolProtocol:
+    def test_build_request_adds_hitl_tool_when_requester_present(self):
+        from devsper.agents.agent import Agent
+
+        task = Task(id="t-hitl-1", description="Need clarification", dependencies=[], status=TaskStatus.PENDING)
+        agent = Agent(model_name="mock", use_tools=True)
+        agent.clarification_requester = MagicMock()
+        req = agent.build_request(task)
+        assert "hitl.request" in req.tools
+
+    def test_hitl_request_tool_call_routes_to_requester(self):
+        from devsper.agents.agent import Agent, AgentRequest
+
+        task = Task(id="t-hitl-2", description="Need dataset choice", dependencies=[], status=TaskStatus.PENDING)
+        requester = MagicMock()
+        requester.request_clarification = MagicMock(
+            return_value=ClarificationResponse(
+                request_id="req-fixed",
+                answers={"Choose path": "Option B"},
+                skipped=False,
+            )
+        )
+        agent = Agent(model_name="mock", use_tools=True)
+        agent.clarification_requester = requester
+
+        first = (
+            "TOOL: hitl.request\n"
+            'INPUT: {"context":"Need path","priority":1,"timeout_seconds":120,'
+            '"fields":[{"type":"mcq","question":"Choose path","options":["Option A","Option B"],"required":true}]}\n'
+        )
+        second = "Final analysis result."
+        with patch("devsper.agents.agent.generate", side_effect=[first, second]):
+            req = AgentRequest(
+                task=task,
+                memory_context="",
+                tools=["hitl.request"],
+                model="mock",
+                system_prompt="You are a test.",
+                prefetch_used=False,
+            )
+            resp = agent.run(req)
+
+        assert requester.request_clarification.called
+        called_req = requester.request_clarification.call_args[0][0]
+        assert called_req.task_id == task.id
+        assert len(called_req.fields) == 1
+        assert resp.success is True
+        assert "Final analysis result." in (resp.result or "")

@@ -570,6 +570,7 @@ name = "devsper"
 version = "2.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "duckduckgo-search" },
     { name = "httpx" },
     { name = "keyring" },
     { name = "langchain" },
@@ -651,6 +652,7 @@ dev = [
 requires-dist = [
     { name = "anyio", marker = "extra == 'mcp'", specifier = ">=4.0" },
     { name = "docproc", marker = "extra == 'document'", specifier = ">=2.0.0" },
+    { name = "duckduckgo-search", specifier = ">=8.1.1" },
     { name = "duckduckgo-search", marker = "extra == 'research'", specifier = ">=6.0.0" },
     { name = "fastapi", marker = "extra == 'a2a'", specifier = ">=0.110" },
     { name = "fastapi", marker = "extra == 'distributed'", specifier = ">=0.110.0" },

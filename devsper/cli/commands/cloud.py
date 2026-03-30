@@ -468,34 +468,124 @@ def cmd_cloud_run(args: Any) -> int:
             )
         else:
             console.print(f"[green]Queued[/green] run_id={run_id}")
+            console.print(f"Check status: [bold]devsper cloud status {run_id}[/bold]")
+            console.print(f"View logs:    [bold]devsper cloud logs {run_id}[/bold]")
         return 0
 
-    try:
-        final = api.poll_run(
-            run_id,
-            interval_seconds=float(getattr(args, "interval", 2.0)),
-            timeout_seconds=timeout_poll,
-            terminal_statuses=("completed", "failed", "cancelled", "timeout"),
-        )
-    except TimeoutError as e:
-        console.print(f"[yellow]{e}[/yellow]")
-        return 1
-    except PlatformAPIError as e:
-        console.print(f"[red]poll failed:[/red] {e}")
-        return 1
+    use_live_view = not getattr(args, "quiet", False) and not json_out and sys.stdout.isatty()
 
-    status = str(final.get("status") or "")
-    if json_out:
-        print(
-            json.dumps({"run_id": run_id, "status": status, "raw": final}, default=str)
-        )
+    if use_live_view:
+        import threading
+        import tempfile
+        import time
+
+        with tempfile.NamedTemporaryFile("w+", suffix=".jsonl", delete=False) as f:
+            log_path = f.name
+
+        stop_event = threading.Event()
+        run_status_final = {"status": "pending"}
+
+        def stream_events():
+            import httpx
+            import json
+
+            url = f"{api.base_url}/orgs/{api.org_slug}/runs/{run_id}/stream"
+            headers = api.build_headers()
+            try:
+                with httpx.stream("GET", url, headers=headers, timeout=None) as response:
+                    if response.status_code != 200:
+                        return
+                    for line in response.iter_lines():
+                        if stop_event.is_set():
+                            break
+                        if line.startswith("data: "):
+                            data = line[6:].strip()
+                            if data:
+                                try:
+                                    json.loads(data)
+                                    with open(log_path, "a", encoding="utf-8") as out_f:
+                                        out_f.write(data + "\n")
+                                except Exception:
+                                    pass
+            except Exception:
+                pass
+
+        def check_status():
+            while not stop_event.is_set():
+                try:
+                    payload = api.get_run(run_id)
+                    status = str(payload.get("status") or "")
+                    if status in ("completed", "failed", "cancelled", "timeout"):
+                        run_status_final["status"] = status
+                        return True
+                except Exception:
+                    pass
+                time.sleep(2.0)
+            return False
+
+        t_stream = threading.Thread(target=stream_events, daemon=True)
+        t_stream.start()
+
+        from devsper.cli.ui.run_view import run_live_view, print_run_summary
+
+        def submit_cloud_hitl(request_id: str, answers: dict[str, Any], skipped: bool) -> None:
+            api.submit_run_input(
+                run_id,
+                request_id=request_id,
+                answers=answers,
+                skipped=skipped,
+            )
+
+        try:
+            state = run_live_view(
+                log_path=log_path,
+                run_id=run_id,
+                worker_count=1,
+                poll_interval=0.1,
+                stop_check=check_status,
+                clarification_queue=None,
+                swarm=None,
+                cloud_hitl_submit=submit_cloud_hitl,
+            )
+        finally:
+            stop_event.set()
+            t_stream.join(1.0)
+            try:
+                os.remove(log_path)
+            except Exception:
+                pass
+
+        final = api.get_run(run_id)
+        status = str(final.get("status") or "")
+        print_run_summary(state, final.get("result") or {})
+        return 0 if status == "completed" else 1
     else:
-        console.print(f"run_id={run_id} status={status}")
-        result = final.get("result")
-        if result is not None:
-            console.print(json.dumps(result, indent=2, default=str))
+        try:
+            final = api.poll_run(
+                run_id,
+                interval_seconds=float(getattr(args, "interval", 2.0)),
+                timeout_seconds=timeout_poll,
+                terminal_statuses=("completed", "failed", "cancelled", "timeout"),
+            )
+        except TimeoutError as e:
+            console.print(f"[yellow]{e}[/yellow]")
+            return 1
+        except PlatformAPIError as e:
+            console.print(f"[red]poll failed:[/red] {e}")
+            return 1
 
-    return 0 if status == "completed" else 1
+        status = str(final.get("status") or "")
+        if json_out:
+            print(
+                json.dumps({"run_id": run_id, "status": status, "raw": final}, default=str)
+            )
+        else:
+            console.print(f"run_id={run_id} status={status}")
+            result = final.get("result")
+            if result is not None:
+                console.print(json.dumps(result, indent=2, default=str))
+
+        return 0 if status == "completed" else 1
 
 
 def cmd_cloud_status(args: Any) -> int:
@@ -527,6 +617,59 @@ def cmd_cloud_status(args: Any) -> int:
     console.print(f"run_id={run_id} status={status}")
     if data.get("result") is not None:
         console.print(json.dumps(data.get("result"), indent=2, default=str))
+    return 0
+
+
+def cmd_cloud_respond(args: Any) -> int:
+    """POST a HITL answer for a cloud run (Redis devsper:inputs:{run_id} via platform API)."""
+    run_id = (getattr(args, "run_id", None) or "").strip()
+    if not run_id:
+        console.print("[red]run_id required.[/red]")
+        return 1
+
+    request_id = (getattr(args, "request_id", None) or "").strip()
+    if not request_id:
+        console.print("[red]--request-id is required.[/red]")
+        return 1
+
+    api = _builder_from_args(
+        getattr(args, "api_url", None),
+        getattr(args, "org", None),
+        getattr(args, "token", None),
+    )
+    if not api.enabled():
+        console.print("[red]Platform not configured.[/red]")
+        return 1
+
+    skipped = bool(getattr(args, "skipped", False))
+    answers: dict[str, Any] = {}
+    if not skipped:
+        raw = (getattr(args, "answers_json", None) or "").strip()
+        if not raw:
+            console.print("[red]Pass --answers '{\"...\": \"...\"}' or use --skipped.[/red]")
+            return 1
+        try:
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                console.print("[red]--answers must be a JSON object.[/red]")
+                return 1
+            answers = parsed
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Invalid JSON in --answers:[/red] {e}")
+            return 1
+
+    try:
+        api.submit_run_input(
+            run_id,
+            request_id=request_id,
+            answers=answers,
+            skipped=skipped,
+        )
+    except PlatformAPIError as e:
+        console.print(f"[red]submit_run_input failed:[/red] {e}")
+        return 1
+
+    console.print("[green]Response sent.[/green] The run should resume if it is waiting for input.")
     return 0
 
 

@@ -40,6 +40,7 @@ dependencies = [
     "opentelemetry-api>=1.27.0",
     "opentelemetry-sdk>=1.27.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
+    "duckduckgo-search>=8.1.1",
 ]
 
 [project.urls]
@@ -50,7 +51,6 @@ Worker = "https://github.com/devsper-com/runtime/pkgs/container/devsper-worker"
 
 [project.scripts]
 devsper = "devsper.cli:main"
-hivemind = "devsper.cli:main"  # backward compat alias
 
 [project.optional-dependencies]
 server = ["fastapi>=0.110", "uvicorn>=0.29", "sse-starlette>=2.0"]

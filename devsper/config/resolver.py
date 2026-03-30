@@ -72,7 +72,7 @@ def _infer_worker_model_from_env() -> str:
         return "claude-3-haiku-20240307"
     if os.environ.get("GOOGLE_API_KEY"):
         return "gemini-1.5-flash"
-    return "mock"
+    return "gpt-4o"
 
 
 def _infer_planner_model_from_env() -> str:
@@ -90,7 +90,7 @@ def _infer_planner_model_from_env() -> str:
         return "claude-3-haiku-20240307"
     if os.environ.get("GOOGLE_API_KEY"):
         return "gemini-1.5-flash"
-    return "mock"
+    return "gpt-4o"
 
 
 def _apply_provider_toml_to_env(toml_data: dict) -> None:
@@ -147,7 +147,9 @@ def _build_merged_raw(
             "speculative_execution": False,
             "cache_enabled": False,
         },
-        "agents": {"roles": ["research_agent", "code_agent", "analysis_agent", "critic_agent"]},
+        "agents": {
+            "roles": ["research_agent", "code_agent", "analysis_agent", "critic_agent"]
+        },
         "agent_identities": [],
         "models": {"planner": planner_default, "worker": worker_default},
         "memory": {
@@ -158,7 +160,11 @@ def _build_merged_raw(
             "platform_api_url": "",
             "platform_org_slug": "",
         },
-        "knowledge": {"guide_planning": True, "min_confidence": 0.30, "auto_extract": True},
+        "knowledge": {
+            "guide_planning": True,
+            "min_confidence": 0.30,
+            "auto_extract": True,
+        },
         "tools": {"enabled": None, "top_k": 0},
         "telemetry": {
             "enabled": True,
@@ -214,19 +220,23 @@ def _apply_env_overrides(merged: dict) -> dict:
     if os.environ.get("DEVSPER_WORKER_MODEL"):
         merged.setdefault("models", {})["worker"] = os.environ["DEVSPER_WORKER_MODEL"]
     if os.environ.get("DEVSPER_PLANNER_MODEL"):
-        merged.setdefault("models", {})["planner"] = os.environ[
-            "DEVSPER_PLANNER_MODEL"
-        ]
+        merged.setdefault("models", {})["planner"] = os.environ["DEVSPER_PLANNER_MODEL"]
     if os.environ.get("DEVSPER_EVENTS_DIR"):
         merged["events_dir"] = os.environ["DEVSPER_EVENTS_DIR"]
     if os.environ.get("DEVSPER_DATA_DIR"):
         merged["data_dir"] = os.environ["DEVSPER_DATA_DIR"]
     if os.environ.get("DEVSPER_MEMORY_BACKEND"):
-        merged.setdefault("memory", {})["backend"] = os.environ["DEVSPER_MEMORY_BACKEND"]
+        merged.setdefault("memory", {})["backend"] = os.environ[
+            "DEVSPER_MEMORY_BACKEND"
+        ]
     if os.environ.get("DEVSPER_PLATFORM_API_URL"):
-        merged.setdefault("memory", {})["platform_api_url"] = os.environ["DEVSPER_PLATFORM_API_URL"]
+        merged.setdefault("memory", {})["platform_api_url"] = os.environ[
+            "DEVSPER_PLATFORM_API_URL"
+        ]
     if os.environ.get("DEVSPER_PLATFORM_ORG"):
-        merged.setdefault("memory", {})["platform_org_slug"] = os.environ["DEVSPER_PLATFORM_ORG"]
+        merged.setdefault("memory", {})["platform_org_slug"] = os.environ[
+            "DEVSPER_PLATFORM_ORG"
+        ]
     return merged
 
 
@@ -270,7 +280,9 @@ def resolve_config(config_path: str | None = None) -> devsperConfigModel:
     mcp_servers = mcp_data.get("servers") if isinstance(mcp_data, dict) else []
     if not isinstance(mcp_servers, list):
         mcp_servers = []
-    mcp = MCPConfig(servers=[MCPServerConfig(**s) for s in mcp_servers if isinstance(s, dict)])
+    mcp = MCPConfig(
+        servers=[MCPServerConfig(**s) for s in mcp_servers if isinstance(s, dict)]
+    )
     # A2A: [[a2a.agents]] and [a2a] serve/serve_port
     a2a_data = merged.get("a2a") or {}
     a2a_agents = a2a_data.get("agents") if isinstance(a2a_data, dict) else []
@@ -278,8 +290,12 @@ def resolve_config(config_path: str | None = None) -> devsperConfigModel:
         a2a_agents = []
     a2a = A2AConfig(
         agents=[A2AAgentConfig(**a) for a in a2a_agents if isinstance(a, dict)],
-        serve=bool(a2a_data.get("serve", False)) if isinstance(a2a_data, dict) else False,
-        serve_port=int(a2a_data.get("serve_port", 8080)) if isinstance(a2a_data, dict) else 8080,
+        serve=bool(a2a_data.get("serve", False))
+        if isinstance(a2a_data, dict)
+        else False,
+        serve_port=int(a2a_data.get("serve_port", 8080))
+        if isinstance(a2a_data, dict)
+        else 8080,
     )
     providers_data = merged.get("providers") or {}
     azure_data = providers_data.get("azure") or {}
@@ -296,9 +312,13 @@ def resolve_config(config_path: str | None = None) -> devsperConfigModel:
         fallback_order = []
     providers = ProvidersConfig(
         azure=ProviderAzureConfig(**azure_data),
-        ollama=ProviderOllamaConfig(**(ollama_data if isinstance(ollama_data, dict) else {})),
+        ollama=ProviderOllamaConfig(
+            **(ollama_data if isinstance(ollama_data, dict) else {})
+        ),
         vllm=ProviderVLLMConfig(**(vllm_data if isinstance(vllm_data, dict) else {})),
-        custom=ProviderCustomConfig(**(custom_data if isinstance(custom_data, dict) else {})),
+        custom=ProviderCustomConfig(
+            **(custom_data if isinstance(custom_data, dict) else {})
+        ),
         fallback_order=fallback_order,
     )
     sandbox_data = merged.get("sandbox") or {}
@@ -306,19 +326,42 @@ def resolve_config(config_path: str | None = None) -> devsperConfigModel:
     if not isinstance(sandbox_roles, list):
         sandbox_roles = []
     sandbox = SandboxConfig(
-        enabled=bool(sandbox_data.get("enabled", True)) if isinstance(sandbox_data, dict) else True,
-        default_max_memory_mb=int(sandbox_data.get("default_max_memory_mb", 512)) if isinstance(sandbox_data, dict) else 512,
-        default_max_cpu_seconds=int(sandbox_data.get("default_max_cpu_seconds", 60)) if isinstance(sandbox_data, dict) else 60,
-        default_max_tool_calls=int(sandbox_data.get("default_max_tool_calls", 20)) if isinstance(sandbox_data, dict) else 20,
-        roles=[SandboxRoleConfig(**(r if isinstance(r, dict) else {})) for r in sandbox_roles],
+        enabled=bool(sandbox_data.get("enabled", True))
+        if isinstance(sandbox_data, dict)
+        else True,
+        default_max_memory_mb=int(sandbox_data.get("default_max_memory_mb", 512))
+        if isinstance(sandbox_data, dict)
+        else 512,
+        default_max_cpu_seconds=int(sandbox_data.get("default_max_cpu_seconds", 60))
+        if isinstance(sandbox_data, dict)
+        else 60,
+        default_max_tool_calls=int(sandbox_data.get("default_max_tool_calls", 20))
+        if isinstance(sandbox_data, dict)
+        else 20,
+        roles=[
+            SandboxRoleConfig(**(r if isinstance(r, dict) else {}))
+            for r in sandbox_roles
+        ],
     )
     compliance_data = merged.get("compliance") or {}
     compliance = ComplianceConfig(
-        pii_redaction=bool(compliance_data.get("pii_redaction", True)) if isinstance(compliance_data, dict) else True,
-        pii_types=compliance_data.get("pii_types", ["EMAIL", "PHONE", "SSN", "CREDIT_CARD", "API_KEY"]) if isinstance(compliance_data, dict) else ["EMAIL", "PHONE", "SSN", "CREDIT_CARD", "API_KEY"],
-        gdpr_mode=bool(compliance_data.get("gdpr_mode", False)) if isinstance(compliance_data, dict) else False,
-        audit_logging=bool(compliance_data.get("audit_logging", True)) if isinstance(compliance_data, dict) else True,
-        data_residency=str(compliance_data.get("data_residency", "us")) if isinstance(compliance_data, dict) else "us",
+        pii_redaction=bool(compliance_data.get("pii_redaction", True))
+        if isinstance(compliance_data, dict)
+        else True,
+        pii_types=compliance_data.get(
+            "pii_types", ["EMAIL", "PHONE", "SSN", "CREDIT_CARD", "API_KEY"]
+        )
+        if isinstance(compliance_data, dict)
+        else ["EMAIL", "PHONE", "SSN", "CREDIT_CARD", "API_KEY"],
+        gdpr_mode=bool(compliance_data.get("gdpr_mode", False))
+        if isinstance(compliance_data, dict)
+        else False,
+        audit_logging=bool(compliance_data.get("audit_logging", True))
+        if isinstance(compliance_data, dict)
+        else True,
+        data_residency=str(compliance_data.get("data_residency", "us"))
+        if isinstance(compliance_data, dict)
+        else "us",
     )
     hitl_data = merged.get("hitl") or {}
     hitl_policies = hitl_data.get("policies") if isinstance(hitl_data, dict) else []
@@ -329,7 +372,11 @@ def resolve_config(config_path: str | None = None) -> devsperConfigModel:
         if not isinstance(p, dict):
             continue
         triggers_data = p.get("triggers") or []
-        triggers = [HitlTriggerConfig(**(t if isinstance(t, dict) else {})) for t in triggers_data if isinstance(t, dict)]
+        triggers = [
+            HitlTriggerConfig(**(t if isinstance(t, dict) else {}))
+            for t in triggers_data
+            if isinstance(t, dict)
+        ]
         hitl_policy_configs.append(
             HitlPolicyConfig(
                 name=str(p.get("name", "")),
@@ -340,7 +387,9 @@ def resolve_config(config_path: str | None = None) -> devsperConfigModel:
             )
         )
     hitl = HitlConfig(
-        enabled=bool(hitl_data.get("enabled", False)) if isinstance(hitl_data, dict) else False,
+        enabled=bool(hitl_data.get("enabled", False))
+        if isinstance(hitl_data, dict)
+        else False,
         policies=hitl_policy_configs,
     )
 

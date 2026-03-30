@@ -4,19 +4,19 @@ Tool registry: register, get, and list tools by name.
 Tools register themselves when their module is imported (see each category __init__.py).
 """
 
+from devsper.core.tools.registry import ToolRegistry as CoreToolRegistry
+from devsper.core.tools.registry import get_global_registry
 from devsper.tools.base import Tool, ToolStub
-
-_tools: dict[str, Tool] = {}
 
 
 def register(tool: Tool) -> None:
     """Register a tool by name. Overwrites if the name already exists."""
-    _tools[tool.name] = tool
+    get_global_registry().register(tool)
 
 
 def get(name: str) -> Tool | None:
     """Return the tool with the given name, or None if not found."""
-    return _tools.get(name)
+    return get_global_registry().get(name)
 
 
 def get_with_mcp_fallback(name: str) -> Tool | None:
@@ -25,23 +25,17 @@ def get_with_mcp_fallback(name: str) -> Tool | None:
     look for a single MCP-style tool whose name ends with '.' + name (e.g. 'filesystem.list_dir').
     Lets agents use short names when only one such MCP tool is registered.
     """
-    t = _tools.get(name)
-    if t is not None:
-        return t
-    if "." in name:
-        return None
-    candidates = [t for t in _tools.values() if t.name.endswith("." + name)]
-    return candidates[0] if len(candidates) == 1 else None
+    return get_global_registry().get_with_suffix_fallback(name)
 
 
 def list_tools() -> list[Tool]:
     """Return all registered tools."""
-    return list(_tools.values())
+    return get_global_registry().list_tools()
 
 
 def clear() -> None:
     """Clear all registered tools (used when rebuilding registry from bus payload)."""
-    _tools.clear()
+    get_global_registry().clear()
 
 
 class ToolRegistry:
@@ -51,13 +45,13 @@ class ToolRegistry:
     """
 
     def __init__(self) -> None:
-        self._tools: dict[str, Tool] = {}
+        self._tools: CoreToolRegistry = CoreToolRegistry()
 
     def register(self, tool: Tool) -> None:
-        self._tools[tool.name] = tool
+        self._tools.register(tool)
 
     def list(self) -> list[Tool]:
-        return list(self._tools.values())
+        return self._tools.list_tools()
 
     def to_dict(self) -> dict:
         """Serialize all registered tools for transport over bus."""
@@ -71,7 +65,7 @@ class ToolRegistry:
                     "output_schema": getattr(tool, "output_schema", {}) or {},
                     "class_path": f"{tool.__class__.__module__}.{tool.__class__.__qualname__}",
                 }
-                for tool in self._tools.values()
+                for tool in self._tools.list_tools()
             ]
         }
 
@@ -112,5 +106,5 @@ class ToolRegistry:
     def install_global(self) -> None:
         """Replace process-wide registry with this registry."""
         clear()
-        for t in self._tools.values():
+        for t in self._tools.list_tools():
             register(t)

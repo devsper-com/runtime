@@ -1,6 +1,8 @@
 import json
 from datetime import datetime, timezone
 from enum import Enum
+import hashlib
+import uuid
 from pydantic import BaseModel, model_validator
 
 from devsper.types.exceptions import EventSerializationError
@@ -41,6 +43,8 @@ class events(Enum):
     TASK_REJECTED_BY_HUMAN = "task_rejected_by_human"
     # Clarification (human-in-the-loop)
     CLARIFICATION_NEEDED = "clarification_needed"
+    # Cloud/swarmworker SSE — agent blocked until user answers via platform/CLI
+    CLARIFICATION_REQUESTED = "clarification_requested"
     CLARIFICATION_RECEIVED = "clarification_received"
     RUN_MANIFEST_EMITTED = "run_manifest_emitted"
     BUDGET_WARNING = "budget_warning"
@@ -50,6 +54,8 @@ class Event(BaseModel):
     timestamp: datetime
     type: events
     payload: dict
+    event_id: str = ""
+    sequence_id: int | None = None
 
     @model_validator(mode="after")
     def _payload_must_be_json_safe(self) -> "Event":
@@ -57,6 +63,18 @@ class Event(BaseModel):
             json.dumps(self.payload)
         except TypeError as e:
             raise EventSerializationError(f"Event payload not JSON-safe: {e}") from e
+        if not self.event_id:
+            # Deterministic when request/task identity exists; random fallback otherwise.
+            identity = (
+                str(self.payload.get("request_id") or "").strip()
+                or str(self.payload.get("task_id") or "").strip()
+                or str(self.payload.get("node_id") or "").strip()
+            )
+            if identity:
+                base = f"{self.type.value}:{identity}:{json.dumps(self.payload, sort_keys=True, default=str)}"
+                self.event_id = hashlib.sha256(base.encode("utf-8")).hexdigest()[:32]
+            else:
+                self.event_id = uuid.uuid4().hex
         return self
 
     def to_dict(self) -> dict:
@@ -70,6 +88,8 @@ class Event(BaseModel):
             "timestamp": ts_str,
             "type": type_val,
             "payload": self.payload,
+            "event_id": self.event_id,
+            "sequence_id": self.sequence_id,
         }
 
     @classmethod
@@ -93,6 +113,8 @@ class Event(BaseModel):
             timestamp=dt,
             type=event_type,
             payload=dict(data.get("payload", {})),
+            event_id=str(data.get("event_id") or ""),
+            sequence_id=(int(data.get("sequence_id")) if data.get("sequence_id") is not None else None),
         )
 
     def to_json(self) -> str:

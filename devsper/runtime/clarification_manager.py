@@ -73,6 +73,22 @@ class ClarificationManager:
         if request.task_id in self._cancelled_tasks:
             return ClarificationResponse(request_id=request.request_id, answers={}, skipped=True)
 
+        # Dedupe by request_id so platform retries / duplicate bus deliveries
+        # do not create multiple active prompts for the same request.
+        existing = self._find(getattr(request, "request_id", "") or "")
+        if existing is not None and not existing.future.done():
+            async def _wait_existing() -> ClarificationResponse:
+                try:
+                    return await asyncio.wait_for(
+                        existing.future,
+                        timeout=float(request.timeout_seconds or self._default_timeout),
+                    )
+                except asyncio.TimeoutError:
+                    # Fall back to timeout behavior for the caller.
+                    return self._default_response(request)
+
+            return _wait_existing()
+
         queued = QueuedClarification(request=request, node_id=node_id)
 
         with self._lock:

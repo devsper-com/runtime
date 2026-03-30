@@ -14,6 +14,7 @@ import os
 import asyncio
 import queue
 import threading
+import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,7 @@ from devsper.types.task import Task, TaskStatus
 from devsper.types.event import Event, events
 from devsper.utils.event_logger import EventLog
 from devsper.events import ClarificationRequest, ClarificationResponse
+from devsper.core.hitl import HITLCoordinator
 from devsper.telemetry import annotate_span, get_tracer, record_exception
 
 from devsper.agents.agent import Agent
@@ -28,6 +30,8 @@ from devsper.budget import BudgetExceededError, BudgetManager
 from devsper.swarm.scheduler import Scheduler
 from devsper.swarm.planner import Planner
 from devsper.intelligence.adaptation import create_alternative_subtasks_for_failed
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from devsper.agents.critic import CriticAgent
@@ -117,6 +121,7 @@ class Executor:
         self.clarification_bus = clarification_bus  # sync queue for TUI to read requests
         self._pending_clarification_queues: dict[str, tuple[queue.Queue, str]] = {}  # request_id -> (response_queue, task_id)
         self._pending_clarification_lock = threading.Lock()
+        self.hitl_coordinator = HITLCoordinator()
         self.budget_manager = budget_manager
         self.agent_registry = agent_registry
 
@@ -144,7 +149,22 @@ class Executor:
         with self._pending_clarification_lock:
             self._pending_clarification_queues[req.request_id] = (response_queue, req.task_id)
         try:
+            self.hitl_coordinator.request_input(req.request_id, req.task_id)
             self.scheduler.set_task_status(req.task_id, TaskStatus.WAITING_FOR_INPUT)
+            self._emit(
+                events.CLARIFICATION_REQUESTED,
+                {
+                    "task_id": req.task_id,
+                    "request_id": req.request_id,
+                    "context": req.context,
+                },
+            )
+            log.info(
+                "hitl clarification requested run_id=%s task_id=%s request_id=%s",
+                getattr(self.scheduler, "run_id", ""),
+                req.task_id,
+                req.request_id,
+            )
             self.clarification_bus.put(req)
             try:
                 response = response_queue.get(timeout=req.timeout_seconds)
@@ -157,6 +177,7 @@ class Executor:
         finally:
             with self._pending_clarification_lock:
                 self._pending_clarification_queues.pop(req.request_id, None)
+            self.hitl_coordinator.clear(req.request_id)
             self.scheduler.set_task_status(req.task_id, TaskStatus.RUNNING)
         return response
 
@@ -167,6 +188,18 @@ class Executor:
         if entry is None:
             return
         response_queue, task_id = entry
+        self.hitl_coordinator.resume(response.request_id)
+        self._emit(
+            events.CLARIFICATION_RECEIVED,
+            {"task_id": task_id, "request_id": response.request_id, "skipped": response.skipped},
+        )
+        log.info(
+            "hitl clarification received run_id=%s task_id=%s request_id=%s skipped=%s",
+            getattr(self.scheduler, "run_id", ""),
+            task_id,
+            response.request_id,
+            bool(response.skipped),
+        )
         response_queue.put(response)
         self.scheduler.set_task_status(task_id, TaskStatus.RUNNING)
 

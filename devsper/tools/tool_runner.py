@@ -69,7 +69,8 @@ def run_tool(
         resolved_name = tool.name
         if span is not None:
             span.set_attribute("tool_name", resolved_name)
-        err = _validate_args(args, tool.input_schema)
+        schema = getattr(tool, "input_schema", None) or getattr(tool, "schema", {}) or {}
+        err = _validate_args(args, schema)
         if err is not None:
             _record_analytics(resolved_name, False, start)
             _record_scoring(resolved_name, task_type, False, start, error_type="ValidationError")

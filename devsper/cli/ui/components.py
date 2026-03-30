@@ -56,8 +56,24 @@ def TaskRow(
 ) -> Text:
     """Single-line task summary. status: pending|running|completed|failed|cached|skipped."""
     if icon is None:
-        icon = {"pending": "○", "running": "◐", "completed": "✓", "failed": "✗", "cached": "⚡", "skipped": "⊘"}.get(status, "○")
-    style = {"completed": "hive.success", "failed": "hive.error", "cached": "hive.primary", "skipped": "hive.muted", "running": "hive.secondary", "pending": "hive.dim"}.get(status, "hive.dim")
+        icon = {
+            "pending": "○",
+            "running": "◐",
+            "completed": "✓",
+            "failed": "✗",
+            "cached": "⚡",
+            "skipped": "⊘",
+            "waiting_for_input": "?",
+        }.get(status, "○")
+    style = {
+        "completed": "hive.success",
+        "failed": "hive.error",
+        "cached": "hive.primary",
+        "skipped": "hive.muted",
+        "running": "hive.secondary",
+        "pending": "hive.dim",
+        "waiting_for_input": "hive.warning",
+    }.get(status, "hive.dim")
     desc = (description or "")[:45]
     if len((description or "")) > 45:
         desc = desc.rstrip() + "…"

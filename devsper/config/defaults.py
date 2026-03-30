@@ -18,7 +18,9 @@ def get_swarm_defaults() -> SwarmConfig:
     )
 
 
-def get_models_defaults(worker_model: str = "mock", planner_model: str = "mock") -> ModelsConfig:
+def get_models_defaults(
+    worker_model: str = "gpt-4o", planner_model: str = "gpt-4o"
+) -> ModelsConfig:
     return ModelsConfig(
         planner=planner_model,
         worker=worker_model,
@@ -57,8 +59,8 @@ def get_provider_azure_defaults() -> ProviderAzureConfig:
 
 
 def get_full_defaults(
-    worker_model: str = "mock",
-    planner_model: str = "mock",
+    worker_model: str = "gpt-4o",
+    planner_model: str = "gpt-4o",
     events_dir: str = ".devsper/events",
     data_dir: str = ".devsper",
 ) -> dict:

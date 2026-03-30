@@ -445,10 +445,19 @@ def _run_swarm(args: object) -> int:
     summary_only = getattr(args, "summary", False)
     json_output = getattr(args, "json_output", False)
     plain = getattr(args, "plain", False) or not sys.stdout.isatty()
-    use_live_view = not quiet and not plain and sys.stdout.isatty()
+    reporter = getattr(args, "reporter", False)
+    use_live_view = not quiet and not plain and not reporter and sys.stdout.isatty()
 
     cfg = get_config()
-    event_log = EventLog(events_folder_path=cfg.events_dir)
+    from devsper.platform.redis_results_sink import build_reporter_sinks_chain
+
+    _prid = (os.environ.get("DEVSPER_PLATFORM_RUN_ID") or "").strip()
+    _chain = build_reporter_sinks_chain(cfg.events_dir)
+    event_log = EventLog(
+        events_folder_path=cfg.events_dir,
+        run_id=_prid if _prid else None,
+        platform_sink=_chain,
+    )
     log_path = getattr(event_log, "log_path", None)
     memory_router = MemoryRouter(
         store=get_default_store(),
@@ -460,7 +469,7 @@ def _run_swarm(args: object) -> int:
     )
     workers = getattr(cfg.swarm, "workers", 2)
     clarification_queue = None
-    if use_live_view:
+    if use_live_view or reporter:
         import queue
 
         clarification_queue = queue.Queue()
@@ -475,6 +484,35 @@ def _run_swarm(args: object) -> int:
     )
     results_holder: list[dict] = []
     run_id = getattr(event_log, "run_id", "") or ""
+
+    # Headless HITL bridge: publish clarification_requested and wait for answers.
+    stop_event = None
+    bridge_thread = None
+    bridge_event_sink = None
+    if reporter and run_id:
+        try:
+            import redis
+
+            redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+            r = redis.Redis.from_url(redis_url, decode_responses=True)
+
+            from devsper.platform.reporter import hitl_bridge_thread
+
+            stop_event = threading.Event()
+            # `event_log` uses `platform_sink=_chain` when reporter is enabled.
+            bridge_event_sink = _chain
+            bridge_thread = threading.Thread(
+                target=hitl_bridge_thread,
+                args=(r, run_id, clarification_queue, swarm, stop_event, bridge_event_sink),
+                daemon=True,
+            )
+            bridge_thread.start()
+        except Exception:
+            from devsper.cli.ui import console
+
+            console.print(
+                "[yellow]Reporter HITL bridge could not start; run may not pause for user input.[/yellow]"
+            )
 
     hitl_resolver = None
     if (
@@ -570,6 +608,10 @@ def _run_swarm(args: object) -> int:
             sys.stderr.write("\n")
             sys.stderr.flush()
         thread.join()
+        if stop_event is not None:
+            stop_event.set()
+        if bridge_thread is not None:
+            bridge_thread.join(timeout=1.0)
         results = results_holder[0] if results_holder else {}
         if json_output:
             import json
@@ -2725,6 +2767,7 @@ def _run_cloud_dispatch(args: object) -> int:
         cmd_cloud_run,
         cmd_cloud_logs,
         cmd_cloud_status,
+        cmd_cloud_respond,
         cmd_cloud_import_keys,
     )
 
@@ -2733,6 +2776,7 @@ def _run_cloud_dispatch(args: object) -> int:
         "logout": cmd_cloud_logout,
         "run": cmd_cloud_run,
         "status": cmd_cloud_status,
+        "respond": cmd_cloud_respond,
         "logs": cmd_cloud_logs,
         "import-keys": cmd_cloud_import_keys,
     }
@@ -2826,6 +2870,7 @@ Examples:
 Examples:
   devsper run "Summarize swarm intelligence in one paragraph"
   devsper run "Analyze diffusion models" -q
+  devsper run --reporter "task"   # headless; set DEVSPER_PLATFORM_RUN_ID + REDIS_URL for live platform SSE
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -2871,6 +2916,12 @@ Examples:
         type=float,
         default=180.0,
         help="Platform run polling timeout seconds.",
+    )
+    run_parser.add_argument(
+        "--reporter",
+        action="store_true",
+        help="Headless integration: skip TUI; stream events via DEVSPER_PLATFORM_RUN_ID + REDIS_URL "
+        "and/or DEVSPER_PLATFORM_RUNTIME_EVENTS (see docs).",
     )
     run_parser.set_defaults(func=lambda a: _run_swarm(a))
 
@@ -3679,6 +3730,7 @@ Examples:
   devsper cloud login --api-url http://localhost:8080 --email you@example.com
   devsper cloud run "Summarize the platform README in three bullets."
   devsper cloud status <run_id>
+  devsper cloud respond <run_id> --request-id <uuid> --answers '{"Q":"A"}'
   devsper cloud logs <run_id>
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -3749,7 +3801,7 @@ Examples:
         help="Optional x-devsper-run-manifest-version header",
     )
     cloud_run_p.add_argument(
-        "--no-wait", action="store_true", help="Print run_id only; do not poll"
+        "--no-wait", "--detach", action="store_true", help="Print run_id only; do not poll"
     )
     cloud_run_p.add_argument(
         "--timeout", type=float, default=300.0, help="Poll timeout seconds"
@@ -3776,6 +3828,34 @@ Examples:
         "--json", action="store_true", dest="json_output", help="Print full JSON"
     )
     cloud_status_p.set_defaults(cloud_cmd="status")
+
+    cloud_respond_p = cloud_sub.add_parser(
+        "respond",
+        help="Send a human-in-the-loop answer for a waiting cloud run",
+    )
+    cloud_respond_p.add_argument("run_id", help="Run UUID")
+    cloud_respond_p.add_argument(
+        "--request-id",
+        required=True,
+        help="Clarification request_id from run stream or logs",
+    )
+    cloud_respond_p.add_argument(
+        "--answers",
+        dest="answers_json",
+        default="",
+        help='JSON object of answers, keys = field questions (e.g. \'{"Which API?":"REST"}\')',
+    )
+    cloud_respond_p.add_argument(
+        "--skipped",
+        action="store_true",
+        help="Tell the worker to proceed with defaults / without user answers",
+    )
+    cloud_respond_p.add_argument(
+        "--api-url", default=None, help="Override platform API URL"
+    )
+    cloud_respond_p.add_argument("--org", default=None, help="Override org slug")
+    cloud_respond_p.add_argument("--token", default=None, help="Override JWT")
+    cloud_respond_p.set_defaults(cloud_cmd="respond")
 
     cloud_logs_p = cloud_sub.add_parser("logs", help="List run events (history)")
     cloud_logs_p.add_argument("run_id", help="Run UUID")
