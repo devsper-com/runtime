@@ -11,20 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Distributed runtime extension layer** — Added `devsper.distributed` package with controller and worker-runtime wrappers for clean orchestration composition.
-- **Agent pool** — Added `runtime/agent_pool.py` with reusable, worker-aware concurrent agent leasing (`acquire_agent`, `release_agent`, `run_agent`, `run_parallel`).
-- **Model router (runtime layer)** — Added `runtime/model_router.py` for planning/reasoning/validation model routing with fallback chains.
-- **Speculative planner (runtime layer)** — Added `runtime/speculative_planner.py` to predict and stage speculative successor tasks.
-- **Runtime HITL manager** — Added `runtime/hitl.py` for pause/resume and explicit human-input request lifecycle handling.
-- **Execution graph upgrades** — Extended runtime execution graph with worker assignment metadata and distributed lineage tracking.
+- **Distributed runtime extensions** — Added modular runtime components for distributed orchestration: `AgentPool`, `ModelRouter`, `SpeculativePlanner`, `HITLManager`, `ExecutionGraph` worker assignment tracking, plus distributed wrappers (`distributed/controller.py`, `distributed/worker_runtime.py`).
+- **Runtime architecture documentation** — Expanded runtime docs with distributed architecture, worker/controller lifecycle, speculative execution flow, and HITL lifecycle details.
+- **Tool execution hardening** — Upgraded runtime tool runner with bounded parallelism, dependency-aware batching, per-call timeout isolation, and cancellation support.
 
 ### Changed
 
-- **Executor composition** — Runtime executor now integrates AgentPool, ModelRouter, speculative planning hooks, and distributed assignment tracking while preserving default behavior.
-- **Task runner routing** — Task execution now supports pool-backed agent execution, scoped model routing, and fallback chain handling.
-- **Tool execution control** — Runtime ToolRunner now supports bounded concurrency, dependency-aware batching, per-call timeout, cancellation, and structured results.
-- **Event backpressure handling** — Runtime event stream now uses bounded queues with controlled overflow behavior.
-- **Runtime docs** — Updated runtime architecture docs in `devsper/README.md` with distributed flow, worker/controller lifecycle, and HITL/speculative execution details.
+- **Executor orchestration** — Runtime executor now supports agent-pool-backed execution, model routing integration, speculative follow-up scheduling hooks, and improved cancellation/backpressure behavior.
+- **Prompt/token efficiency** — Tool schema injection in agent prompts was compressed to reduce runtime token overhead in tool-enabled turns.
+- **Homepage and release communication** — Updated README homepage with v2.4.0 release CTA and an architecture upgrade blog entry for this release.
 
 ## [2.3.0] — 2026-03-30
 
