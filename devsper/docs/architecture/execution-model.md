@@ -8,5 +8,5 @@ That document is the source of truth for DAG execution, task state machine, HITL
 
 For the 2.4.0 distributed runtime upgrade summary, see:
 
-- `devsper/docs/releases/2.4.0.md`
-- `devsper/docs/blog/2026-03-31-runtime-2-4-0.md`
+- `https://docs.devsper.com/docs/release_notes`
+- `https://devsper.com/blog/distributed-runtime-upgrade-2-4-0`

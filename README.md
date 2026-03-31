@@ -311,10 +311,6 @@ Full docs (with versioning and dark mode): **[docs.devsper.com](https://docs.dev
 | [Contributing](CONTRIBUTING.md) | Setup, testing, PR guidelines |
 | [FAQ](https://docs.devsper.com/docs/faq) | Common questions |
 
-### Blog
-
-- [Distributed Runtime Upgrade (v2.4.0)](devsper/docs/blog/2026-03-31-runtime-2-4-0.md)
-
 ---
 
 ## Attribution & Credits
