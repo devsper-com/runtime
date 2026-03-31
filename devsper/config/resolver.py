@@ -37,6 +37,7 @@ from devsper.config.schema import (
     TelemetryConfig,
     BudgetConfig,
     ToolsConfig,
+    ExportConfig,
 )
 
 _PROVIDER_ENV = {
@@ -166,6 +167,7 @@ def _build_merged_raw(
             "auto_extract": True,
         },
         "tools": {"enabled": None, "top_k": 0},
+        "export": {"auto_export_on_run": False, "format": "docx", "limit": 1},
         "telemetry": {
             "enabled": True,
             "save_events": True,
@@ -270,6 +272,7 @@ def resolve_config(config_path: str | None = None) -> devsperConfigModel:
     memory = MemoryConfig(**(merged.get("memory") or {}))
     knowledge = KnowledgeConfig(**(merged.get("knowledge") or {}))
     tools = ToolsConfig(**(merged.get("tools") or {}))
+    export = ExportConfig(**(merged.get("export") or {}))
     telemetry = TelemetryConfig(**(merged.get("telemetry") or {}))
     budget = BudgetConfig(**(merged.get("budget") or {}))
     cache = CacheConfig(**(merged.get("cache") or {}))
@@ -401,6 +404,7 @@ def resolve_config(config_path: str | None = None) -> devsperConfigModel:
         memory=memory,
         knowledge=knowledge,
         tools=tools,
+        export=export,
         telemetry=telemetry,
         budget=budget,
         cache=cache,

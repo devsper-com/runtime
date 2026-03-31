@@ -130,23 +130,6 @@ def _platform_api_builder():
     return PlatformAPIRequestBuilder(base_url=base_url, org_slug=org, token=token)
 
 
-def _is_platform_default_enabled(args: object) -> bool:
-    if getattr(args, "local_runtime", False):
-        return False
-    # Shadow mode explicitly compares both paths; do not default-route.
-    if getattr(args, "shadow", False):
-        return False
-    if os.environ.get("DEVSPER_PROFILE", "").strip().lower() == "local":
-        return False
-    if str(os.environ.get("DEVSPER_RUN_DEFAULT", "platform")).strip().lower() in {
-        "runtime",
-        "local",
-    }:
-        return False
-    api = _platform_api_builder()
-    return api.enabled()
-
-
 def _extract_platform_run_fields(payload: dict) -> tuple[str, str, int, int, int]:
     status = str(payload.get("status", ""))
     run_id = str(payload.get("run_id", ""))
@@ -181,8 +164,24 @@ def _run_platform_once(task: str, args: object) -> tuple[int, dict, float]:
             task=task, project_id=project_id or "", manifest=manifest
         )
         run_id = str(created.get("run_id", "") or "")
+        poll_interval = float(getattr(args, "platform_poll_interval", 2.0) or 2.0)
+        if poll_interval <= 0:
+            poll_interval = 2.0
+        last_print_status = {"status": ""}
+
+        def _on_update(payload: dict, elapsed: float, changed: bool) -> None:
+            if getattr(args, "quiet", False):
+                return
+            status = str(payload.get("status") or "").strip().lower() or "unknown"
+            if changed or status != last_print_status["status"]:
+                last_print_status["status"] = status
+                print(f"[platform] run_id={run_id} status={status} elapsed={elapsed:.1f}s")
+
         final = api.poll_run(
-            run_id, timeout_seconds=float(getattr(args, "platform_timeout", 180.0))
+            run_id,
+            interval_seconds=poll_interval,
+            timeout_seconds=float(getattr(args, "platform_timeout", 180.0)),
+            on_update=_on_update,
         )
         elapsed = time.time() - started
         return 0, final or {}, elapsed
@@ -251,7 +250,6 @@ def _run_shadow_mode(args: object) -> int:
         task,
         "--quiet",
         "--json",
-        "--local-runtime",
     ]
     local_started = time.time()
     local_proc = subprocess.run(local_cmd, capture_output=True, text=True)
@@ -383,7 +381,7 @@ def _run_platform_connect(args: object) -> int:
 
     print(f"Connected platform: api={api_url} org={org_slug}")
     print(
-        "`devsper run` will now default to platform. Use `--local-runtime` to bypass."
+        "Use `devsper cloud run` to route runs to platform."
     )
     _track_conversion_event("platform_connect_succeeded", {"org": org_slug})
     return 0
@@ -417,13 +415,7 @@ def _run_swarm(args: object) -> int:
     _track_conversion_event("runtime_user_detected", {"command": "run"})
     if getattr(args, "shadow", False):
         return _run_shadow_mode(args)
-    if _is_platform_default_enabled(args):
-        return _run_platform_only(args)
-    if not getattr(args, "local_runtime", False):
-        # Contextual nudge when users are still runtime-only.
-        print(
-            "Tip: run `devsper platform connect` to unlock retries, audit history, billing controls, and team workflows."
-        )
+    print("Running locally...")
     # Local profile fast-path: route through platform pool + local workers.
     if os.environ.get("DEVSPER_PROFILE", "").strip().lower() == "local":
         try:
@@ -436,9 +428,13 @@ def _run_swarm(args: object) -> int:
     from devsper.config import get_config
     from devsper.utils.event_logger import EventLog
     from devsper.swarm.swarm import Swarm
+    from devsper.runtime.executor import Executor
+    from devsper.runtime.agent_runner import AgentRunner
     from devsper.memory.memory_router import MemoryRouter
     from devsper.memory.memory_store import get_default_store
     from devsper.memory.memory_index import MemoryIndex
+
+    _ = (Executor, AgentRunner)
 
     task = getattr(args, "task", "Summarize swarm intelligence in one paragraph.")
     quiet = getattr(args, "quiet", False)
@@ -625,6 +621,37 @@ def _run_swarm(args: object) -> int:
                 console.print((result or "")[:2000])
                 if (result or "") and len(result) > 2000:
                     console.print("...")
+    try:
+        if getattr(cfg, "export", None) and getattr(cfg.export, "auto_export_on_run", False):
+            from devsper.export.service import ExportOptions, export_all_runs
+
+            ts = int(time.time())
+            out_dir = f".devsper/exports/runs_{ts}"
+            fmt = str(getattr(cfg.export, "format", "docx") or "docx").lower()
+            if fmt == "pdf":
+                pdf_pipeline = "both"
+            else:
+                # docx/html/all still benefit from HTML PDF where available.
+                pdf_pipeline = "html"
+            manifest = export_all_runs(
+                ExportOptions(
+                    output_dir=out_dir,
+                    limit=int(getattr(cfg.export, "limit", 1) or 1),
+                    pdf_pipeline=pdf_pipeline,
+                )
+            )
+            files = manifest.get("files", {}) if isinstance(manifest, dict) else {}
+            print(f"Auto-export complete: {out_dir}")
+            if fmt in {"docx", "all"} and files.get("all_runs_docx"):
+                print(f"DOCX: {files.get('all_runs_docx')}")
+            if fmt in {"html", "all"} and files.get("all_runs_html"):
+                print(f"HTML: {files.get('all_runs_html')}")
+            if fmt in {"pdf", "all"}:
+                pdf_out = (manifest.get("pdf_outputs", {}) or {}).get("html_pdf")
+                if pdf_out:
+                    print(f"PDF: {pdf_out}")
+    except Exception as e:
+        print(f"Auto-export failed: {e}", file=sys.stderr)
     return 0
 
 
@@ -2892,11 +2919,6 @@ Examples:
         help="Only print run summary, not task results",
     )
     run_parser.add_argument(
-        "--local-runtime",
-        action="store_true",
-        help="Force local runtime path even when platform is connected.",
-    )
-    run_parser.add_argument(
         "--shadow",
         action="store_true",
         help="Run runtime and platform paths and print side-by-side comparison.",
@@ -2916,6 +2938,12 @@ Examples:
         type=float,
         default=180.0,
         help="Platform run polling timeout seconds.",
+    )
+    run_parser.add_argument(
+        "--platform-poll-interval",
+        type=float,
+        default=2.0,
+        help="Platform polling interval seconds.",
     )
     run_parser.add_argument(
         "--reporter",

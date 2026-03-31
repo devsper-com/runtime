@@ -123,6 +123,7 @@ def _build_run_export(row: object) -> RunExport:
     tool_counts: dict[str, int] = defaultdict(int)
     timeline: list[TimelineItem] = []
     task_outputs: dict[str, str] = {}
+    task_output_chunks: dict[str, list[str]] = defaultdict(list)
     clar_needs: dict[str, tuple[str, str, str]] = {}  # req_id -> (task_id, question, ts)
     clarifications: list[ClarificationQA] = []
     all_text_fragments: list[str] = [
@@ -139,6 +140,11 @@ def _build_run_export(row: object) -> RunExport:
         if ev == "tool_called":
             name = str(payload.get("tool") or payload.get("tool_name") or "tool")
             tool_counts[name] += 1
+            preview = str(payload.get("result_preview") or "").strip()
+            if task_id and preview:
+                task_output_chunks[task_id].append(
+                    f"[tool:{name}] {preview}"
+                )
             msg = f"tool_called: {name}"
         elif ev == "task_completed":
             result = str(payload.get("result") or "")
@@ -186,6 +192,14 @@ def _build_run_export(row: object) -> RunExport:
             msg = ev
 
         timeline.append(TimelineItem(timestamp=ts, event_type=ev, task_id=task_id, message=msg))
+
+    # Backfill outputs using tool traces when direct task result payloads are absent.
+    for tid, chunks in task_output_chunks.items():
+        if tid in task_outputs:
+            continue
+        joined = "\n\n".join(chunks).strip()
+        if joined:
+            task_outputs[tid] = joined[:12000]
 
     all_citations = _extract_citations("\n".join(all_text_fragments))
     models_used: list[str] = []

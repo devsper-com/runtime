@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import uuid
 import threading
+import queue
+import os
 from dataclasses import dataclass
 
 from devsper.agents.agent import Agent
@@ -23,6 +25,7 @@ from devsper.swarm.planner import Planner
 from devsper.swarm.scheduler import Scheduler
 from devsper.types.event import events
 from devsper.utils.event_logger import EventLog
+from devsper.events import ClarificationResponse
 
 
 @dataclass
@@ -53,6 +56,7 @@ class Executor:
         agent_pool_size: int = 4,
         enable_speculative: bool = False,
         enable_hitl: bool = False,
+        clarification_bus: queue.Queue | None = None,
         **_: object,
     ) -> None:
         self.scheduler = scheduler
@@ -74,6 +78,11 @@ class Executor:
         self.state = RuntimeStateManager(scheduler)
         self.execution_graph = ExecutionGraph()
         self._running_limit_sem = asyncio.Semaphore(self.resources.max_running_queue)
+        self._clarification_bus = clarification_bus
+        self._pending_clarification_queues: dict[str, queue.Queue] = {}
+        self._pending_clarification_lock = threading.Lock()
+        # Compatibility with swarm path expecting executor.budget_manager.
+        self.budget_manager = None
         self.model_router = ModelRouter(
             planning_model=getattr(agent, "model_name", "mock"),
             reasoning_model=getattr(agent, "model_name", "mock"),
@@ -105,10 +114,64 @@ class Executor:
     def cancel(self) -> None:
         self._cancel_event.set()
 
+    @staticmethod
+    def _debug_enabled() -> bool:
+        return str(os.environ.get("DEVSPER_RUNTIME_DEBUG", "")).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
+    def _debug(self, message: str) -> None:
+        if self._debug_enabled():
+            print(message)
+
+    def request_clarification(self, req) -> ClarificationResponse:
+        if self._clarification_bus is None:
+            return ClarificationResponse(
+                request_id=req.request_id,
+                answers={},
+                skipped=True,
+            )
+        response_queue: queue.Queue = queue.Queue()
+        with self._pending_clarification_lock:
+            self._pending_clarification_queues[req.request_id] = response_queue
+        try:
+            self._clarification_bus.put(req)
+            self._debug(
+                f"[executor] clarification_requested task_id={req.task_id} request_id={req.request_id}"
+            )
+            try:
+                response = response_queue.get(timeout=req.timeout_seconds)
+            except queue.Empty:
+                response = ClarificationResponse(
+                    request_id=req.request_id,
+                    answers={},
+                    skipped=True,
+                )
+        finally:
+            with self._pending_clarification_lock:
+                self._pending_clarification_queues.pop(req.request_id, None)
+        return response
+
+    def receive_clarification(self, response: ClarificationResponse) -> None:
+        with self._pending_clarification_lock:
+            response_queue = self._pending_clarification_queues.get(response.request_id)
+        if response_queue is not None:
+            response_queue.put(response)
+            self._debug(
+                f"[executor] clarification_received request_id={response.request_id} skipped={bool(response.skipped)}"
+            )
+
     def run_sync(self) -> None:
         asyncio.run(self.run())
 
     async def run(self) -> None:
+        self._debug(
+            f"[executor] start worker_count={self.resources.worker_count} "
+            f"worker_id={self._worker_id} adaptive={self._adaptive}"
+        )
         await self.event_stream.publish(events.EXECUTOR_STARTED, {})
         sem = asyncio.Semaphore(self.resources.worker_count)
         running: dict[str, asyncio.Task] = {}
@@ -123,6 +186,10 @@ class Executor:
                         await asyncio.sleep(self.resources.poll_interval_seconds)
                         return
                     await self.event_stream.publish(events.TASK_STARTED, {"task_id": task.id})
+                    self._debug(f"[executor] task_started task_id={task.id}")
+                    self.agent.clarification_requester = self
+                    self.agent.current_task_id = task.id
+                    self.agent.role = getattr(task, "role", None) or "agent"
                     result = await self.task_runner.run(task, worker_id=self._worker_id)
                     if result.success:
                         self.state.mark_completed(task.id, result.output)

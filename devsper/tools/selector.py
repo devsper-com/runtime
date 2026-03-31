@@ -3,6 +3,7 @@ Smart tool selection: filter by category and select top_k tools by semantic simi
 """
 
 import os
+import re
 
 from devsper.memory.embeddings import embed_text
 from devsper.policy.client import filter_tools_by_policy
@@ -130,10 +131,63 @@ def get_tools_for_task(
     )
     if use_scoring:
         from devsper.tools.scoring.selector import select_tools_scored
-        return select_tools_scored(
+        selected = select_tools_scored(
             task_description or "",
             all_tools,
             top_k_val,
             score_store,
         )
-    return _top_k_by_similarity(task_description or "", all_tools, top_k_val)
+    else:
+        selected = _top_k_by_similarity(task_description or "", all_tools, top_k_val)
+    return _post_process_tool_selection(task_description or "", selected, all_tools)
+
+
+def _post_process_tool_selection(
+    task_description: str,
+    selected: list[Tool],
+    all_tools: list[Tool],
+) -> list[Tool]:
+    """
+    Prefer web-first research when task is about external/public analysis and no local data path is given.
+    """
+    text = (task_description or "").lower()
+    has_local_data_hint = bool(
+        re.search(r"(\.csv|\.xlsx|\.json|/|\\|local path|file path|upload|mounted)", text)
+    )
+    research_like = any(
+        token in text
+        for token in (
+            "research",
+            "comprehensive search",
+            "public",
+            "market",
+            "business",
+            "review",
+            "analysis",
+            "openai",
+        )
+    )
+    if not research_like:
+        return selected
+
+    by_name = {t.name: t for t in all_tools}
+    web_tool = by_name.get("web_search")
+    if web_tool is not None and all(t.name != "web_search" for t in selected):
+        selected = [web_tool] + selected
+
+    if not has_local_data_hint:
+        # Drop local-data-first tools for web research unless task explicitly asks for local files.
+        blocked = {"dataset_profile", "search_files", "document_corpus_summary"}
+        selected = [t for t in selected if t.name not in blocked]
+        if web_tool is not None and all(t.name != "web_search" for t in selected):
+            selected = [web_tool] + selected
+
+    # Deduplicate by name preserving order.
+    out: list[Tool] = []
+    seen: set[str] = set()
+    for t in selected:
+        if t.name in seen:
+            continue
+        seen.add(t.name)
+        out.append(t)
+    return out

@@ -96,6 +96,12 @@ class ToolsConfig(BaseModel):
     top_k: int = 0  # 0 = no limit
 
 
+class ExportConfig(BaseModel):
+    auto_export_on_run: bool = False
+    format: Literal["docx", "html", "pdf", "all"] = "docx"
+    limit: int = 1
+
+
 class TelemetryConfig(BaseModel):
     enabled: bool = True
     save_events: bool = True
@@ -278,6 +284,7 @@ class devsperConfigModel(BaseModel):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    export: ExportConfig = Field(default_factory=ExportConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)

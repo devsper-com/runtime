@@ -15,6 +15,14 @@ def _fmt_cost(v: float | None) -> str:
     return f"${v:.4f}" if v is not None else "-"
 
 
+def _fmt_duration(seconds: float) -> str:
+    s = max(0, int(seconds or 0))
+    hh = s // 3600
+    mm = (s % 3600) // 60
+    ss = s % 60
+    return f"{hh:02d}:{mm:02d}:{ss:02d}"
+
+
 def _render_citations_md(citations: list[Citation]) -> str:
     if not citations:
         return "_No citations found in event history._\n"
@@ -40,7 +48,7 @@ def _render_single_run_md(run: RunExport) -> str:
         f"- Strategy: {run.strategy or '-'}",
         f"- Started: {run.started_at}",
         f"- Finished: {run.finished_at}",
-        f"- Duration: {run.duration_seconds:.1f}s",
+        f"- Duration: {_fmt_duration(run.duration_seconds)}",
         f"- Tasks: {run.completed_tasks}/{run.total_tasks} completed, {run.failed_tasks} failed",
         f"- Estimated cost: {_fmt_cost(run.estimated_cost_usd)}",
         "",
@@ -88,14 +96,14 @@ def render_bundle_markdown(bundle: BundleExport) -> str:
         "",
     ]
     for run in bundle.runs:
-        lines.append(f"- `{run.run_id}` · {run.completed_tasks}/{run.total_tasks} completed · {run.duration_seconds:.1f}s")
+        lines.append(f"- `{run.run_id}` · {run.completed_tasks}/{run.total_tasks} completed · {_fmt_duration(run.duration_seconds)}")
     lines += ["", "## Global References", "", _render_citations_md(bundle.citations)]
     lines += ["## Run Details", ""]
     for run in bundle.runs:
         lines.append(f"### {run.run_id}")
         lines.append("")
         lines.append(f"- Root task: {run.root_task}")
-        lines.append(f"- Duration: {run.duration_seconds:.1f}s")
+        lines.append(f"- Duration: {_fmt_duration(run.duration_seconds)}")
         lines.append(f"- Tasks: {run.completed_tasks}/{run.total_tasks}, failed {run.failed_tasks}")
         lines.append(f"- Events path: {run.events_path or '(missing)'}")
         if run.tool_counts:
@@ -110,6 +118,17 @@ def render_bundle_markdown(bundle: BundleExport) -> str:
                 preview = preview[:220] + "..."
             lines.append(f"- Output preview ({first_tid[:8]}): {preview}")
         lines.append(f"- Timeline events: {len(run.timeline)}")
+        if run.task_outputs:
+            lines.append("")
+            lines.append("#### Task Outputs")
+            lines.append("")
+            for task_id, out in run.task_outputs.items():
+                lines.append(f"- `{task_id}`")
+                lines.append("")
+                lines.append("```text")
+                lines.append((out or "").strip()[:4000] or "_empty_")
+                lines.append("```")
+                lines.append("")
         lines.append("")
     return "\n".join(lines).strip() + "\n"
 
@@ -119,7 +138,7 @@ def render_bundle_rst(bundle: BundleExport) -> str:
     lines = [title, "=" * len(title), "", f"Generated at: {bundle.generated_at}", f"Total runs: {bundle.run_count}", ""]
     lines += ["Runs", "----", ""]
     for run in bundle.runs:
-        lines.append(f"- ``{run.run_id}`` ({run.completed_tasks}/{run.total_tasks}, {run.duration_seconds:.1f}s)")
+        lines.append(f"- ``{run.run_id}`` ({run.completed_tasks}/{run.total_tasks}, {_fmt_duration(run.duration_seconds)})")
     lines += ["", "Global References", "-----------------", ""]
     if bundle.citations:
         for idx, c in enumerate(bundle.citations, 1):
@@ -132,7 +151,7 @@ def render_bundle_rst(bundle: BundleExport) -> str:
         lines.append(f"{run.run_id}")
         lines.append("^" * len(run.run_id))
         lines.append(f"- Root task: {run.root_task}")
-        lines.append(f"- Duration: {run.duration_seconds:.1f}s")
+        lines.append(f"- Duration: {_fmt_duration(run.duration_seconds)}")
         lines.append(f"- Tasks: {run.completed_tasks}/{run.total_tasks}, failed {run.failed_tasks}")
         lines.append(f"- Events path: {run.events_path or '(missing)'}")
         lines.append(f"- Timeline events: {len(run.timeline)}")
@@ -172,18 +191,24 @@ def render_bundle_latex(bundle: BundleExport, branding: Branding) -> tuple[str, 
         tex_lines.append(
             r"\item "
             + _latex_escape(run.run_id)
-            + f" ({run.completed_tasks}/{run.total_tasks}, {run.duration_seconds:.1f}s)"
+            + f" ({run.completed_tasks}/{run.total_tasks}, {_fmt_duration(run.duration_seconds)})"
         )
     tex_lines += [r"\end{itemize}", r"\section*{Run Details}"]
     for run in bundle.runs:
         tex_lines.append(r"\subsection*{" + _latex_escape(run.run_id) + "}")
         tex_lines.append(r"\begin{itemize}")
         tex_lines.append(r"\item Root task: " + _latex_escape(run.root_task))
-        tex_lines.append(r"\item Duration: " + _latex_escape(f"{run.duration_seconds:.1f}s"))
+        tex_lines.append(r"\item Duration: " + _latex_escape(_fmt_duration(run.duration_seconds)))
         tex_lines.append(r"\item Tasks: " + _latex_escape(f"{run.completed_tasks}/{run.total_tasks}, failed {run.failed_tasks}"))
         tex_lines.append(r"\item Events path: " + _latex_escape(run.events_path or "(missing)"))
         tex_lines.append(r"\item Timeline events: " + _latex_escape(str(len(run.timeline))))
         tex_lines.append(r"\end{itemize}")
+        if run.task_outputs:
+            tex_lines.append(r"\paragraph{Task Outputs}")
+            for task_id, out in run.task_outputs.items():
+                tex_lines.append(r"\textbf{" + _latex_escape(task_id) + r"}\\")
+                tex_lines.append(_latex_escape((out or "").strip()[:2000] or "_empty_"))
+                tex_lines.append(r"\\")
     tex_lines += [r"\bibliographystyle{plain}", r"\bibliography{all_runs}", r"\end{document}"]
 
     bib_lines: list[str] = []
@@ -211,7 +236,7 @@ def render_bundle_html(bundle: BundleExport, branding: Branding) -> str:
     for run in bundle.runs:
         rows.append(
             f"<tr><td>{html.escape(run.run_id)}</td><td>{run.completed_tasks}/{run.total_tasks}</td>"
-            f"<td>{run.duration_seconds:.1f}s</td><td>{html.escape(run.strategy or '-')}</td></tr>"
+            f"<td>{_fmt_duration(run.duration_seconds)}</td><td>{html.escape(run.strategy or '-')}</td></tr>"
         )
     refs = []
     for c in bundle.citations:
@@ -219,15 +244,24 @@ def render_bundle_html(bundle: BundleExport, branding: Branding) -> str:
         refs.append(f"<li>{label}</li>")
     details = []
     for run in bundle.runs:
-        details.append(
+        output_blocks = []
+        if run.task_outputs:
+            for task_id, out in run.task_outputs.items():
+                output_blocks.append(
+                    f"<h4>Task {html.escape(task_id)}</h4><pre>{html.escape((out or '').strip()[:4000] or '_empty_')}</pre>"
+                )
+        outputs_html = "".join(output_blocks) if output_blocks else "<p><i>No task outputs captured.</i></p>"
+        section = (
             "<section>"
             f"<h3>{html.escape(run.run_id)}</h3>"
             f"<p><b>Root task:</b> {html.escape(run.root_task)}</p>"
-            f"<p><b>Duration:</b> {run.duration_seconds:.1f}s | <b>Tasks:</b> {run.completed_tasks}/{run.total_tasks} (failed {run.failed_tasks})</p>"
+            f"<p><b>Duration:</b> {_fmt_duration(run.duration_seconds)} | <b>Tasks:</b> {run.completed_tasks}/{run.total_tasks} (failed {run.failed_tasks})</p>"
             f"<p><b>Events path:</b> {html.escape(run.events_path or '(missing)')}</p>"
             f"<p><b>Timeline events:</b> {len(run.timeline)}</p>"
+            f"{outputs_html}"
             "</section>"
         )
+        details.append(section)
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>devsper export</title>
 <style>
@@ -290,7 +324,7 @@ def write_bundle_files(bundle: BundleExport, out_dir: Path, branding: Branding) 
         doc.add_heading("Runs", level=1)
         for run in bundle.runs:
             doc.add_paragraph(
-                f"{run.run_id} | tasks {run.completed_tasks}/{run.total_tasks} | {run.duration_seconds:.1f}s | {run.strategy or '-'}"
+                f"{run.run_id} | tasks {run.completed_tasks}/{run.total_tasks} | {_fmt_duration(run.duration_seconds)} | {run.strategy or '-'}"
             )
         doc.add_heading("References", level=1)
         for c in bundle.citations:
@@ -299,10 +333,15 @@ def write_bundle_files(bundle: BundleExport, out_dir: Path, branding: Branding) 
         for run in bundle.runs:
             doc.add_heading(run.run_id, level=2)
             doc.add_paragraph(f"Root task: {run.root_task}")
-            doc.add_paragraph(f"Duration: {run.duration_seconds:.1f}s")
+            doc.add_paragraph(f"Duration: {_fmt_duration(run.duration_seconds)}")
             doc.add_paragraph(f"Tasks: {run.completed_tasks}/{run.total_tasks}, failed {run.failed_tasks}")
             doc.add_paragraph(f"Events path: {run.events_path or '(missing)'}")
             doc.add_paragraph(f"Timeline events: {len(run.timeline)}")
+            if run.task_outputs:
+                doc.add_heading("Task Outputs", level=3)
+                for task_id, out in run.task_outputs.items():
+                    doc.add_paragraph(f"Task {task_id}")
+                    doc.add_paragraph((out or "").strip()[:4000] or "_empty_")
         docx_path = out_dir / "all_runs.docx"
         doc.save(str(docx_path))
         written["all_runs_docx"] = str(docx_path)

@@ -594,6 +594,176 @@ class Agent:
         self.audit_logger = audit_logger
         self.audit_run_id = audit_run_id or ""
         self.clarification_requester = None  # set by executor for human-in-the-loop
+        self._hitl_response_cache: dict[str, dict] = {}
+        self._hitl_prompt_counts: dict[str, int] = {}
+        self._hitl_shared_answers: dict[str, str] = {}
+        self._hitl_shared_facts: list[str] = []
+        try:
+            self._hitl_max_prompts_per_task = int(
+                str(os.environ.get("DEVSPER_HITL_MAX_PROMPTS_PER_TASK", "1")).strip()
+                or "1"
+            )
+        except Exception:
+            self._hitl_max_prompts_per_task = 1
+        self._hitl_max_prompts_per_task = max(0, self._hitl_max_prompts_per_task)
+
+    def _default_answer_for_field(self, field: ClarificationField) -> object:
+        prior = self._find_prior_hitl_answer(field.question)
+        if prior:
+            return prior
+        if field.default is not None and str(field.default).strip() != "":
+            return field.default
+        ftype = str(field.type or "text")
+        options = field.options or []
+        if ftype == "confirm":
+            return True
+        if ftype == "multi_select":
+            return [options[0]] if options else []
+        if ftype == "rank":
+            return options
+        if ftype == "mcq":
+            return options[0] if options else "Proceed with best-effort defaults"
+        return "Proceed with best-effort defaults"
+
+    @staticmethod
+    def _normalize_question(text: str) -> str:
+        t = re.sub(r"[^a-z0-9\s]+", " ", (text or "").lower())
+        return re.sub(r"\s+", " ", t).strip()
+
+    def _find_prior_hitl_answer(self, question: str) -> str | None:
+        qn = self._normalize_question(question)
+        if not qn:
+            return None
+        if qn in self._hitl_shared_answers:
+            return self._hitl_shared_answers[qn]
+        q_tokens = {t for t in qn.split() if len(t) > 2}
+        if not q_tokens:
+            return None
+        best_overlap = 0
+        best_answer: str | None = None
+        for prev_qn, prev_answer in self._hitl_shared_answers.items():
+            p_tokens = {t for t in prev_qn.split() if len(t) > 2}
+            overlap = len(q_tokens.intersection(p_tokens))
+            if overlap >= 3 and overlap > best_overlap:
+                best_overlap = overlap
+                best_answer = prev_answer
+        return best_answer
+
+    def _record_hitl_answers(self, answers: dict[str, object]) -> None:
+        for question, answer in (answers or {}).items():
+            qn = self._normalize_question(str(question))
+            if not qn:
+                continue
+            answer_text = str(answer)
+            self._hitl_shared_answers[qn] = answer_text
+            fact = f"- {str(question).strip()}: {answer_text}"
+            if fact not in self._hitl_shared_facts:
+                self._hitl_shared_facts.append(fact)
+
+    def _should_auto_web_collection(
+        self,
+        request: AgentRequest,
+        tool_args: dict,
+        fields: list[ClarificationField],
+    ) -> bool:
+        prior_answers_text = " ".join(self._hitl_shared_answers.values()).lower()
+        prior_facts_text = " ".join(self._hitl_shared_facts).lower()
+        topic = " ".join(
+            [
+                str(self.user_task or ""),
+                str(getattr(request.task, "description", "") or ""),
+                str(tool_args.get("context") or ""),
+                " ".join(f.question for f in fields),
+                prior_answers_text,
+                prior_facts_text,
+            ]
+        ).lower()
+        # If this is clearly a research/data-collection workflow asking for local datasets,
+        # default to web/public-source collection to avoid blocking the run.
+        needs_dataset_input = any(
+            token in topic
+            for token in (
+                "dataset",
+                "csv",
+                "upload",
+                "file",
+                "local path",
+                "paste",
+                "provide the data",
+                "provide the dataset",
+            )
+        )
+        research_like = any(
+            token in topic
+            for token in (
+                "research",
+                "public source",
+                "web",
+                "openai business",
+                "data collection",
+                "comprehensive search",
+                "business aspect",
+            )
+        )
+        prior_prefers_web = any(
+            token in topic
+            for token in (
+                "public urls",
+                "public url",
+                "public-source",
+                "public source",
+                "web collection",
+                "curated list",
+                "crawl",
+                "fetch",
+                "url",
+            )
+        )
+        return needs_dataset_input and (research_like or prior_prefers_web)
+
+    def _auto_web_collection_answers(
+        self,
+        fields: list[ClarificationField],
+    ) -> dict[str, object]:
+        answers: dict[str, object] = {}
+        for f in fields:
+            q = (f.question or "").lower()
+            opts = [str(o) for o in (f.options or [])]
+            # Prefer choices indicating web/public/source fetching.
+            preferred = None
+            for opt in opts:
+                ol = opt.lower()
+                if any(
+                    t in ol
+                    for t in (
+                        "web",
+                        "public",
+                        "url",
+                        "crawl",
+                        "fetch",
+                        "curated list",
+                        "propose",
+                    )
+                ):
+                    preferred = opt
+                    break
+            if preferred is not None:
+                answers[f.question] = preferred
+                continue
+            # If there is no explicit web/public option, avoid blocking on local file uploads.
+            if any(t in q for t in ("dataset", "profile", "csv", "file", "path")):
+                template_opt = next(
+                    (o for o in opts if any(k in o.lower() for k in ("template", "generic", "sample", "synthetic"))),
+                    None,
+                )
+                if template_opt is not None:
+                    answers[f.question] = template_opt
+                    continue
+            if "how many" in q or "count" in q or "limit" in q:
+                answers[f.question] = "Up to 50 public URLs"
+                continue
+            answers[f.question] = self._default_answer_for_field(f)
+        return answers
 
     def run(self, request: AgentRequest) -> AgentResponse:
         """Stateless run: all context in AgentRequest, all output in AgentResponse."""
@@ -770,6 +940,12 @@ class Agent:
             message_bus_section = self.message_bus.get_context_sync(task.id) or ""
         if message_bus_section:
             memory_section = (memory_section + "\n\n" + message_bus_section).strip()
+        if self._hitl_shared_facts:
+            memory_section = (
+                memory_section
+                + "\n\nUSER CLARIFICATIONS (APPLY THESE PREFERENCES ACROSS SUBTASKS)\n"
+                + "\n".join(self._hitl_shared_facts[-20:])
+            ).strip()
         from devsper.agents.roles import get_role_config
 
         role_config = get_role_config(getattr(task, "role", None))
@@ -857,6 +1033,8 @@ class Agent:
                 success=True,
             )
         self.apply_response(task, response)
+        if not response.success:
+            raise RuntimeError(response.error or "Agent run failed")
         return response.result
 
     def _enrich_task(self, task: Task, answers: dict) -> Task:
@@ -1223,6 +1401,57 @@ class Agent:
         if not fields:
             return json.dumps({"error": "hitl.request has no valid fields"})
 
+        if self._should_auto_web_collection(request, tool_args, fields):
+            auto_answers = self._auto_web_collection_answers(fields)
+            self._record_hitl_answers(auto_answers)
+            payload = {
+                "request_id": f"auto-web-{request.task.id}",
+                "skipped": False,
+                "answers": auto_answers,
+                "auto_assumed": True,
+            }
+            return json.dumps(payload)
+
+        task_id = request.task.id
+        used_prompts = int(self._hitl_prompt_counts.get(task_id, 0))
+        if used_prompts >= max(0, self._hitl_max_prompts_per_task):
+            # Fast-path: avoid repeated user interruption after first clarification.
+            auto_answers: dict[str, object] = {}
+            for f in fields:
+                auto_answers[f.question] = self._default_answer_for_field(f)
+            self._record_hitl_answers(auto_answers)
+            payload = {
+                "request_id": f"auto-{task_id}-{used_prompts + 1}",
+                "skipped": False,
+                "answers": auto_answers,
+                "auto_assumed": True,
+            }
+            return json.dumps(payload)
+
+        # Prevent repeated identical prompts in the same task/tool loop.
+        signature_payload = {
+            "task_id": request.task.id,
+            "context": str(tool_args.get("context") or "Need user input"),
+            "fields": [
+                {
+                    "type": f.type,
+                    "question": f.question,
+                    "options": f.options or [],
+                    "default": f.default,
+                    "required": bool(f.required),
+                }
+                for f in fields
+            ],
+        }
+        cache_key = json.dumps(signature_payload, sort_keys=True)
+        cached = self._hitl_response_cache.get(cache_key)
+        if cached is not None:
+            try:
+                self._record_hitl_answers(cached.get("answers") or {})
+            except Exception:
+                pass
+            return json.dumps(cached)
+
         req = ClarificationRequest(
             request_id=str(uuid.uuid4()),
             task_id=request.task.id,
@@ -1233,13 +1462,15 @@ class Agent:
             timeout_seconds=int(tool_args.get("timeout_seconds", 120)),
         )
         resp = requester.request_clarification(req)
-        return json.dumps(
-            {
-                "request_id": req.request_id,
-                "skipped": bool(resp.skipped),
-                "answers": resp.answers or {},
-            }
-        )
+        self._hitl_prompt_counts[task_id] = used_prompts + 1
+        self._record_hitl_answers(resp.answers or {})
+        payload = {
+            "request_id": req.request_id,
+            "skipped": bool(resp.skipped),
+            "answers": resp.answers or {},
+        }
+        self._hitl_response_cache[cache_key] = payload
+        return json.dumps(payload)
 
     def _emit_tool_called_audit(
         self, task_id: str, tool_name: str, result: str

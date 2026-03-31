@@ -73,10 +73,13 @@ def init_tracing() -> None:
     provider = TracerProvider(resource=resource)
     if endpoint:
         exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers or None)
-    else:
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        trace.set_tracer_provider(provider)
+    elif str(os.environ.get("DEVSPER_OTEL_CONSOLE", "")).strip() in {"1", "true", "True"}:
+        # Opt-in only: Console exporter prints JSON spans to stdout and can corrupt TUI.
         exporter = ConsoleSpanExporter()
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        trace.set_tracer_provider(provider)
     _INITIALIZED = True
 
 

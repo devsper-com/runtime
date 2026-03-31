@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
 from devsper.agents.agent import Agent
 from devsper.types.task import Task
@@ -24,7 +25,21 @@ class AgentRunner:
         self._agent = agent
         self._streaming_tools = bool(streaming_tools)
 
+    @staticmethod
+    def _debug_enabled() -> bool:
+        return str(os.environ.get("DEVSPER_RUNTIME_DEBUG", "")).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
     async def run_task(self, task: Task, model_override: str | None = None) -> str:
+        selected_model = (model_override or getattr(self._agent, "model_name", "") or "").strip()
+        if not selected_model:
+            raise RuntimeError("Model not configured")
+        if self._debug_enabled():
+            print(f"[agent-runner] task_id={task.id} model={selected_model}")
         if self._streaming_tools:
             try:
                 return await asyncio.to_thread(
@@ -32,12 +47,13 @@ class AgentRunner:
                     task,
                     model_override,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                if self._debug_enabled():
+                    print(f"[agent-runner] streaming_tools_failed task_id={task.id} error={type(exc).__name__}: {exc}")
         return await asyncio.to_thread(
             self._agent.run_task,
             task,
-            model_override,
+            selected_model,
             None,
         )
 

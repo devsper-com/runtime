@@ -48,8 +48,11 @@ from devsper.cli.ui.components import devsperHeader, TaskRow, RoleTag, CostDispl
 
 
 def is_interactive() -> bool:
-    """True if we can show interactive prompts (TTY and not CI)."""
-    return sys.stdout.isatty() and not os.environ.get("CI")
+    """True if we can show interactive prompts (requires a real terminal)."""
+    try:
+        return bool(sys.stdin.isatty() and sys.stdout.isatty())
+    except Exception:
+        return False
 
 
 def _field_get(field: Any, key: str, default: Any = None) -> Any:
@@ -106,6 +109,9 @@ class ClarificationWidget:
         from devsper.events import ClarificationResponse
 
         if not is_interactive():
+            console.print(
+                "[hive.warning]HITL prompt auto-skipped: non-interactive terminal detected.[/]"
+            )
             answers = {}
             for field in self.req.fields:
                 q = _field_get(field, "question")
@@ -589,9 +595,21 @@ def run_live_view(
                     except queue.Empty:
                         pass
                     else:
-                        widget = ClarificationWidget(req, theme_style)
-                        response = widget.render()
-                        executor.receive_clarification(response)
+                        # Pause Live while prompting to avoid TUI corruption and hidden input.
+                        try:
+                            live.stop()
+                        except Exception:
+                            pass
+                        try:
+                            widget = ClarificationWidget(req, theme_style)
+                            response = widget.render()
+                            executor.receive_clarification(response)
+                        finally:
+                            try:
+                                live.start()
+                                live.update(get_renderable())
+                            except Exception:
+                                pass
             if cloud_hitl_submit is not None:
                 payload = _first_pending_cloud_clarification(log_path, handled_cloud_hitl)
                 if payload:
@@ -813,10 +831,14 @@ def print_run_summary(state: RunViewState, results: dict[str, str], summary_only
     if duration_s < 0:
         duration_s = 0.0
     cost_str = f"${state.total_cost_usd:.4f}" if (state.total_cost_usd is not None and state.total_cost_usd > 0) else "—"
+    hh = int(duration_s // 3600)
+    mm = int((duration_s % 3600) // 60)
+    ss = int(duration_s % 60)
+    duration_hms = f"{hh:02d}:{mm:02d}:{ss:02d}"
     cache_hits = sum(1 for t in state.tasks if t.status == "cached")
     lines = [
         f"{total} tasks  ·  {done} completed  ·  {failed_n} failed  ·  {skipped} skipped",
-        f"Duration: {duration_s:.1f}s  ·  Cost: {cost_str}  ·  Cache hits: {cache_hits}",
+        f"Duration: {duration_hms}  ·  Cost: {cost_str}  ·  Cache hits: {cache_hits}",
         f"run id: {state.run_id_short}",
     ]
     console.print(Panel("\n".join(lines), title="Run complete", border_style="hive.success"))

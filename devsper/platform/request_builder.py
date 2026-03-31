@@ -4,7 +4,7 @@ import os
 import random
 import time
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 import requests
 
@@ -214,14 +214,33 @@ class PlatformAPIRequestBuilder:
         interval_seconds: float = 2.0,
         timeout_seconds: float = 120.0,
         terminal_statuses: tuple[str, ...] = ("completed", "failed", "cancelled", "timeout"),
+        halted_statuses: tuple[str, ...] = ("paused", "hitl_waiting"),
+        max_same_status_seconds: float | None = 60.0,
+        on_update: Callable[[dict[str, Any], float, bool], None] | None = None,
     ) -> dict[str, Any]:
         start = time.time()
+        last_status = ""
+        last_change = start
         while True:
             payload = self.get_run(run_id)
-            status = str(payload.get("status") or "")
+            status = str(payload.get("status") or "").strip().lower()
+            changed = status != last_status
+            if changed:
+                last_status = status
+                last_change = time.time()
+            elapsed = time.time() - start
+            if on_update is not None:
+                on_update(payload, elapsed, changed)
             if status in terminal_statuses:
                 return payload
-            if time.time() - start >= timeout_seconds:
+            if status in halted_statuses:
+                return payload
+            if max_same_status_seconds and (time.time() - last_change) >= max_same_status_seconds:
+                raise TimeoutError(
+                    f"Run {run_id} appears stuck at status '{status}' for "
+                    f"{int(time.time() - last_change)}s. Check run timeline/events in the dashboard."
+                )
+            if elapsed >= timeout_seconds:
                 raise TimeoutError(f"Timed out waiting for run {run_id}. Last status: {status}")
             time.sleep(interval_seconds)
 

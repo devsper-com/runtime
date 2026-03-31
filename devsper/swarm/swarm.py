@@ -238,6 +238,9 @@ class Swarm:
                 scheduler = Scheduler()
                 scheduler.add_tasks(subtasks)
                 scheduler.run_id = getattr(self.event_log, "run_id", "") or ""
+                shared_memory_namespace = (
+                    f"run:{scheduler.run_id}" if getattr(scheduler, "run_id", "") else None
+                )
                 _persist_dag(scheduler, self.event_log)
 
                 from devsper.reasoning.store import ReasoningStore
@@ -289,6 +292,7 @@ class Swarm:
                             model_name=self.worker_model,
                             event_log=self.event_log,
                             memory_router=self.memory_router,
+                            memory_namespace=shared_memory_namespace,
                             store_result_to_memory=False,
                             use_tools=self.use_tools,
                             reasoning_store=rs,
@@ -377,6 +381,7 @@ class Swarm:
                         model_name=self.worker_model,
                         event_log=self.event_log,
                         memory_router=self.memory_router,
+                        memory_namespace=shared_memory_namespace,
                         store_result_to_memory=False,
                         use_tools=self.use_tools,
                         reasoning_store=reasoning_store,

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] — 2026-03-31
+
+### Fixed
+
+- **HITL prompt loop + context handoff** — Clarification responses are now reused across subtasks, repeated clarification prompts are deduplicated/capped, and follow-up tasks inherit prior user decisions instead of re-asking equivalent questions.
+- **Run view prompt stability** — Local clarification prompts now pause/resume live rendering cleanly, reducing TUI corruption and preventing hidden/stuck prompts during interactive runs.
+- **Silent-failure propagation** — Agent failures now surface as explicit task failures (instead of empty-success paths), with clearer errors for missing model configuration.
+- **Executor compatibility regression** — Restored `budget_manager` compatibility on the runtime executor path to avoid end-of-run `AttributeError` crashes.
+
+### Changed
+
+- **Research tool routing defaults** — Tool selection now biases web-first for research/business discovery tasks when no local dataset path is provided.
+- **Export readability + content coverage** — Run export now backfills task outputs from tool traces when direct task result payloads are missing, and includes richer run details in markdown/html/latex/docx outputs.
+- **Duration formatting** — CLI run summary and export outputs now prefer `HH:MM:SS` format.
+- **Telemetry noise control** — Console span export is now opt-in (`DEVSPER_OTEL_CONSOLE=1`) to keep interactive TUI output clean by default.
+- **Auto-export workflow** — Added config-driven post-run export option (`[export] auto_export_on_run`) with selectable output format.
+
 ## [2.4.0] — 2026-03-31
 
 ### Added

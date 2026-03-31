@@ -16,7 +16,7 @@ from devsper.memory.memory_index import MemoryIndex
 from devsper.config import get_config
 from devsper.platform.redis_results_sink import ChainedDevSperSink, RedisEventSink
 from devsper.platform.runtime_events import platform_sink_from_env
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 app = FastAPI()
 logger = logging.getLogger("swarmworker")
@@ -26,6 +26,10 @@ class ExecuteRequest(BaseModel):
     task: str
     run_id: str = "unknown"
     org_id: str = ""
+    model: str = ""
+    provider: str = ""
+    runtime_config: dict = Field(default_factory=dict)
+    model_routing_hints: dict = Field(default_factory=dict)
 
 
 def hitl_bridge_thread(
@@ -94,8 +98,25 @@ def execute(req: ExecuteRequest):
     data = req.model_dump()
     task = data.get("task", "")
     run_id = data.get("run_id", "unknown")
+    runtime_config = data.get("runtime_config") or {}
+    model_hints = data.get("model_routing_hints") or {}
+    selected_model = (
+        (data.get("model") or "").strip()
+        or (model_hints.get("model") or "").strip()
+        or (runtime_config.get("model") or "").strip()
+    )
+    selected_provider = (
+        (data.get("provider") or "").strip()
+        or (model_hints.get("provider") or "").strip()
+        or (runtime_config.get("provider") or "").strip()
+    )
 
-    logger.info(f"Executing swarm for run {run_id}")
+    logger.info(
+        "Executing swarm for run %s model=%s provider=%s",
+        run_id,
+        selected_model or "(default)",
+        selected_provider or "(default)",
+    )
 
     import redis
     import os
@@ -124,8 +145,8 @@ def execute(req: ExecuteRequest):
 
     swarm = Swarm(
         worker_count=2,
-        worker_model=cfg.worker_model,
-        planner_model=cfg.planner_model,
+        worker_model=selected_model or cfg.worker_model,
+        planner_model=selected_model or cfg.planner_model,
         event_log=event_log,
         memory_router=memory_router,
         use_tools=True,
@@ -165,7 +186,8 @@ def execute(req: ExecuteRequest):
     envelope = {
         "version": 1,
         "status": "completed",
-        "provider": "python-swarm",
+        "provider": selected_provider or "python-swarm",
+        "model": selected_model or cfg.worker_model,
         "output": combined_output,
         "usage": {
             "tokens_in": 0,
