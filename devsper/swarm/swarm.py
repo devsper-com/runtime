@@ -23,7 +23,7 @@ from devsper.utils.models import resolve_model
 
 from devsper.swarm.planner import Planner
 from devsper.swarm.scheduler import Scheduler
-from devsper.swarm.executor import Executor
+from devsper.runtime.executor import Executor
 from devsper.agents.agent import Agent
 from devsper.agents.registry import AgentRegistry
 from devsper.budget import BudgetManager

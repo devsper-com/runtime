@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-03-31
+
+### Added
+
+- **Distributed runtime extension layer** — Added `devsper.distributed` package with controller and worker-runtime wrappers for clean orchestration composition.
+- **Agent pool** — Added `runtime/agent_pool.py` with reusable, worker-aware concurrent agent leasing (`acquire_agent`, `release_agent`, `run_agent`, `run_parallel`).
+- **Model router (runtime layer)** — Added `runtime/model_router.py` for planning/reasoning/validation model routing with fallback chains.
+- **Speculative planner (runtime layer)** — Added `runtime/speculative_planner.py` to predict and stage speculative successor tasks.
+- **Runtime HITL manager** — Added `runtime/hitl.py` for pause/resume and explicit human-input request lifecycle handling.
+- **Execution graph upgrades** — Extended runtime execution graph with worker assignment metadata and distributed lineage tracking.
+
+### Changed
+
+- **Executor composition** — Runtime executor now integrates AgentPool, ModelRouter, speculative planning hooks, and distributed assignment tracking while preserving default behavior.
+- **Task runner routing** — Task execution now supports pool-backed agent execution, scoped model routing, and fallback chain handling.
+- **Tool execution control** — Runtime ToolRunner now supports bounded concurrency, dependency-aware batching, per-call timeout, cancellation, and structured results.
+- **Event backpressure handling** — Runtime event stream now uses bounded queues with controlled overflow behavior.
+- **Runtime docs** — Updated runtime architecture docs in `devsper/README.md` with distributed flow, worker/controller lifecycle, and HITL/speculative execution details.
+
 ## [2.3.0] — 2026-03-30
 
 ### Added

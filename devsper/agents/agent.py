@@ -454,11 +454,24 @@ def _format_tools_section(tools: list | None = None) -> str:
         from devsper.tools.registry import list_tools
 
         tools = list_tools()
+    max_props = 8
     lines = []
     for t in tools:
         schema = getattr(t, "input_schema", None) or getattr(t, "schema", {}) or {}
+        schema_type = schema.get("type", "object")
+        required = schema.get("required", []) or []
+        props = schema.get("properties", {}) if isinstance(schema.get("properties", {}), dict) else {}
+        compact_props: dict[str, dict] = {}
+        for key in list(props.keys())[:max_props]:
+            p = props.get(key, {}) or {}
+            compact_props[key] = {"type": p.get("type", "string")}
+        compact_schema = {
+            "type": schema_type,
+            "required": required[:max_props],
+            "properties": compact_props,
+        }
         lines.append(f"- {t.name}: {t.description}")
-        lines.append(f"  input_schema: {json.dumps(schema)}")
+        lines.append(f"  input_schema: {json.dumps(compact_schema, separators=(',', ':'))}")
     return "\n".join(lines)
 
 
