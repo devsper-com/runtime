@@ -16,6 +16,8 @@ class TaskExecutionResult:
     success: bool
     output: str
     error: str | None = None
+    model: str | None = None
+    provider: str | None = None
 
 
 class TaskRunner:
@@ -76,7 +78,14 @@ class TaskRunner:
                 lambda: _run_agent(model),
                 self._retry_config.for_scope(RetryScope.AGENT),
             )
-            return TaskExecutionResult(task_id=task.id, success=True, output=output or "", error=None)
+            return TaskExecutionResult(
+                task_id=task.id,
+                success=True,
+                output=output or "",
+                error=None,
+                model=model,
+                provider=_infer_provider(model),
+            )
         except Exception as exc:
             fallback_models: list[str] = []
             if route is not None:
@@ -92,7 +101,14 @@ class TaskRunner:
                         lambda: _run_agent(fallback),
                         self._retry_config.for_scope(RetryScope.MODEL_FALLBACK),
                     )
-                    return TaskExecutionResult(task_id=task.id, success=True, output=output or "", error=None)
+                    return TaskExecutionResult(
+                        task_id=task.id,
+                        success=True,
+                        output=output or "",
+                        error=None,
+                        model=fallback,
+                        provider=_infer_provider(fallback),
+                    )
                 except Exception as fallback_exc:
                     fallback_errors.append(f"{fallback}: {type(fallback_exc).__name__}: {fallback_exc}")
                     continue
@@ -102,5 +118,18 @@ class TaskRunner:
                 success=False,
                 output="",
                 error=f"{type(exc).__name__}: {exc} | fallback_errors={details}",
+                model=model,
+                provider=_infer_provider(model),
             )
+
+
+def _infer_provider(model: str | None) -> str:
+    m = (model or "").lower()
+    if "gpt" in m or "o1" in m or "o3" in m:
+        return "openai"
+    if "claude" in m:
+        return "anthropic"
+    if "gemini" in m:
+        return "google"
+    return "default"
 

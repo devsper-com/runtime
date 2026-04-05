@@ -40,7 +40,7 @@ def _fake_config():
     return C()
 
 
-def _persist_dag(scheduler: Scheduler, event_log: EventLog) -> None:
+def _persist_dag(scheduler: Scheduler, event_log: EventLog, execution_graph: object | None = None) -> None:
     """Write task DAG to events dir as {run_id}_dag.json for graph export."""
     run_id = getattr(event_log, "run_id", None)
     if not run_id:
@@ -49,10 +49,30 @@ def _persist_dag(scheduler: Scheduler, event_log: EventLog) -> None:
     if not log_path:
         return
     events_dir = os.path.dirname(log_path)
-    nodes = [
-        {"id": t.id, "description": (t.description or "")[:200]}
-        for t in scheduler._tasks.values()
-    ]
+    ex_map: dict = {}
+    if execution_graph is not None and hasattr(execution_graph, "to_dict"):
+        ex_map = execution_graph.to_dict() or {}
+
+    nodes = []
+    for t in scheduler._tasks.values():
+        extra = ex_map.get(t.id) or {}
+        desc = extra.get("description") if extra.get("description") else (t.description or "")
+        agent = extra.get("agent_name") or getattr(t, "role", None) or "agent"
+        worker = extra.get("worker_id")
+        status = extra.get("status") or "pending"
+        deps = extra.get("dependencies") or list(t.dependencies or [])
+        nodes.append(
+            {
+                "id": t.id,
+                "description": (desc or "")[:2000],
+                "agent_name": agent,
+                "agent": agent,
+                "worker_id": worker,
+                "worker": worker,
+                "status": status,
+                "dependencies": deps,
+            }
+        )
     edges = list(scheduler._graph.edges())
     path = os.path.join(events_dir, f"{run_id}_dag.json")
     with open(path, "w", encoding="utf-8") as f:
@@ -525,6 +545,7 @@ class Swarm:
                 )
                 self._current_executor = executor
                 executor.run_sync()
+                _persist_dag(scheduler, self.event_log, getattr(executor, "execution_graph", None))
 
                 self._last_scheduler = scheduler
                 self._last_reasoning_store = reasoning_store

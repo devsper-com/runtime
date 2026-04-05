@@ -129,6 +129,28 @@ Credentials are injected from the keyring (or env) when config is resolved—no 
 
 ---
 
+## LangChain integration
+
+Devsper ships a **small adapter layer** (not a parallel orchestration stack) so you can keep building in **LangChain** and **LangGraph** while aligning execution with Devsper’s **task / DAG** mental model.
+
+| Module | Purpose |
+|--------|---------|
+| `devsper.integrations.langchain_adapter` | Wrap LangChain runnables and agents as tagged `Task`s; `run_langchain_runnable()` runs `ainvoke` / `invoke` and normalizes output for `Task.result`. |
+| `devsper.integrations.langgraph_adapter` | Derive a Devsper task graph from a compiled LangGraph graph (`compiled_graph_to_tasks`); `run_compiled_graph_as_devsper_tasks()` runs each node with bounded concurrency and pluggable state merge (default: concatenate list fields—good for `MessagesState`). |
+
+**Install:** `langchain` is a core dependency of the `devsper` package; **LangGraph** is pulled in transitively. To pin it explicitly: `pip install 'devsper[langgraph]'`.
+
+**Examples (from the runtime repo root):**
+
+```bash
+uv run python examples/langchain_agent.py --prompt "Say hi in one sentence."
+uv run python examples/langgraph_swarm.py --workers 4
+```
+
+Docs: [LangChain integration](https://docs.devsper.com/docs/langchain-integration) (source: `docs/docs/langchain-integration.md` in the docs tree).
+
+---
+
 ## Credentials
 
 API keys are **not** stored in config files. Use the **credential store** (OS keychain) or environment variables.
@@ -286,6 +308,8 @@ Rust workers: set `DEVSPER_WORKER_MODEL=github:gpt-4o` (or your model), `DEVSPER
 | Dataset analysis | `uv run python examples/data_science/dataset_analysis.py [path-to.csv]` |
 | Document intelligence | `uv run python examples/documents/analyze_documents.py [dir]` |
 | Parameter sweep | `uv run python examples/experiments/parameter_sweep.py --params '{"lr":[0.01,0.1]}'` |
+| LangChain agent (adapter) | `uv run python examples/langchain_agent.py [--live] [--prompt "..."]` |
+| LangGraph DAG (as Devsper tasks) | `uv run python examples/langgraph_swarm.py [--workers N]` |
 
 Outputs under `examples/output/`. Run from project root when using script paths.
 

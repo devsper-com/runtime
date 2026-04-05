@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import logging
 
 from devsper.core.reporting import EventPublisher
+from devsper.debug_events import log_runtime_emit
 from devsper.types.event import Event, events
 
 
@@ -65,6 +66,15 @@ class EventLog:
             event.sequence_id = self._seq
         with open(self.log_path, "a") as f:
             f.write(event.model_dump_json() + "\n")
+        log_runtime_emit(
+            "event_log_append",
+            {
+                "run_id": self.run_id,
+                "type": event.type.value if hasattr(event.type, "value") else str(event.type),
+                "sequence_id": event.sequence_id,
+                "payload": dict(event.payload or {}),
+            },
+        )
         self._log.debug(
             "event appended run_id=%s event_id=%s sequence_id=%s type=%s",
             self.run_id,

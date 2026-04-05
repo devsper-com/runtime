@@ -159,7 +159,7 @@ def _load_remote_workflow(name: str) -> WorkflowDefinition | None:
         return None
     try:
         resp = requests.get(
-            f"{base}/orgs/{org}/workflows/{wf_name}/versions/{version_num}",
+            f"{base}/orgs/{org}/workflow-specs/{wf_name}/versions/{version_num}",
             headers=headers,
             timeout=15,
         )

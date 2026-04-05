@@ -182,31 +182,59 @@ class MCPClient:
         ]
 
     async def call_tool(self, name: str, arguments: dict) -> str:
-        """Send tools/call request; extract text from result.content; on error raise MCPToolError."""
+        """Send tools/call with bounded retries on transport failures."""
+        import asyncio
+
         req = {
             "jsonrpc": "2.0",
             "id": _next_id(),
             "method": "tools/call",
             "params": {"name": name, "arguments": arguments or {}},
         }
-        resp = await self._request(req)
-        result = resp.get("result")
-        if result is None:
-            raise MCPToolError(resp.get("error", {}).get("message", "Unknown error"))
-        if result.get("isError"):
-            content = result.get("content", [])
-            parts = [
-                c.get("text", str(c))
-                for c in content
-                if isinstance(c, dict)
-            ]
-            raise MCPToolError("\n".join(parts) if parts else "Tool returned error")
-        content = result.get("content") or []
-        texts = [
-            c.get("text", "") if isinstance(c, dict) else str(c)
-            for c in content
-        ]
-        return "\n".join(texts)
+        last_err: Exception | None = None
+        for attempt in range(3):
+            try:
+                resp = await self._request(req)
+                result = resp.get("result")
+                if result is None:
+                    raise MCPToolError(
+                        resp.get("error", {}).get("message", "Unknown error")
+                    )
+                if result.get("isError"):
+                    content = result.get("content", [])
+                    parts = [
+                        c.get("text", str(c))
+                        for c in content
+                        if isinstance(c, dict)
+                    ]
+                    raise MCPToolError(
+                        "\n".join(parts) if parts else "Tool returned error"
+                    )
+                content = result.get("content") or []
+                texts = [
+                    c.get("text", "") if isinstance(c, dict) else str(c)
+                    for c in content
+                ]
+                return "\n".join(texts)
+            except MCPToolError:
+                raise
+            except (ConnectionError, TimeoutError, asyncio.TimeoutError, OSError) as e:
+                last_err = e
+                if attempt == 2:
+                    break
+                await asyncio.sleep(0.2 * (2**attempt))
+                if self.auto_reconnect and self.transport == "stdio":
+                    try:
+                        await self.reconnect()
+                    except Exception:
+                        pass
+            except json.JSONDecodeError as e:
+                last_err = e
+                if attempt == 2:
+                    break
+                await asyncio.sleep(0.2 * (2**attempt))
+        assert last_err is not None
+        raise last_err
 
     async def disconnect(self) -> None:
         """Close connection."""

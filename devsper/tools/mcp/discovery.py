@@ -40,8 +40,19 @@ def discover_mcp_tools(server_config: MCPServerConfig) -> list[MCPToolAdapter]:
 
 async def register_mcp_server_async(server_config: MCPServerConfig) -> int:
     """Discover MCP tools and register each adapter in the tool registry. Return count."""
-    adapters = await discover_mcp_tools_async(server_config)
+    import asyncio
+
+    adapters: list = []
+    for attempt in range(3):
+        try:
+            adapters = await discover_mcp_tools_async(server_config)
+            break
+        except Exception:
+            if attempt == 2:
+                raise
+            await asyncio.sleep(0.35 * (2**attempt))
     from devsper.tools.registry import register
+
     for adapter in adapters:
         register(adapter)
     return len(adapters)

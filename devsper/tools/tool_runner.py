@@ -60,11 +60,18 @@ def run_tool(
             span.set_attribute("tool_category", (task_type or "general"))
         tool = get_with_mcp_fallback(name)
         if tool is None:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            try:
+                from devsper.platform.run_context import record_tool_call
+
+                record_tool_call(name, False, latency_ms)
+            except Exception:
+                pass
             _record_analytics(name, False, start)
             _record_scoring(name, task_type, False, start, error_type="ToolNotFound")
             if span is not None:
                 span.set_attribute("success", False)
-                span.set_attribute("duration_ms", int((time.monotonic() - start) * 1000))
+                span.set_attribute("duration_ms", latency_ms)
             return f"Tool not found: {name}"
         resolved_name = tool.name
         if span is not None:
@@ -72,11 +79,18 @@ def run_tool(
         schema = getattr(tool, "input_schema", None) or getattr(tool, "schema", {}) or {}
         err = _validate_args(args, schema)
         if err is not None:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            try:
+                from devsper.platform.run_context import record_tool_call
+
+                record_tool_call(resolved_name, False, latency_ms)
+            except Exception:
+                pass
             _record_analytics(resolved_name, False, start)
             _record_scoring(resolved_name, task_type, False, start, error_type="ValidationError")
             if span is not None:
                 span.set_attribute("success", False)
-                span.set_attribute("duration_ms", int((time.monotonic() - start) * 1000))
+                span.set_attribute("duration_ms", latency_ms)
             return f"Validation error: {err}"
         try:
             result = tool.run(**args)
@@ -84,12 +98,24 @@ def run_tool(
             success = not (isinstance(result, str) and result.startswith("Tool error:"))
             _record_analytics(resolved_name, success, start)
             _record_scoring(resolved_name, task_type, success, start, latency_ms=latency_ms)
+            try:
+                from devsper.platform.run_context import record_tool_call
+
+                record_tool_call(resolved_name, success, latency_ms)
+            except Exception:
+                pass
             if span is not None:
                 span.set_attribute("success", bool(success))
                 span.set_attribute("duration_ms", latency_ms)
             return result
         except Exception as e:
             latency_ms = int((time.monotonic() - start) * 1000)
+            try:
+                from devsper.platform.run_context import record_tool_call
+
+                record_tool_call(resolved_name, False, latency_ms)
+            except Exception:
+                pass
             _record_analytics(resolved_name, False, start)
             _record_scoring(
                 resolved_name,

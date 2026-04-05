@@ -23,9 +23,10 @@ from devsper.runtime.state_manager import RuntimeStateManager
 from devsper.runtime.task_runner import TaskRunner
 from devsper.swarm.planner import Planner
 from devsper.swarm.scheduler import Scheduler
-from devsper.types.event import events
+from devsper.types.event import Event, events
 from devsper.utils.event_logger import EventLog
 from devsper.events import ClarificationResponse
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -55,7 +56,9 @@ class Executor:
         worker_id: str = "controller-local",
         agent_pool_size: int = 4,
         enable_speculative: bool = False,
+        speculative_execution: bool = False,
         enable_hitl: bool = False,
+        hitl_enabled: bool = False,
         clarification_bus: queue.Queue | None = None,
         **_: object,
     ) -> None:
@@ -70,8 +73,8 @@ class Executor:
         self._adaptive = bool(adaptive)
         self._streaming_dag = bool(streaming_dag)
         self._worker_id = worker_id
-        self._enable_speculative = bool(enable_speculative)
-        self._hitl = HITLManager() if enable_hitl else None
+        self._enable_speculative = bool(enable_speculative or speculative_execution)
+        self._hitl = HITLManager() if (enable_hitl or hitl_enabled) else None
         self._dynamic_planner = RuntimePlanner(planner if self._adaptive else None)
         self._speculative_planner = SpeculativePlanner(max_predictions=2)
         self.event_stream = RuntimeEventStream(event_log or EventLog())
@@ -110,6 +113,13 @@ class Executor:
         )
         for task in self.scheduler.get_all_tasks():
             self.execution_graph.add_task(task)
+        self._had_task_failure = False
+
+    def _sync_emit(self, event_type: events, payload: dict) -> None:
+        log = getattr(self.event_stream, "_event_log", None)
+        if log is None or not hasattr(log, "append_event"):
+            return
+        log.append_event(Event(timestamp=datetime.now(timezone.utc), type=event_type, payload=payload))
 
     def cancel(self) -> None:
         self._cancel_event.set()
@@ -163,6 +173,13 @@ class Executor:
             self._debug(
                 f"[executor] clarification_received request_id={response.request_id} skipped={bool(response.skipped)}"
             )
+            self._sync_emit(
+                events.HITL_RESOLVED,
+                {
+                    "request_id": response.request_id,
+                    "skipped": bool(response.skipped),
+                },
+            )
 
     def run_sync(self) -> None:
         asyncio.run(self.run())
@@ -182,10 +199,29 @@ class Executor:
                     task = self.scheduler.get_task(task_id)
                     self.execution_graph.assign_worker(task.id, self._worker_id)
                     self.execution_graph.mark_running(task.id, worker_id=self._worker_id)
+                    deps = list(task.dependencies or [])
+                    desc = (task.description or "")[:2000]
+                    agent_name = (getattr(task, "role", None) or "agent") or "agent"
+                    worker_payload = {
+                        "task_id": task.id,
+                        "worker_id": self._worker_id,
+                        "description": desc,
+                        "agent_name": agent_name,
+                        "dependencies": deps,
+                    }
+                    await self.event_stream.publish(events.WORKER_ASSIGNED, worker_payload)
                     if self._hitl is not None and self._hitl.is_paused(task.id):
                         await asyncio.sleep(self.resources.poll_interval_seconds)
                         return
-                    await self.event_stream.publish(events.TASK_STARTED, {"task_id": task.id})
+                    await self.event_stream.publish(
+                        events.TASK_STARTED,
+                        {
+                            "task_id": task.id,
+                            "description": desc,
+                            "agent_name": agent_name,
+                            "dependencies": deps,
+                        },
+                    )
                     self._debug(f"[executor] task_started task_id={task.id}")
                     self.agent.clarification_requester = self
                     self.agent.current_task_id = task.id
@@ -221,6 +257,14 @@ class Executor:
                                             "lineage_parent": speculative.parent_task_id,
                                         },
                                     )
+                                    await self.event_stream.publish(
+                                        events.SPECULATIVE_STARTED,
+                                        {
+                                            "task_id": predicted.id,
+                                            "description": (predicted.description or "")[:2000],
+                                            "parent_task_id": speculative.parent_task_id,
+                                        },
+                                    )
                     else:
                         err = result.error or "Task execution failed"
                         if self._hitl is not None and "Human-in-the-Loop required" in err:
@@ -231,15 +275,34 @@ class Executor:
                                 timeout_seconds=120,
                             )
                             await self._hitl.pause_task(task.id)
-                            await self.event_stream.publish(events.CLARIFICATION_REQUESTED, self._hitl.event_payload(req))
+                            clar = self._hitl.event_payload(req)
+                            await self.event_stream.publish(events.CLARIFICATION_REQUESTED, clar)
+                            await self.event_stream.publish(
+                                events.HITL_REQUESTED,
+                                {
+                                    **clar,
+                                    "context": clar.get("prompt", ""),
+                                    "agent_role": agent_name,
+                                    "fields": [],
+                                },
+                            )
                         self.state.mark_failed(task.id, err)
                         self.execution_graph.mark_failed(task.id)
+                        self._had_task_failure = True
                         if self._enable_speculative:
-                            _ = self._speculative_planner.cancel_unused(task.id, self.scheduler)
-                        await self.event_stream.publish(
-                            events.TASK_FAILED,
-                            {"task_id": task.id, "error": err},
-                        )
+                            cancelled = self._speculative_planner.cancel_unused(task.id, self.scheduler)
+                            for cid in cancelled:
+                                await self.event_stream.publish(
+                                    events.SPECULATIVE_CANCELLED,
+                                    {"task_id": cid, "parent_task_id": task.id},
+                                )
+                        fail_payload = {
+                            "task_id": task.id,
+                            "error": err,
+                            "model": getattr(result, "model", None) or "default",
+                            "provider": getattr(result, "provider", None) or "default",
+                        }
+                        await self.event_stream.publish(events.TASK_FAILED, fail_payload)
 
         while not self.state.is_finished() and not self._cancel_event.is_set():
             if self.pause_event is not None and not self.pause_event.is_set():
@@ -270,6 +333,10 @@ class Executor:
                 fut.cancel()
             if running:
                 await asyncio.gather(*running.values(), return_exceptions=True)
+        if self._cancel_event.is_set():
+            await self.event_stream.publish(events.RUN_FAILED, {"reason": "cancelled"})
+        elif self._had_task_failure:
+            await self.event_stream.publish(events.RUN_FAILED, {"reason": "task_failure"})
         await self.event_stream.publish(events.EXECUTOR_FINISHED, {})
         await self.event_stream.publish(events.RUN_COMPLETED, {})
 

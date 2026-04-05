@@ -49,6 +49,15 @@ class events(Enum):
     RUN_MANIFEST_EMITTED = "run_manifest_emitted"
     BUDGET_WARNING = "budget_warning"
     RUN_COMPLETED = "run_completed"
+    RUN_FAILED = "run_failed"
+    # Worker / DAG visibility (platform + local)
+    WORKER_ASSIGNED = "worker_assigned"
+    # Speculative branch (alias TASK_CREATED speculative flag; explicit lifecycle)
+    SPECULATIVE_STARTED = "speculative_started"
+    SPECULATIVE_CANCELLED = "speculative_cancelled"
+    # HITL (alias clarification_* for UI contract; both may be emitted)
+    HITL_REQUESTED = "hitl_requested"
+    HITL_RESOLVED = "hitl_resolved"
 
 class Event(BaseModel):
     timestamp: datetime

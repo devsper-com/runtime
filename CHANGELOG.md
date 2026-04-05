@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-04-06
+
+### Added
+
+- **LangChain / LangGraph integrations** — `devsper.integrations.langchain_adapter` and `langgraph_adapter` for wrapping LangChain runnables as Devsper tasks and running compiled LangGraph nodes with Devsper DAG scheduling; CLI-friendly examples under `examples/langchain_agent.py` and `examples/langgraph_swarm.py`; optional extra `pip install 'devsper[langgraph]'` to pin LangGraph.
+
 ## [2.4.1] — 2026-03-31
 
 ### Fixed

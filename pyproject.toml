@@ -7,7 +7,7 @@ packages = ["devsper"]
 
 [project]
 name = "devsper"
-version = "2.4.1"
+version = "2.5.0"
 description = "Orchestrate distributed swarms of AI agents that collaboratively solve complex tasks."
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -53,7 +53,7 @@ Worker = "https://github.com/devsper-com/runtime/pkgs/container/devsper-worker"
 devsper = "devsper.cli:main"
 
 [project.optional-dependencies]
-server = ["fastapi>=0.110", "uvicorn>=0.29", "sse-starlette>=2.0"]
+server = ["fastapi>=0.110", "uvicorn>=0.29", "sse-starlette>=2.0", "vektori>=0.1.1"]
 ollama = []
 compliance = ["spacy>=3.7"]
 explainability = []
@@ -70,6 +70,8 @@ distributed = [
     "uvicorn>=0.29.0",
     "hiredis>=2.3.0",
 ]
+# Pin LangGraph explicitly for integrators (also pulled in via langchain).
+langgraph = ["langgraph>=1.0.0,<2"]
 worker = []  # distributed worker is a separate Rust binary (devsper-worker)
 docs = [
     "mkdocs>=1.6.0,<2",

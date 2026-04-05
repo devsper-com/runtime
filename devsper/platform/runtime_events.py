@@ -11,6 +11,7 @@ Environment:
 - DEVSPER_PLATFORM_RUN_ID, DEVSPER_PLATFORM_TRACE_ID: correlate with a platform run (UUIDs).
 - DEVSPER_PLATFORM_RUNTIME_EVENTS_REDIS_URL: if set, publish via Redis stream instead of HTTP.
 - DEVSPER_PLATFORM_RUNTIME_EVENTS_PROGRESS_INTERVAL_MS: min gap between run_progress events (default 400).
+- DEVSPER_DEBUG_EVENTS=1: log forwarded event types and platform payloads (see devsper.debug_events).
 - tool_called events are forwarded without that throttle and use event_type tool_called for Postgres/SSE.
 """
 
@@ -26,7 +27,11 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from devsper.contracts.platform_event_type import PlatformEventType
+from devsper.debug_events import log_platform_body, log_runtime_emit
 from devsper.types.event import Event, events
+
+_LOG = logging.getLogger(__name__)
 
 _RUN_STARTED = frozenset(
     {
@@ -34,11 +39,10 @@ _RUN_STARTED = frozenset(
         events.EXECUTOR_STARTED,
     }
 )
-_STEP_STARTED = frozenset({events.TASK_STARTED, events.AGENT_STARTED})
-_STEP_COMPLETED = frozenset({events.TASK_COMPLETED, events.AGENT_FINISHED})
-# Prefer RUN_COMPLETED from executor; SWARM_FINISHED would duplicate terminal signals.
+_TASK_STEP_STARTED = frozenset({events.TASK_STARTED})
+_TASK_STEP_COMPLETED = frozenset({events.TASK_COMPLETED})
 _RUN_COMPLETED = frozenset({events.RUN_COMPLETED})
-_RUN_FAILED = frozenset({events.TASK_FAILED})
+_RUN_FAILED = frozenset({events.TASK_FAILED, events.RUN_FAILED})
 _RUN_PROGRESS = frozenset(
     {
         events.PLANNER_STARTED,
@@ -64,26 +68,42 @@ def _timestamp_ms(ev: Event) -> int:
 
 
 def map_devsper_event_to_platform(ev: Event) -> Optional[str]:
-    """Return platform event_type or None to skip."""
+    """Map in-process devsper.events enum to platform ingest `event_type` string."""
     et = ev.type
+    if et == events.WORKER_ASSIGNED:
+        return PlatformEventType.WORKER_ASSIGNED
+    if et == events.SPECULATIVE_STARTED:
+        return PlatformEventType.SPECULATIVE_TASK_STARTED
+    if et == events.SPECULATIVE_CANCELLED:
+        return PlatformEventType.SPECULATIVE_TASK_CANCELLED
+    if et == events.HITL_REQUESTED:
+        return PlatformEventType.HITL_REQUESTED
+    if et == events.HITL_RESOLVED:
+        return PlatformEventType.HITL_RESOLVED
+    if et == events.EXECUTOR_FINISHED:
+        return PlatformEventType.EXECUTOR_FINISHED
+    if et == events.AGENT_STARTED:
+        return PlatformEventType.AGENT_STARTED
+    if et == events.AGENT_FINISHED:
+        return PlatformEventType.AGENT_FINISHED
     if et in _RUN_STARTED:
-        return "run_started"
-    if et in _STEP_STARTED:
-        return "step_started"
-    if et in _STEP_COMPLETED:
-        return "step_completed"
+        return PlatformEventType.RUN_STARTED
+    if et in _TASK_STEP_STARTED:
+        return PlatformEventType.STEP_STARTED
+    if et in _TASK_STEP_COMPLETED:
+        return PlatformEventType.STEP_COMPLETED
     if et in _RUN_COMPLETED:
-        return "run_completed"
+        return PlatformEventType.RUN_COMPLETED
     if et in _RUN_FAILED:
-        return "run_failed"
+        return PlatformEventType.RUN_FAILED
     if et in _TOOL_EVENTS:
-        return "tool_called"
+        return PlatformEventType.TOOL_CALLED
     if et in _CLARIFICATION_REQUESTED:
-        return "clarification_requested"
+        return PlatformEventType.CLARIFICATION_REQUESTED
     if et in _CLARIFICATION_ANSWERED:
-        return "clarification_answered"
+        return PlatformEventType.CLARIFICATION_ANSWERED
     if et in _RUN_PROGRESS:
-        return "run_progress"
+        return PlatformEventType.RUN_PROGRESS
     return None
 
 
@@ -118,13 +138,19 @@ class PlatformRuntimeEventSink:
         self._thread.join(timeout=timeout_s)
 
     def on_devsper_event(self, ev: Event) -> None:
-        ptype = map_devsper_event_to_platform(ev)
+        raw_type = ev.type.value if hasattr(ev.type, "value") else str(ev.type)
+        mapped = map_devsper_event_to_platform(ev)
+        log_runtime_emit(
+            "forwarder_map",
+            {"devsper_type": raw_type, "platform_event_type": mapped, "payload_keys": list((ev.payload or {}).keys())},
+        )
+        ptype = mapped
         if ptype is None:
             return
         rid = (self._cfg.platform_run_id or "").strip()
         if not rid:
             return
-        if ptype == "run_progress":
+        if ptype == PlatformEventType.RUN_PROGRESS:
             key = rid
             now = time.monotonic()
             min_gap = max(0.05, self._cfg.progress_interval_ms / 1000.0)
@@ -144,6 +170,7 @@ class PlatformRuntimeEventSink:
         body["sequence_id"] = self._next_sequence_id(rid)
         body["payload"]["event_id"] = body["event_id"]
         body["payload"]["sequence_id"] = body["sequence_id"]
+        log_platform_body(body)
         try:
             self._q.put_nowait(body)
         except queue.Full:
@@ -174,8 +201,8 @@ class PlatformRuntimeEventSink:
         if identity:
             seed = f'{body.get("run_id","")}:{body.get("event_type","")}:{identity}:{json.dumps(payload, sort_keys=True, default=str)}'
             return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:40]
-        # Random fallback for events without a stable identity payload.
         import uuid
+
         return uuid.uuid4().hex
 
     def _wal_append(self, body: dict[str, Any]) -> None:
