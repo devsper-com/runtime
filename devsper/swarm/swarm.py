@@ -11,10 +11,13 @@ User code:
 
 import asyncio
 import json
+import logging
 import os
 import threading
 from pathlib import Path
 from datetime import datetime, timezone
+
+log = logging.getLogger(__name__)
 
 from devsper.types.task import Task
 from devsper.types.event import Event, events
@@ -28,6 +31,12 @@ from devsper.agents.agent import Agent
 from devsper.agents.registry import AgentRegistry
 from devsper.budget import BudgetManager
 from devsper.telemetry import instrument_swarm_run, record_exception
+from devsper.telemetry.trulens import (
+    init_trulens,
+    get_session,
+    make_recorder,
+    instrument as _tru_instrument,
+)
 
 
 def _fake_config():
@@ -77,6 +86,22 @@ def _persist_dag(scheduler: Scheduler, event_log: EventLog, execution_graph: obj
     path = os.path.join(events_dir, f"{run_id}_dag.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump({"nodes": nodes, "edges": edges}, f, indent=0)
+
+
+class _TruSwarmApp:
+    """Thin TruLens-instrumented wrapper for swarm execution.
+
+    TruLens @instrument marks this method so every call is captured as a record
+    when a TruCustomApp recorder is active.  The Swarm delegates to this wrapper
+    only when TruLens is enabled; otherwise _run_core() is called directly.
+    """
+
+    def __init__(self, swarm: "Swarm") -> None:
+        self._swarm = swarm
+
+    @_tru_instrument
+    def execute(self, user_task: str, hitl_resolver: object = None) -> dict:
+        return self._swarm._run_core(user_task, hitl_resolver)
 
 
 class RunResult(dict):
@@ -200,6 +225,18 @@ class Swarm:
         self._last_reasoning_store = None
         self._pause_event = threading.Event()
         self._pause_event.set()
+        # Initialize TruLens session if enabled in config
+        _tele = getattr(cfg, "telemetry", None) if cfg is not None else None
+        if getattr(_tele, "trulens_enabled", True):
+            try:
+                from devsper import __version__
+
+                init_trulens(
+                    database_url=str(getattr(_tele, "trulens_database_url", "") or ""),
+                    app_version=__version__,
+                )
+            except Exception as _tlu_exc:
+                log.warning("TruLens init skipped: %s", _tlu_exc)
 
     def pause(self) -> None:
         """Pause the executor: currently-running tasks finish, no new tasks start."""
@@ -209,11 +246,35 @@ class Swarm:
         """Resume the executor so new tasks can be picked."""
         self._pause_event.set()
 
+    def _trulens_enabled(self) -> bool:
+        """Return True if TruLens recording is configured and a session exists."""
+        tele = getattr(self._config, "telemetry", None)
+        enabled = bool(getattr(tele, "trulens_enabled", True)) if tele else True
+        return enabled and get_session() is not None
+
     def run(self, user_task: str, hitl_resolver: object = None) -> dict[str, str]:
         """
         Create root task → plan subtasks → add to scheduler → run executor → return task_id → result.
         hitl_resolver: optional (approval, policy) -> bool for in-process approval prompts.
+
+        When TruLens is enabled the run is recorded via TruCustomApp so inputs,
+        outputs, and per-agent calls are stored in the TruLens database.
         """
+        if self._trulens_enabled():
+            try:
+                from devsper import __version__
+
+                _app = _TruSwarmApp(self)
+                recorder = make_recorder(_app, app_name="devsper", app_version=__version__)
+                if recorder is not None:
+                    with recorder as _recording:
+                        return _app.execute(user_task, hitl_resolver)
+            except Exception as _tru_exc:
+                log.warning("TruLens recording setup failed, falling back: %s", _tru_exc)
+        return self._run_core(user_task, hitl_resolver)
+
+    def _run_core(self, user_task: str, hitl_resolver: object = None) -> dict[str, str]:
+        """Internal run implementation (called directly or via TruLens wrapper)."""
         run_id = getattr(self.event_log, "run_id", "") or ""
         with instrument_swarm_run(run_id, user_task) as span:
             if span is not None:

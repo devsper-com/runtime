@@ -7,7 +7,7 @@ packages = ["devsper"]
 
 [project]
 name = "devsper"
-version = "2.5.0"
+version = "2.6.0"
 description = "Orchestrate distributed swarms of AI agents that collaboratively solve complex tasks."
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -70,6 +70,9 @@ distributed = [
     "uvicorn>=0.29.0",
     "hiredis>=2.3.0",
 ]
+# TruLens observability (default since 2.6.0).
+# trulens-core pins rich<14; we override that constraint via [tool.uv.override-dependencies].
+trulens = ["trulens-core>=1.0"]
 # Pin LangGraph explicitly for integrators (also pulled in via langchain).
 langgraph = ["langgraph>=1.0.0,<2"]
 worker = []  # distributed worker is a separate Rust binary (devsper-worker)
@@ -88,3 +91,9 @@ dev = [
     "respx>=0.22.0",
     "ruff>=0.15.5",
 ]
+
+[tool.uv]
+# trulens-core pins rich<14; textual (and devsper's TUI) requires rich>=14.
+# Override so uv resolves to the version we actually need — rich 14.x is
+# backward-compatible with the Console/Table APIs trulens uses.
+override-dependencies = ["rich>=14.3.3"]

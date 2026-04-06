@@ -15,6 +15,7 @@ from devsper.events import (
     ClarificationField,
     ClarificationRequest,
 )
+from devsper.telemetry.trulens import instrument as _tru_instrument
 
 log = logging.getLogger(__name__)
 
@@ -765,6 +766,7 @@ class Agent:
             answers[f.question] = self._default_answer_for_field(f)
         return answers
 
+    @_tru_instrument
     def run(self, request: AgentRequest) -> AgentResponse:
         """Stateless run: all context in AgentRequest, all output in AgentResponse."""
         import time

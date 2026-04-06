@@ -24,6 +24,8 @@ enabled = true
 top_k = 12
 
 [telemetry]
+trulens_enabled = true
+trulens_database_url = ""   # empty = sqlite:///.devsper/trulens.sqlite
 otel_enabled = true
 otel_endpoint = ""
 cost_tracking = true

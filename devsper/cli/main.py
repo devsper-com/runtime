@@ -2068,6 +2068,33 @@ def _run_analytics() -> int:
     return 0
 
 
+def _run_observe(port: int = 8501, db: str = "") -> int:
+    """Launch the TruLens observability dashboard."""
+    try:
+        from devsper.telemetry.trulens import init_trulens, get_session
+    except ImportError:
+        print("TruLens is not installed. Run: uv pip install 'devsper[trulens]'")
+        return 1
+
+    session = get_session() or init_trulens(database_url=db)
+    if session is None:
+        print(
+            "TruLens is not installed or failed to initialize.\n"
+            "Run: uv pip install 'devsper[trulens]'"
+        )
+        return 1
+
+    db_url = getattr(session, "connector", None)
+    db_label = str(db or ".devsper/trulens.sqlite")
+    print(f"Opening TruLens dashboard — db: {db_label}  port: {port}")
+    print("Press Ctrl-C to stop.")
+    try:
+        session.run_dashboard(port=port)
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 def _run_tools(args: object) -> int:
     """List tools with reliability scores, or reset score history."""
     from rich.console import Console
@@ -4031,6 +4058,29 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     version_parser.set_defaults(func=_run_version)
+
+    observe_parser = subparsers.add_parser(
+        "observe",
+        help="Launch TruLens observability dashboard",
+        description="Open the TruLens dashboard for browsing run records, traces, and feedback.",
+        epilog="""
+Examples:
+  devsper observe
+  devsper observe --port 8502
+  devsper observe --db sqlite:///custom.sqlite
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    observe_parser.add_argument(
+        "--port", type=int, default=8501, help="Dashboard port (default: 8501)"
+    )
+    observe_parser.add_argument(
+        "--db",
+        default="",
+        metavar="URL",
+        help="TruLens database URL (default: sqlite:///.devsper/trulens.sqlite)",
+    )
+    observe_parser.set_defaults(func=lambda a: _run_observe(a.port, a.db))
 
     health_parser = subparsers.add_parser(
         "health",

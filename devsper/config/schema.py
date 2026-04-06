@@ -109,6 +109,8 @@ class TelemetryConfig(BaseModel):
     otel_endpoint: str = ""
     otel_headers: dict[str, str] = Field(default_factory=dict)
     cost_tracking: bool = True
+    trulens_enabled: bool = True
+    trulens_database_url: str = ""  # empty = SQLite default (~/.trulens/)
 
 
 class BudgetConfig(BaseModel):

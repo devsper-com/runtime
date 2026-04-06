@@ -7,13 +7,21 @@ from devsper.telemetry.otel import (
     record_exception,
 )
 from devsper.telemetry.pricing import PRICING, estimate_cost_usd
+from devsper.telemetry.trulens import (
+    get_session as get_trulens_session,
+    init_trulens,
+    make_recorder as make_trulens_recorder,
+)
 
 __all__ = [
     "PRICING",
     "annotate_span",
     "estimate_cost_usd",
     "get_tracer",
+    "get_trulens_session",
+    "init_trulens",
     "instrument_swarm_run",
+    "make_trulens_recorder",
     "record_exception",
 ]
 

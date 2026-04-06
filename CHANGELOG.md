@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-04-06
+
+### Added
+
+- **TruLens observability integration** — Added first-class TruLens instrumentation for swarm runs and agent calls, with configurable runtime toggles in `[telemetry]` (`trulens_enabled`, `trulens_database_url`) and recorder/session exports in `devsper.telemetry`.
+- **CLI observability dashboard command** — Added `devsper observe` to launch the TruLens dashboard locally with optional `--port` and `--db` overrides.
+- **Optional `trulens` extra** — Added `devsper[trulens]` dependency group for straightforward TruLens installation.
+
+### Changed
+
+- **Swarm execution path** — `Swarm.run` now records via a TruLens custom app wrapper when enabled, with safe fallback to the standard runtime path if TruLens initialization or recorder setup fails.
+- **Agent call capture** — `Agent.run` is instrumented for per-call telemetry capture when TruLens is installed.
+- **Telemetry defaults and examples** — Updated default config template to include TruLens options and local database guidance.
+
 ## [2.5.0] — 2026-04-06
 
 ### Added
