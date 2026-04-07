@@ -4,7 +4,10 @@ Singleton factory for the active PromptOptimizerBackend.
 Resolution order:
   1. DEVSPER_PROMPT_OPTIMIZER env var
   2. config.prompt_optimizer.provider (devsper.toml)
-  3. Default: "noop"
+  3. Auto-detect: "dspy" if dspy-ai is importable, else "gepa"
+     (GEPABackend ships a built-in evolutionary loop — no extra install needed)
+
+Set provider = "noop" explicitly to disable optimization.
 """
 
 from __future__ import annotations
@@ -75,7 +78,17 @@ def _resolve_provider_name(config=None) -> str:
         if provider:
             return provider
 
-    return "noop"
+    # 3. Auto-detect: prefer dspy if importable, otherwise gepa
+    return _autodetect()
+
+
+def _autodetect() -> str:
+    """Return 'dspy' if dspy-ai is installed, else 'gepa' (always available)."""
+    try:
+        import dspy  # noqa: F401
+        return "dspy"
+    except ImportError:
+        return "gepa"
 
 
 def _opt_cfg(config=None):

@@ -232,12 +232,13 @@ def test_noop_backend_health():
     assert asyncio.run(backend.health()) is True
 
 
-def test_factory_default_is_noop():
+def test_factory_default_is_dspy_or_gepa():
+    """Default is dspy if installed, gepa otherwise — never noop."""
     reset_prompt_optimizer()
     import os
     os.environ.pop("DEVSPER_PROMPT_OPTIMIZER", None)
     opt = get_prompt_optimizer()
-    assert opt.name == "noop"
+    assert opt.name in ("dspy", "gepa"), f"Expected dspy or gepa, got {opt.name}"
     reset_prompt_optimizer()
 
 

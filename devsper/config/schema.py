@@ -315,7 +315,7 @@ class PromptOptimizerConfig(BaseModel):
     provider: "noop" | "dspy" | "gepa"  (override with DEVSPER_PROMPT_OPTIMIZER env var)
     """
 
-    provider: str = "noop"
+    provider: str = ""   # "" = auto (dspy if installed, else gepa). "noop" disables.
     # DSPy-specific
     dspy_optimizer: str = "bootstrap"  # "bootstrap" | "mipro" | "bootstrap_random"
     max_demos: int = 4
