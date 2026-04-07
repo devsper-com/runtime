@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.2] — 2026-04-07
+
+### Changed
+
+- **Prompt optimizer default** — Auto-detect replaces hard-coded `noop` default. Factory resolves to `dspy` if `dspy-ai` is importable, else `gepa` (built-in evolutionary loop, no extra install required). Set `provider = "noop"` explicitly to disable.
+- **`PromptOptimizerConfig.provider`** — Default changed from `"noop"` to `""` (auto-detect).
+
 ## [2.7.1] — 2026-04-07
 
 ### Added
