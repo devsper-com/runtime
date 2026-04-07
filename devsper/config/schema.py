@@ -309,6 +309,32 @@ class HitlConfig(BaseModel):
     policies: list[HitlPolicyConfig] = Field(default_factory=list)
 
 
+class PromptOptimizerConfig(BaseModel):
+    """v2.7: Prompt optimization backend config.
+
+    provider: "noop" | "dspy" | "gepa"  (override with DEVSPER_PROMPT_OPTIMIZER env var)
+    """
+
+    provider: str = "noop"
+    # DSPy-specific
+    dspy_optimizer: str = "bootstrap"  # "bootstrap" | "mipro" | "bootstrap_random"
+    max_demos: int = 4
+    num_candidates: int = 10           # MIPROv2 only
+    # GEPA-specific
+    population_size: int = 5
+    n_iterations: int = 10
+
+
+class EvalConfig(BaseModel):
+    """v2.7: Eval harness config."""
+
+    dataset_dir: str = ".devsper/evals"   # default location for JSONL datasets
+    results_dir: str = ".devsper/eval_results"
+    pass_threshold: float = 0.5
+    concurrency: int = 4
+    default_metric: str = "contains"      # metric name from devsper.evals.metrics
+
+
 class devsperConfigModel(BaseModel):
     """Full resolved configuration with Pydantic validation."""
 
@@ -333,6 +359,8 @@ class devsperConfigModel(BaseModel):
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     compliance: ComplianceConfig = Field(default_factory=ComplianceConfig)
     hitl: HitlConfig = Field(default_factory=HitlConfig)
+    prompt_optimizer: PromptOptimizerConfig = Field(default_factory=PromptOptimizerConfig)
+    evals: EvalConfig = Field(default_factory=EvalConfig)
 
     # Backward-compat aliases (property-style access from old devsperConfig)
     @property

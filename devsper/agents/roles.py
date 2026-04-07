@@ -105,10 +105,34 @@ ROLE_CONFIGS: dict[str, RoleConfig] = {
 
 
 def get_role_config(role: str | None) -> RoleConfig:
-    """Return config for the given role, or default if unknown/None."""
-    if role and role in ROLE_CONFIGS:
-        return ROLE_CONFIGS[role]
-    return ROLE_CONFIGS[DEFAULT_ROLE]
+    """Return config for the given role, or default if unknown/None.
+
+    If an optimized prompt exists at .devsper/optimized_prompts/{role}.json
+    (written by EvalRunner after prompt optimization), it is used in place of
+    the hardcoded prompt_prefix.
+    """
+    base = ROLE_CONFIGS.get(role or DEFAULT_ROLE, ROLE_CONFIGS[DEFAULT_ROLE]) if role else ROLE_CONFIGS[DEFAULT_ROLE]
+    optimized = _load_optimized_prompt(base.name)
+    if optimized:
+        from dataclasses import replace
+        return replace(base, prompt_prefix=optimized)
+    return base
+
+
+def _load_optimized_prompt(role: str) -> str | None:
+    """Load persisted optimized prompt for a role, if it exists."""
+    import json
+    from pathlib import Path
+
+    p = Path(".devsper/optimized_prompts") / f"{role}.json"
+    if not p.exists():
+        return None
+    try:
+        data = json.loads(p.read_text())
+        prompt = data.get("prompt_prefix", "")
+        return prompt if prompt else None
+    except Exception:
+        return None
 
 
 # Keywords to infer role from task description

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.1] — 2026-04-07
+
+### Added
+
+- **Eval harness** — New `devsper/evals/` module: `EvalCase`, `EvalDataset` (JSONL-backed), `EvalRunner` (async, bounded concurrency), `EvalSummary`, and `MetricFn` protocol. Built-in metrics: `exact_match`, `contains`, `regex_match`, `word_overlap`, `non_empty`, `llm_judge(model=)`.
+- **Prompt optimizer abstraction** — `PromptOptimizerBackend` ABC mirroring the `MemoryBackend` / `LLMBackend` hot-swap pattern. Active backend resolved from `DEVSPER_PROMPT_OPTIMIZER` env var → `[prompt_optimizer] provider` config → default `"noop"`.
+- **DSPy backend** (`devsper[dspy]`) — `DSPyBackend` compiles few-shot examples into an optimized system prompt using `BootstrapFewShot`, `MIPROv2`, or `BootstrapFewShotWithRandomSearch`. Configured via `[prompt_optimizer] dspy_optimizer`, `max_demos`, `num_candidates`.
+- **GEPA backend** (`devsper[gepa]`) — `GEPABackend` runs an evolutionary prompt optimization loop. Uses the `gepa` library when installed; falls back to a built-in LLM-driven mutation loop so it works without any extra dependencies.
+- **OpenEvals metric adapter** (`devsper[openevals]`) — `openevals_metric(name)` wraps any OpenEvals LLM-as-judge evaluator as a `MetricFn`. Prebuilt names: `correctness`, `conciseness`, `groundedness`, `relevance`. Accessible via `get_metric("openevals:correctness")`. Falls back to built-in `llm_judge` when the package is absent.
+- **`devsper eval` CLI** — Three subcommands: `eval stub` (generate JSONL stub datasets per role), `eval run` (score a dataset, optional `--optimize` flag, `--optimizer dspy|gepa`), `eval results` (list persisted result files).
+- **Config sections** — `[prompt_optimizer]` and `[evals]` added to `devsperConfigModel`.
+- **Optimized prompt persistence** — `EvalRunner` saves results to `.devsper/optimized_prompts/{role}.json`. `get_role_config()` auto-loads these on the next run.
+- **`devsper[evals]`, `devsper[dspy]`, `devsper[gepa]`, `devsper[openevals]` extras.**
+- **pytest `live` marker** — Gates tests that require real API keys.
+
+### Changed
+
+- **`get_metric(name)`** extended: now accepts `"openevals:<evaluator>"` in addition to built-in names.
+- **`get_role_config()`** — Checks `.devsper/optimized_prompts/{role}.json` and uses the optimized prefix if present.
+
 ## [2.7.0] — 2026-04-07
 
 ### Added

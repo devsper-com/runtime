@@ -145,7 +145,7 @@ def _run_platform_once(task: str, args: object) -> tuple[int, dict, float]:
     api = _platform_api_builder()
     if not api.enabled():
         print(
-            "Platform routing is not configured. Run `devsper platform connect` first.",
+            "Cloud routing is not configured. Run `devsper platform connect` first.",
             file=sys.stderr,
         )
         return 2, {}, 0.0
@@ -2721,6 +2721,164 @@ def _run_version(args: object) -> int:
     return 0
 
 
+def _run_eval(args: object) -> int:
+    """Eval harness: run dataset, score results, optionally optimize prompts."""
+    import asyncio
+    import json
+    from pathlib import Path
+
+    eval_cmd = getattr(args, "eval_cmd", None)
+
+    if eval_cmd == "stub" or eval_cmd is None and not hasattr(args, "dataset"):
+        # Generate stub dataset
+        from devsper.evals.dataset import EvalDataset
+
+        role = getattr(args, "role", "general")
+        n = getattr(args, "n", 5)
+        out = getattr(args, "out", None)
+        dataset = EvalDataset.stub(role=role, n=n)
+        if out:
+            dataset.save(out)
+            print(f"Stub dataset ({len(dataset)} cases) written to {out}")
+        else:
+            for case in dataset:
+                print(json.dumps(case.to_dict()))
+        return 0
+
+    if eval_cmd == "results":
+        from devsper.config import get_config
+
+        try:
+            results_dir = Path(getattr(args, "dir", None) or get_config().evals.results_dir)
+        except Exception:
+            results_dir = Path(".devsper/eval_results")
+        if not results_dir.exists():
+            print(f"No results found in {results_dir}")
+            return 0
+        files = sorted(results_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not files:
+            print("No eval result files found.")
+            return 0
+        for f in files[:20]:
+            try:
+                data = json.loads(f.read_text())
+                print(
+                    f"  {f.name}  role={data.get('role', '?')}  "
+                    f"pass_rate={data.get('pass_rate', '?')}  "
+                    f"mean_score={data.get('mean_score', '?')}"
+                )
+            except Exception:
+                print(f"  {f.name}")
+        return 0
+
+    # eval_cmd == "run"
+    from devsper.evals.dataset import EvalDataset
+    from devsper.evals.metrics import get_metric
+    from devsper.evals.runner import EvalRunner
+    from devsper.config import get_config
+
+    try:
+        cfg = get_config()
+    except Exception:
+        from devsper.config.schema import devsperConfigModel
+        cfg = devsperConfigModel()
+
+    dataset_path = getattr(args, "dataset", None)
+    if not dataset_path:
+        print("Error: --dataset is required for 'eval run'")
+        return 1
+
+    dataset = EvalDataset.load(dataset_path)
+    role = getattr(args, "role", None)
+    metric_name = getattr(args, "metric", None) or cfg.evals.default_metric
+    threshold = getattr(args, "threshold", None) or cfg.evals.pass_threshold
+    concurrency = getattr(args, "concurrency", None) or cfg.evals.concurrency
+    do_optimize = getattr(args, "optimize", False)
+    optimizer_override = getattr(args, "optimizer", None)
+    out_path = getattr(args, "out", None)
+
+    metric = get_metric(metric_name)
+
+    # Build optimizer if requested
+    optimizer = None
+    if do_optimize:
+        from devsper.prompt_optimizer.factory import get_prompt_optimizer, reset_prompt_optimizer
+
+        if optimizer_override:
+            import os
+            os.environ["DEVSPER_PROMPT_OPTIMIZER"] = optimizer_override
+            reset_prompt_optimizer()
+        optimizer = get_prompt_optimizer(cfg)
+
+    # Build a minimal agent for evaluation
+    from devsper.agents.agent import Agent
+
+    agent = Agent(model_name=cfg.models.worker, use_tools=False)
+
+    runner = EvalRunner(
+        agent=agent,
+        metric=metric,
+        pass_threshold=threshold,
+        concurrency=concurrency,
+        optimize_after=do_optimize,
+        optimizer=optimizer,
+    )
+
+    try:
+        summary = asyncio.run(runner.run_async(dataset, role=role))
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        summary = loop.run_until_complete(runner.run_async(dataset, role=role))
+
+    # Print summary
+    try:
+        from rich.console import Console
+        from rich.table import Table
+
+        console = Console()
+        console.print(
+            f"\n[bold]Eval Results[/bold]  role=[cyan]{summary.role}[/cyan]  "
+            f"metric=[cyan]{summary.metric_name}[/cyan]  "
+            f"optimizer=[cyan]{summary.optimizer_backend}[/cyan]"
+        )
+        console.print(
+            f"  Passed: [green]{summary.passed}[/green]/{summary.total}  "
+            f"Pass rate: [bold]{summary.pass_rate:.1%}[/bold]  "
+            f"Mean score: [bold]{summary.mean_score:.3f}[/bold]\n"
+        )
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("ID", style="dim")
+        table.add_column("Task", max_width=40)
+        table.add_column("Score")
+        table.add_column("Pass")
+        for r in summary.results:
+            color = "green" if r.passed else "red"
+            table.add_row(
+                r.case.id,
+                r.case.task[:40],
+                f"{r.score:.2f}",
+                f"[{color}]{'✓' if r.passed else '✗'}[/{color}]",
+            )
+        console.print(table)
+    except ImportError:
+        print(f"\nEval: role={summary.role} metric={summary.metric_name}")
+        print(f"  {summary.passed}/{summary.total} passed ({summary.pass_rate:.1%})")
+        print(f"  Mean score: {summary.mean_score:.3f}")
+
+    # Persist results
+    results_dir = Path(cfg.evals.results_dir)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    ts = __import__("datetime").datetime.now().strftime("%Y%m%d_%H%M%S")
+    result_file = results_dir / f"eval_{summary.role}_{ts}.json"
+    result_file.write_text(summary.to_json())
+    print(f"\nResults saved to {result_file}")
+
+    if out_path:
+        Path(out_path).write_text(summary.to_json())
+
+    return 0 if summary.pass_rate >= threshold else 1
+
+
 def _run_health(args: object) -> int:
     """Run health checks. Exit 0 if healthy, 1 otherwise. Print ✓/✗ per check."""
     import asyncio
@@ -2811,7 +2969,7 @@ def _run_upgrade(args: object) -> int:
 
 
 def _run_cloud_dispatch(args: object) -> int:
-    """Devsper Platform (cloud): login, run, status, logs."""
+    """Devsper Cloud: login, run, status, logs."""
     cmd = getattr(args, "cloud_cmd", None)
     if not cmd:
         return 0
@@ -4081,6 +4239,64 @@ Examples:
         help="TruLens database URL (default: sqlite:///.devsper/trulens.sqlite)",
     )
     observe_parser.set_defaults(func=lambda a: _run_observe(a.port, a.db))
+
+    eval_parser = subparsers.add_parser(
+        "eval",
+        help="Eval harness and prompt optimization",
+        description="Run evals against a JSONL dataset and optionally optimize prompts.",
+        epilog="""
+Examples:
+  devsper eval run --dataset evals.jsonl --metric contains
+  devsper eval run --dataset evals.jsonl --role research --optimize --optimizer dspy
+  devsper eval stub --role research --out evals.jsonl
+  devsper eval results
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    eval_sub = eval_parser.add_subparsers(dest="eval_cmd", help="Subcommand")
+
+    eval_run_p = eval_sub.add_parser("run", help="Run eval dataset")
+    eval_run_p.add_argument("--dataset", required=True, help="Path to JSONL dataset")
+    eval_run_p.add_argument("--role", default=None, help="Filter to this agent role")
+    eval_run_p.add_argument(
+        "--metric",
+        default=None,
+        help="Metric name: exact_match | contains | regex_match | word_overlap | llm_judge (default: config)",
+    )
+    eval_run_p.add_argument(
+        "--threshold", type=float, default=None, help="Pass threshold (default: config)"
+    )
+    eval_run_p.add_argument(
+        "--optimize",
+        action="store_true",
+        help="Run prompt optimization after eval using the configured optimizer",
+    )
+    eval_run_p.add_argument(
+        "--optimizer",
+        default=None,
+        help="Override optimizer backend: noop | dspy | gepa",
+    )
+    eval_run_p.add_argument(
+        "--concurrency", type=int, default=None, help="Parallel eval cases"
+    )
+    eval_run_p.add_argument("--out", default=None, help="Save JSON results to this path")
+    eval_run_p.set_defaults(eval_cmd="run")
+
+    eval_stub_p = eval_sub.add_parser("stub", help="Generate a stub dataset")
+    eval_stub_p.add_argument(
+        "--role", default="general", help="Agent role (research/code/analysis/general)"
+    )
+    eval_stub_p.add_argument("-n", type=int, default=5, help="Number of examples")
+    eval_stub_p.add_argument(
+        "--out", default=None, help="Output JSONL path (default: prints to stdout)"
+    )
+    eval_stub_p.set_defaults(eval_cmd="stub")
+
+    eval_results_p = eval_sub.add_parser("results", help="List recent eval result files")
+    eval_results_p.add_argument("--dir", default=None, help="Results directory")
+    eval_results_p.set_defaults(eval_cmd="results")
+
+    eval_parser.set_defaults(func=_run_eval)
 
     health_parser = subparsers.add_parser(
         "health",

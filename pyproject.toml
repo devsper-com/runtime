@@ -7,7 +7,7 @@ packages = ["devsper"]
 
 [project]
 name = "devsper"
-version = "2.7.0"
+version = "2.7.1"
 description = "Orchestrate distributed swarms of AI agents that collaboratively solve complex tasks."
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -78,6 +78,11 @@ trulens = ["trulens-core>=1.0"]
 # Pin LangGraph explicitly for integrators (also pulled in via langchain).
 langgraph = ["langgraph>=1.0.0,<2"]
 worker = []  # distributed worker is a separate Rust binary (devsper-worker)
+# Prompt optimization backends (hot-swappable via prompt_optimizer.provider)
+dspy = ["dspy-ai>=2.4"]
+gepa = ["gepa>=0.1"]
+evals = []  # eval harness has no extra deps — all built-in
+openevals = ["openevals>=0.0.6"]
 docs = [
     "mkdocs>=1.6.0,<2",
     "mkdocs-material>=9.5.0",
@@ -92,6 +97,12 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "respx>=0.22.0",
     "ruff>=0.15.5",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+markers = [
+    "live: requires real API keys (deselected by default)",
 ]
 
 [tool.uv]
