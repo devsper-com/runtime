@@ -1,7 +1,7 @@
 """Tests for tool pipeline engine."""
 
 from devsper.tools.base import Tool
-from devsper.tools.registry import register, get
+from devsper.tools.registry import register, get, deregister
 from devsper.tools.pipelines import ToolPipeline, build_pipeline, PIPELINE_INPUT_KEY
 
 
@@ -24,9 +24,7 @@ def test_tool_pipeline_single_tool():
         out = pipeline.run(input="hello")
         assert out == "hello"
     finally:
-        if get("test_echo") is tool:
-            from devsper.tools import registry
-            registry._tools.pop("test_echo", None)
+        deregister("test_echo")
 
 
 def test_tool_pipeline_chains_output():
@@ -42,9 +40,8 @@ def test_tool_pipeline_chains_output():
         out = pipeline.run(input="chain")
         assert out == "chain"
     finally:
-        from devsper.tools import registry
-        registry._tools.pop("test_echo_1", None)
-        registry._tools.pop("test_echo_2", None)
+        deregister("test_echo_1")
+        deregister("test_echo_2")
 
 
 def test_build_pipeline_from_names():

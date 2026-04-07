@@ -33,6 +33,13 @@ def list_tools() -> list[Tool]:
     return get_global_registry().list_tools()
 
 
+def deregister(name: str) -> None:
+    """Remove a tool by name. No-op if the tool is not registered."""
+    reg = get_global_registry()
+    with reg._lock:
+        reg._tools.pop(name, None)
+
+
 def clear() -> None:
     """Clear all registered tools (used when rebuilding registry from bus payload)."""
     get_global_registry().clear()

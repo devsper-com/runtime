@@ -22,10 +22,12 @@ KNOWN_CREDENTIALS = {
     "gemini": ["api_key"],
     "azure": ["endpoint", "api_key", "deployment", "api_version"],
     "azure_anthropic": ["endpoint", "api_key", "deployment"],
+    "snowflake": ["account", "user", "password", "database", "schema", "warehouse", "role"],
+    "redis_memory": ["url"],
 }
 
 # Keys that must never be shown in list (only "(stored)"); all others can show value
-SENSITIVE_KEYS = {"api_key", "token"}
+SENSITIVE_KEYS = {"api_key", "token", "password"}
 
 # (provider, key) -> env var name for export
 PROVIDER_KEY_TO_ENV: dict[tuple[str, str], str] = {
@@ -40,6 +42,14 @@ PROVIDER_KEY_TO_ENV: dict[tuple[str, str], str] = {
     ("azure_anthropic", "endpoint"): "AZURE_ANTHROPIC_ENDPOINT",
     ("azure_anthropic", "api_key"): "AZURE_ANTHROPIC_API_KEY",
     ("azure_anthropic", "deployment"): "AZURE_ANTHROPIC_DEPLOYMENT_NAME",
+    ("snowflake", "account"): "SNOWFLAKE_ACCOUNT",
+    ("snowflake", "user"): "SNOWFLAKE_USER",
+    ("snowflake", "password"): "SNOWFLAKE_PASSWORD",
+    ("snowflake", "database"): "SNOWFLAKE_DATABASE",
+    ("snowflake", "schema"): "SNOWFLAKE_SCHEMA",
+    ("snowflake", "warehouse"): "SNOWFLAKE_WAREHOUSE",
+    ("snowflake", "role"): "SNOWFLAKE_ROLE",
+    ("redis_memory", "url"): "REDIS_URL",
 }
 
 

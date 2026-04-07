@@ -2,9 +2,16 @@
 Memory router: determine which memories are relevant to a task and return context for the agent.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from devsper.memory.memory_index import MemoryIndex
 from devsper.memory.memory_store import MemoryStore
 from devsper.memory.memory_types import MemoryRecord
+
+if TYPE_CHECKING:
+    from devsper.memory.providers.base import MemoryBackend
 
 
 class MemoryRouter:
@@ -22,8 +29,16 @@ class MemoryRouter:
         min_similarity: float = 0.55,
         default_namespace: str | None = None,
         ranking_backend: str | None = None,
+        backend: "MemoryBackend | None" = None,
     ) -> None:
-        self.store = store or _build_memory_store()
+        # Resolve the sync store from whichever source is provided
+        if backend is not None:
+            self.store = _sync_store_from_backend(backend)
+        elif store is not None:
+            self.store = store
+        else:
+            self.store = _build_memory_store()
+
         # Ranking backend only affects retrieval/ranking; persistence remains store-backed.
         try:
             from devsper.config import get_config
@@ -101,20 +116,27 @@ class MemoryRouter:
         return "\n".join(lines) if lines else ""
 
 
-def _build_memory_store() -> MemoryStore:
+def _sync_store_from_backend(backend: "MemoryBackend"):
+    """
+    Return a sync-compatible store from a MemoryBackend.
+    Backends with get_sync_store() (sqlite, redis, platform) return their underlying store.
+    Async-only backends (vektori, snowflake) return an _AsyncBridgeStore shim.
+    """
+    if hasattr(backend, "get_sync_store"):
+        return backend.get_sync_store()
+    from devsper.memory.context import _AsyncBridgeStore
+
+    return _AsyncBridgeStore(backend)
+
+
+def _build_memory_store():
+    """Build the default memory store via the provider factory."""
     try:
-        from devsper.config import get_config
+        from devsper.memory.providers.factory import get_memory_provider
 
-        cfg = get_config()
-        backend = getattr(cfg.memory, "backend", "local")
-        if backend == "platform":
-            # Lazy import so local-only memory backends don't require optional HTTP deps.
-            from devsper.memory.platform_memory import PlatformMemoryStore
-
-            return PlatformMemoryStore(
-                base_url=getattr(cfg.memory, "platform_api_url", ""),
-                org_slug=getattr(cfg.memory, "platform_org_slug", ""),
-            )
+        backend = get_memory_provider()
+        return _sync_store_from_backend(backend)
     except Exception:
         pass
+    # Hard fallback: bare SQLite
     return MemoryStore()

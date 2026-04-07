@@ -534,6 +534,31 @@ def run_doctor() -> int:
     except Exception as e:
         warnings.append(f"Memory store: {e}")
 
+    # Memory provider health check
+    try:
+        import asyncio
+        from devsper.memory.providers.factory import get_memory_provider
+        provider = get_memory_provider()
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    healthy = pool.submit(asyncio.run, provider.health()).result()
+            else:
+                healthy = loop.run_until_complete(provider.health())
+        except Exception:
+            healthy = False
+        if healthy:
+            ok.append(f"Memory provider: {provider.name} — healthy")
+        else:
+            warnings.append(
+                f"Memory provider: {provider.name} — health check failed. "
+                "Check credentials and connectivity."
+            )
+    except Exception as e:
+        warnings.append(f"Memory provider health check failed: {e}")
+
     try:
         from devsper.knowledge.knowledge_graph import KnowledgeGraph
         kg = KnowledgeGraph(store=get_default_store())

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-04-07
+
+### Added
+
+- **MemoryProvider abstraction** — Introduced `MemoryBackend` ABC (`devsper/memory/providers/base.py`) mirroring the `LLMBackend` pattern. All memory backends implement a unified async interface: `store`, `retrieve`, `delete`, `list_memory`, `list_all_ids`, `query_similar`, `health`.
+- **MemoryProvider factory** — `get_memory_provider()` singleton factory resolves the active backend from config (`[memory] provider`), `DEVSPER_MEMORY_PROVIDER` env var, or legacy `backend` field. Defaults to Vektori (pgvector) with automatic SQLite fallback when `DATABASE_URL` is not set.
+- **Snowflake memory backend** — New `SnowflakeBackend` using `VECTOR(FLOAT, 1536)` columns and `VECTOR_COSINE_SIMILARITY` for native semantic search. Credentials resolved exclusively via the devsper credential store or `SNOWFLAKE_*` env vars — never from config files.
+- **SQLite, Redis, Vektori, Platform backends** — Existing stores wrapped as `MemoryBackend` implementations with `get_sync_store()` escape hatch for legacy sync callers.
+- **Credential store: Snowflake + Redis** — Added `snowflake` and `redis_memory` providers to keyring mappings. `devsper credentials set snowflake password` stores the Snowflake password securely; `inject_into_env()` propagates all `SNOWFLAKE_*` vars automatically.
+- **Config schema** — Added `RedisMemoryConfig` and `SnowflakeMemoryConfig` sub-models under `[memory]`. `SnowflakeMemoryConfig` has no `password` field — credentials are credential-store-only.
+- **`devsper doctor` memory provider health check** — `run_doctor()` now calls `provider.health()` and reports the active backend name and status.
+- **`devsper[snowflake]` and `devsper[redis-memory]` extras** — `snowflake-connector-python>=3.6.0` and `redis>=5.0.0` optional dependency groups.
+- **`deregister(name)` in tool registry** — Public function to remove a single tool by name without clearing the whole registry.
+- **`MemoryIndex` native search delegation** — When the active backend has `supports_native_vector_search=True`, `query_memory()` and `query_across_runs()` delegate directly to `backend.query_similar()`, bypassing in-process cosine ranking.
+
+### Changed
+
+- **`MemoryRouter` and `MemoryIndex`** accept an optional `backend: MemoryBackend` parameter. The `_build_memory_store()` fallback now calls the factory instead of constructing `MemoryStore()` directly.
+- **`get_effective_memory_store()`** preserved as a backwards-compatible alias; new `get_effective_memory_backend()` returns the full `MemoryBackend`. Async-only backends (Vektori, Snowflake) are bridged via `_AsyncBridgeStore` for sync callers.
+- **Legacy `backend` values** (`local`, `supermemory`, `hybrid`) now map to `"vektori"` as the default production store.
+
+### Fixed
+
+- **`test_pipelines.py`** — Replaced `registry._tools.pop()` (broken module-level access) with new `deregister()` function.
+- **`test_e2e_redis_loop.py`** — Import guard prevents `ModuleNotFoundError` when `redis` is not installed; test now correctly skips instead of failing.
+
 ## [2.6.0] — 2026-04-06
 
 ### Added
@@ -82,7 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Supermemory ranking backend** — `[memory] backend = "supermemory"` (default) uses the Rust `supermemory-core` ranker for hybrid lexical (+ optional embedding) memory retrieval, deduplication, and recency-aware context formatting.
 - **Platform memory backends** — `[memory] backend` can be `platform` or `hybrid` with `platform_api_url` and `platform_org_slug`; config resolver honors `DEVSPER_PLATFORM_API_URL` and `DEVSPER_PLATFORM_ORG` when set.
-- **Remote platform workflows** — `load_workflow("org/pkg@N")` fetches workflow specs from the Devsper Platform API when `DEVSPER_PLATFORM_API_URL`, `DEVSPER_PLATFORM_ORG`, and (when required) `DEVSPER_PLATFORM_TOKEN` are configured.
+- **Remote platform workflows** — `load_workflow("org/pkg@N")` fetches workflow specs from the Devsper Cloud API when `DEVSPER_PLATFORM_API_URL`, `DEVSPER_PLATFORM_ORG`, and (when required) `DEVSPER_PLATFORM_TOKEN` are configured.
 - **Local worker pool** — `devsper pool` subcommands to run the local worker pool manager (foreground spawner) alongside improved swarm execution when using pool-backed paths.
 - **Devsper Cloud CLI** — `devsper cloud login`, `logout`, `run`, `status`, and `logs` for JWT authentication (OS keychain) and runs against the platform API.
 

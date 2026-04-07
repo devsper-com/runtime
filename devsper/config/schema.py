@@ -74,13 +74,46 @@ class ModelsConfig(BaseModel):
     quality: str | None = None  # v1.6: complex tier (defaults to planner)
 
 
+class RedisMemoryConfig(BaseModel):
+    """Connection config for Redis memory backend."""
+
+    redis_url: str = "redis://localhost:6379"
+    run_id: str = ""  # empty = auto-generated from os.getpid()
+
+
+class SnowflakeMemoryConfig(BaseModel):
+    """Connection config for Snowflake memory backend.
+
+    Credentials (account, user, password, etc.) are resolved from:
+      1. devsper credential store (devsper credentials set snowflake <key>)
+      2. SNOWFLAKE_* environment variables
+      3. These TOML fields as a last fallback (non-secret fields only)
+
+    NEVER put passwords in config files — use the credential store.
+    """
+
+    account: str = ""       # or SNOWFLAKE_ACCOUNT env var
+    user: str = ""          # or SNOWFLAKE_USER env var
+    database: str = ""      # or SNOWFLAKE_DATABASE env var
+    schema_name: str = ""   # "schema" is reserved by Pydantic; or SNOWFLAKE_SCHEMA
+    warehouse: str = ""     # or SNOWFLAKE_WAREHOUSE env var
+    role: str = ""          # or SNOWFLAKE_ROLE env var
+    table: str = "devsper_memory"
+
+
 class MemoryConfig(BaseModel):
     enabled: bool = True
     store_results: bool = True
     top_k: int = 5
+    # New explicit provider field. Takes precedence over legacy `backend`.
+    # Values: "sqlite" | "redis" | "snowflake" | "vektori"
+    # Empty string = auto-detect (vektori if DATABASE_URL set, else sqlite).
+    provider: str = ""
     backend: Literal["local", "platform", "hybrid", "supermemory"] = "supermemory"
     platform_api_url: str = ""
     platform_org_slug: str = ""
+    redis: RedisMemoryConfig = Field(default_factory=RedisMemoryConfig)
+    snowflake: SnowflakeMemoryConfig = Field(default_factory=SnowflakeMemoryConfig)
 
 
 class KnowledgeConfig(BaseModel):

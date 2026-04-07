@@ -20,7 +20,10 @@ from devsper.pool.store import RedisPoolStore
 
 
 async def _redis_ping(url: str) -> bool:
-    import redis.asyncio as aioredis
+    try:
+        import redis.asyncio as aioredis
+    except ImportError:
+        return False
 
     try:
         r = aioredis.from_url(url, decode_responses=True)

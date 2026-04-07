@@ -7,7 +7,7 @@ packages = ["devsper"]
 
 [project]
 name = "devsper"
-version = "2.6.0"
+version = "2.7.0"
 description = "Orchestrate distributed swarms of AI agents that collaboratively solve complex tasks."
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -64,6 +64,8 @@ embeddings = ["sentence-transformers>=3.0.0"]
 mcp = ["httpx>=0.27", "anyio>=4.0"]
 a2a = ["httpx>=0.27", "fastapi>=0.110", "uvicorn>=0.29", "sse-starlette>=2.0"]
 hitl = ["httpx>=0.27"]
+snowflake = ["snowflake-connector-python>=3.6.0"]
+redis-memory = ["redis>=5.0.0", "hiredis>=2.3.0"]
 distributed = [
     "redis>=5.0.0",
     "fastapi>=0.110.0",
