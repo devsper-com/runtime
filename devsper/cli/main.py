@@ -967,6 +967,35 @@ def _run_tui() -> int:
     return 0
 
 
+def _run_repl(args=None) -> int:
+    """Launch the interactive coding REPL (default when no subcommand given)."""
+    from pathlib import Path
+
+    from devsper.workspace.context import WorkspaceContext
+    from devsper.workspace.session import SessionHistory
+    from devsper.workspace.repl import CodeREPL
+
+    workspace = WorkspaceContext.discover(Path.cwd())
+    workspace.storage_dir.mkdir(parents=True, exist_ok=True)
+
+    session = SessionHistory(workspace.storage_dir)
+
+    new_session = getattr(args, "new", False) if args is not None else False
+    session_id = getattr(args, "session", None) if args is not None else None
+
+    if session_id:
+        try:
+            session.load_session(session_id)
+            new_session = False
+        except FileNotFoundError:
+            print(f"Session '{session_id}' not found.")
+            return 1
+
+    repl = CodeREPL(workspace, session, new_session=new_session)
+    repl.start()
+    return 0
+
+
 def _run_research(path: str) -> int:
     """Run literature review example on a directory."""
     root = _project_root()
@@ -1458,6 +1487,15 @@ def _run_init(no_interactive: bool = False) -> int:
         from devsper.cli.init import run_init
 
         return run_init(interactive=not no_interactive)
+
+
+def _run_init_md() -> int:
+    """Generate devsper.md project instructions via LLM."""
+    from pathlib import Path
+
+    from devsper.cli.init import run_init_md
+
+    return run_init_md(Path.cwd())
 
 
 def _run_credentials(args: object) -> int:
@@ -3072,6 +3110,17 @@ Examples:
     global_grp.add_argument(
         "--plain", action="store_true", help="Plain text output, no Rich (for piping)"
     )
+    global_grp.add_argument(
+        "--new",
+        action="store_true",
+        help="Start a new REPL session (discard previous conversation history)",
+    )
+    global_grp.add_argument(
+        "--session",
+        metavar="ID",
+        default=None,
+        help="Resume a specific REPL session by ID",
+    )
     subparsers = parser.add_subparsers(dest="command", help="Command")
 
     run_parser = subparsers.add_parser(
@@ -3507,7 +3556,12 @@ Examples:
         action="store_true",
         help="Use defaults without prompting (e.g. for CI)",
     )
-    init_parser.set_defaults(func=lambda a: _run_init(a.no_interactive))
+    init_parser.add_argument(
+        "--md",
+        action="store_true",
+        help="Generate a devsper.md project instructions file using an LLM",
+    )
+    init_parser.set_defaults(func=lambda a: _run_init_md() if getattr(a, "md", False) else _run_init(a.no_interactive))
 
     doctor_parser = subparsers.add_parser(
         "doctor",
@@ -4327,7 +4381,7 @@ Examples:
     except ImportError:
         pass
     if not args.command:
-        return _run_tui()
+        return _run_repl(args)
     return args.func(args)
 
 
