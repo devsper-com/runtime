@@ -7,7 +7,7 @@ packages = ["devsper"]
 
 [project]
 name = "devsper"
-version = "2.7.2"
+version = "2.8.0"
 description = "Orchestrate distributed swarms of AI agents that collaboratively solve complex tasks."
 readme = "README.md"
 license = "GPL-3.0-or-later"
