@@ -704,3 +704,138 @@ def run_doctor() -> int:
         for s in mcp_warnings:
             c.print(f"  [yellow]⚠[/] {s}", style="yellow")
     return 0 if not issues else 1
+
+
+# ---------------------------------------------------------------------------
+# devsper init --md
+# ---------------------------------------------------------------------------
+
+_INIT_MD_SYSTEM_PROMPT = """\
+You are an AI assistant that writes project-specific instruction files for AI coding agents.
+
+Given context about a software project, write a concise `devsper.md` file that an AI coding
+agent will read at the start of every session to understand the project. The file must be
+plain markdown with clear sections, focused on what an agent needs to work effectively:
+
+Required sections (use ## headings):
+1. What this project is — 2-3 sentence summary
+2. Commands — test, lint, build, run commands (copy from context)
+3. Architecture — key modules, data flow, important patterns
+4. Conventions — code style, naming, patterns to follow
+5. Known issues / Areas to avoid — gotchas, fragile code, active bugs
+
+Be specific and concise. Avoid generic advice. Only include what's true for this project.
+Output ONLY the markdown content, no preamble.
+"""
+
+
+def run_init_md(project_root: Path) -> int:
+    """Generate devsper.md for *project_root* using an LLM and write it to disk."""
+    import subprocess
+
+    try:
+        from rich.console import Console
+        console = Console()
+    except ImportError:
+        class _Console:  # type: ignore[no-redef]
+            def print(self, *a, **kw): print(*a)
+        console = _Console()  # type: ignore[assignment]
+
+    md_path = project_root / "devsper.md"
+    if md_path.exists():
+        console.print(f"[yellow]devsper.md already exists at {md_path}[/]")
+        console.print("Delete it first or edit it directly.")
+        return 1
+
+    console.print(f"[dim]Collecting project context from {project_root} ...[/]")
+
+    context_parts: list[str] = []
+
+    # README
+    for name in ("README.md", "README.rst", "README"):
+        readme = project_root / name
+        if readme.exists():
+            text = readme.read_text(encoding="utf-8", errors="replace")[:4000]
+            context_parts.append(f"## {name}\n{text}")
+            break
+
+    # Project manifest
+    for name in ("pyproject.toml", "package.json", "Cargo.toml", "go.mod"):
+        manifest = project_root / name
+        if manifest.exists():
+            text = manifest.read_text(encoding="utf-8", errors="replace")[:2000]
+            context_parts.append(f"## {name}\n{text}")
+            break
+
+    # Git log
+    try:
+        log = subprocess.check_output(
+            ["git", "log", "--oneline", "-20"],
+            cwd=str(project_root),
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        context_parts.append(f"## Recent git log\n{log}")
+    except Exception:
+        pass
+
+    # Directory structure (top-level + one level deep)
+    try:
+        entries = []
+        for p in sorted(project_root.iterdir()):
+            if p.name.startswith(".") or p.name in ("__pycache__", "node_modules", ".git"):
+                continue
+            if p.is_dir():
+                entries.append(f"{p.name}/")
+                for sub in sorted(p.iterdir())[:8]:
+                    if not sub.name.startswith("_"):
+                        entries.append(f"  {sub.name}{'/' if sub.is_dir() else ''}")
+            else:
+                entries.append(p.name)
+        context_parts.append("## Project structure\n" + "\n".join(entries[:60]))
+    except Exception:
+        pass
+
+    context = "\n\n".join(context_parts)
+    prompt = f"Here is context about the project:\n\n{context}\n\nNow write the devsper.md file."
+
+    console.print("[dim]Calling LLM to draft devsper.md ...[/]")
+
+    try:
+        from devsper.providers.router.factory import get_llm_router
+        from devsper.providers.router.base import LLMRequest
+
+        import asyncio
+
+        router = get_llm_router()
+        req = LLMRequest(
+            model="auto",
+            messages=[
+                {"role": "system", "content": _INIT_MD_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=4096,
+            temperature=0.3,
+        )
+
+        def _call() -> str:
+            loop = asyncio.new_event_loop()
+            try:
+                resp = loop.run_until_complete(router.route(req))
+                return resp.content
+            finally:
+                loop.close()
+
+        content = _call()
+    except Exception as exc:
+        console.print(f"[red]LLM call failed: {exc}[/]")
+        return 1
+
+    if not content or not content.strip():
+        console.print("[red]LLM returned empty content.[/]")
+        return 1
+
+    md_path.write_text(content.strip() + "\n", encoding="utf-8")
+    console.print(f"[green]Created devsper.md[/] at [cyan]{md_path}[/]")
+    console.print("Review and edit before your first session.")
+    return 0
