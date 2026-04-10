@@ -18,9 +18,13 @@ class StrReplaceFile(Tool):
     )
     category = "workspace"
     input_schema = {
-        "file": {"type": "string", "description": "Path to the file (relative or absolute)"},
-        "old_str": {"type": "string", "description": "The exact string to replace (must appear once)"},
-        "new_str": {"type": "string", "description": "The replacement string"},
+        "type": "object",
+        "required": ["file", "old_str", "new_str"],
+        "properties": {
+            "file": {"type": "string", "description": "Path to the file (relative or absolute)"},
+            "old_str": {"type": "string", "description": "The exact string to replace (must appear once)"},
+            "new_str": {"type": "string", "description": "The replacement string"},
+        },
     }
 
     def run(self, **kwargs) -> str:
@@ -49,7 +53,10 @@ class StrReplaceFile(Tool):
             return json.dumps({"error": "old_str matches multiple locations — be more specific"})
 
         updated = original.replace(old_str, new_str, 1)
-        path.write_text(updated, encoding="utf-8")
+        try:
+            path.write_text(updated, encoding="utf-8")
+        except OSError as exc:
+            return json.dumps({"error": f"could not write file: {exc}"})
 
         original_lines = original.splitlines(keepends=True)
         updated_lines = updated.splitlines(keepends=True)
