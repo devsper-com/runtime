@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Callable
 
 from devsper.utils.event_logger import EventLog
@@ -43,20 +44,30 @@ def format_event_line(event: dict) -> str | None:
 
 
 def format_diff_block(diff_str: str, file_path: str) -> str:
-    """Return a Rich markup string for a unified diff."""
+    """Return a Rich markup string for a unified diff.
+
+    Content is escaped before wrapping in markup tags to prevent diff lines
+    containing Rich markup syntax (e.g. ``[bold]``) from corrupting output.
+    """
+    try:
+        from rich.markup import escape as _escape
+    except ImportError:
+        _escape = lambda s: s  # noqa: E731
+
     if not diff_str.strip():
         return ""
     lines = []
-    lines.append(f"  [bold]Editing[/] [cyan]{file_path}[/]")
+    lines.append(f"  [bold]Editing[/] [cyan]{_escape(file_path)}[/]")
     for line in diff_str.splitlines():
+        safe = _escape(line)
         if line.startswith("+") and not line.startswith("+++"):
-            lines.append(f"  [green]{line}[/]")
+            lines.append(f"  [green]{safe}[/]")
         elif line.startswith("-") and not line.startswith("---"):
-            lines.append(f"  [red]{line}[/]")
+            lines.append(f"  [red]{safe}[/]")
         elif line.startswith("@@"):
-            lines.append(f"  [bold yellow]{line}[/]")
+            lines.append(f"  [bold yellow]{safe}[/]")
         else:
-            lines.append(f"  {line}")
+            lines.append(f"  {safe}")
     return "\n".join(lines)
 
 
@@ -74,7 +85,7 @@ def _first_meaningful_arg(args: dict) -> str:
 
 
 def _summarize_result(result: dict | str) -> str:
-    if isinstance(result, str):
+    if not isinstance(result, dict):
         return ""
     lines = result.get("lines", result.get("line_count", ""))
     if lines:
@@ -111,7 +122,7 @@ class CallbackEventLog(EventLog):
         super().__init__(**kwargs)
         self._callback = callback
 
-    def append_event(self, event) -> None:
+    def append_event(self, event) -> None:  # type: ignore[override]  # intentionally widened
         try:
             super().append_event(event)
         except Exception:
@@ -133,7 +144,7 @@ class CallbackEventLog(EventLog):
 # ---------------------------------------------------------------------------
 
 class ToolCallDisplay:
-    """Accumulates and prints tool-call events using Rich."""
+    """Renders tool-call events to the terminal using Rich."""
 
     def __init__(self, console=None) -> None:
         try:
@@ -162,4 +173,4 @@ class ToolCallDisplay:
         if line and self._console:
             self._console.print(line, markup=True)
         elif line:
-            print(line)
+            print(re.sub(r"\[/?[^\]]*\]", "", line))
