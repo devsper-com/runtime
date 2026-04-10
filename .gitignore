@@ -51,4 +51,4 @@ node_modules
 
 # Rust (workspace and worker crate)
 target/
-worker/target/
+worker/target/.worktrees/
