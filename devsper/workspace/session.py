@@ -32,7 +32,12 @@ class SessionHistory:
         return self._session_id
 
     def load_last_session(self) -> str:
-        """Load the most recent session. Creates one if none exist."""
+        """Load the most recent session. Creates one if none exist.
+
+        "Most recent" is determined by db file st_mtime — i.e. the session
+        most recently written to. This assumes each session has its own .db
+        file and that save_turn() is called during the session.
+        """
         dbs = sorted(
             self._sessions_dir.glob("*.db"),
             key=lambda p: p.stat().st_mtime,
@@ -68,16 +73,22 @@ class SessionHistory:
         self._conn.commit()
 
     def get_turns(self, session_id: str) -> list[dict]:
-        """Return all turns for a session, oldest first."""
+        """Return all turns for a session, oldest first.
+
+        Always reads committed data via a fresh connection so callers don't
+        need to hold a reference to the active session.
+        """
         db_path = self._sessions_dir / f"{session_id}.db"
         if not db_path.exists():
             return []
         conn = self._open(db_path)
-        rows = conn.execute(
-            "SELECT role, content, timestamp FROM turns WHERE session_id = ? ORDER BY id ASC",
-            (session_id,),
-        ).fetchall()
-        conn.close()
+        try:
+            rows = conn.execute(
+                "SELECT role, content, timestamp FROM turns WHERE session_id = ? ORDER BY id ASC",
+                (session_id,),
+            ).fetchall()
+        finally:
+            conn.close()
         return [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in rows]
 
     def format_history_for_context(self, max_turns: int = 10) -> str:
@@ -104,10 +115,12 @@ class SessionHistory:
         for db_path in dbs:
             session_id = db_path.stem
             conn = self._open(db_path)
-            row = conn.execute(
-                "SELECT COUNT(*) FROM turns WHERE session_id = ?", (session_id,)
-            ).fetchone()
-            conn.close()
+            try:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM turns WHERE session_id = ?", (session_id,)
+                ).fetchone()
+            finally:
+                conn.close()
             result.append({
                 "session_id": session_id,
                 "turn_count": row[0] if row else 0,
