@@ -1,4 +1,4 @@
-"""devsper cloud — login, run, status, logs against Devsper Platform API."""
+"""devsper cloud — login, run, status, logs against the Devsper Cloud API."""
 
 from __future__ import annotations
 

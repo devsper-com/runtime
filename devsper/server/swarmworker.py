@@ -479,7 +479,12 @@ def _execute_workflow_hub(
 
     combined_output = ""
     if results:
-        combined_output = "\n".join([f"{k}: {v}" for k, v in results.items()])
+        # Avoid leaking every intermediate node output into the user-facing final
+        # artifact. Keep the last non-empty node result as the run output.
+        for _, v in results.items():
+            text = str(v or "").strip()
+            if text:
+                combined_output = text
     status = "failed" if err_text else "completed"
     if err_text:
         combined_output = combined_output or err_text
@@ -519,6 +524,10 @@ def _execute_workflow_hub(
             else "No new memory facts extracted for this run."
         ),
     }
+    if results:
+        envelope["steps"] = [
+            {"step_id": str(k), "raw_result": str(v or "")} for k, v in results.items()
+        ]
     if err_text:
         envelope["error"] = {
             "message": err_text[:2000],

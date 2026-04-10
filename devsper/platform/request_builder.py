@@ -29,7 +29,7 @@ class PlatformRequestConfig:
 
 class PlatformAPIRequestBuilder:
     """
-    Shared HTTP request builder for the devsper platform API.
+    Shared HTTP request builder for the Devsper Cloud API.
 
     Defaults can be supplied by env vars:
     - DEVSPER_PLATFORM_API_URL (base URL, e.g. http://localhost:8080)
