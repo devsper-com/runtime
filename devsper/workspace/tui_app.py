@@ -167,35 +167,6 @@ Screen {
 
 
 # ---------------------------------------------------------------------------
-# Custom Input — intercepts Space synchronously before character insertion
-# ---------------------------------------------------------------------------
-
-class _DevsperInput(Input):
-    """Input that blocks Space from being inserted when field is empty,
-    routing it to the app's push-to-talk handler instead."""
-
-    def _on_key(self, event) -> None:  # fires before character is inserted
-        try:
-            app = self.app
-        except Exception:
-            super()._on_key(event)
-            return
-
-        if event.key == "space" and not self.value.strip() and hasattr(app, "_recording"):
-            event.stop()  # never bubbles; never inserts
-            if app._busy:
-                return
-            if app._recording:
-                app._last_space_t = time.monotonic()
-            elif app._voice and app._voice.available:
-                app._last_space_t = time.monotonic()
-                app._start_voice()
-            return  # skip super() → no insertion
-
-        super()._on_key(event)
-
-
-# ---------------------------------------------------------------------------
 # Thread → UI messages
 # ---------------------------------------------------------------------------
 
@@ -240,6 +211,8 @@ class DevsperApp(App):
         Binding("ctrl+l", "clear_screen", "Clear"),
         Binding("ctrl+e", "edit_in_editor", "Edit in $EDITOR"),
         Binding("f1", "show_help", "Help"),
+        # priority=True fires before Input ever sees the key
+        Binding("space", "handle_space", show=False, priority=True),
     ]
 
     def __init__(
@@ -299,7 +272,7 @@ class DevsperApp(App):
         )
         yield Horizontal(
             Static("›", id="input-prefix"),
-            _DevsperInput(placeholder="ask anything…", id="user-input"),
+            Input(placeholder="ask anything…", id="user-input"),
             Static(voice_hint, id="voice-badge"),
             id="input-row",
         )
@@ -388,9 +361,26 @@ class DevsperApp(App):
         else:
             self._run_turn(text)
 
-    @on(Input.Changed, "#user-input")
-    def handle_input_changed(self, event: Input.Changed) -> None:
-        pass  # Space handled in _DevsperInput._on_key before insertion
+    def action_handle_space(self) -> None:
+        """Space binding (priority=True) — PTT on empty input, else insert space."""
+        inp = self.query_one("#user-input", Input)
+        if not inp.value.strip() and not self._busy:
+            # PTT
+            if self._recording:
+                self._last_space_t = time.monotonic()
+            elif self._voice and self._voice.available:
+                self._last_space_t = time.monotonic()
+                self._start_voice()
+            else:
+                # No voice — let space fall through as normal character
+                pos = inp.cursor_position
+                inp.value = inp.value[:pos] + " " + inp.value[pos:]
+                inp.cursor_position = pos + 1
+        else:
+            # Mid-sentence space — insert normally
+            pos = inp.cursor_position
+            inp.value = inp.value[:pos] + " " + inp.value[pos:]
+            inp.cursor_position = pos + 1
 
     # ------------------------------------------------------------------
     # Voice
