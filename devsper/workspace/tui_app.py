@@ -282,6 +282,10 @@ class DevsperApp(App):
         self._print_banner()
         self.query_one("#user-input", Input).focus()
 
+    def on_unmount(self) -> None:
+        """Kill any in-progress Swift dictation process when app closes."""
+        self._kill_voice_proc()
+
     # ------------------------------------------------------------------
     # Banner
     # ------------------------------------------------------------------
@@ -297,10 +301,14 @@ class DevsperApp(App):
         has_md = self.workspace.md_content is not None
         n_facts = self._intelligence.fact_count() if self._intelligence else 0
 
-        log.write(
-            f"[bold #7c6af7]devsper[/] [#334155]v{ver}[/]"
-            f"  [#334155]·[/]  [bold #e2e8f0]{self.workspace.project_name}[/]"
-        )
+        # Use Text.assemble to avoid Rich mis-parsing version numbers as markup
+        from rich.text import Text
+        banner = Text()
+        banner.append("devsper", style="bold #7c6af7")
+        banner.append(f" v{ver}", style="#94a3b8")
+        banner.append("  ·  ", style="#334155")
+        banner.append(self.workspace.project_name, style="bold #e2e8f0")
+        log.write(banner)
 
         if has_md:
             log.write("[#22c55e]  ✓ devsper.md loaded[/]")
@@ -370,15 +378,19 @@ class DevsperApp(App):
 
     def action_cancel_voice(self) -> None:
         """Escape cancels an in-progress recording."""
-        if self._recording and self._voice and self._voice._dictation:
-            try:
-                import signal, subprocess
-                # Send SIGTERM to the dictation subprocess if it's running
-                proc = getattr(self._voice._dictation, "_proc", None)
+        if self._recording:
+            self._kill_voice_proc()
+
+    def _kill_voice_proc(self) -> None:
+        """Terminate the Swift dictation subprocess if it is running."""
+        try:
+            if self._voice and self._voice._dictation:
+                proc = self._voice._dictation._current_proc
                 if proc and proc.poll() is None:
                     proc.terminate()
-            except Exception:
-                pass
+                    proc.wait(timeout=2)
+        except Exception:
+            pass
 
     def on_voice_result(self, msg: VoiceResult) -> None:
         self._recording = False
@@ -428,8 +440,7 @@ class DevsperApp(App):
         task = self._build_task(user_text)
 
         try:
-            import asyncio
-            result = asyncio.run(swarm.run(task)) if asyncio.iscoroutinefunction(swarm.run) else swarm.run(task)
+            result = swarm.run(task)
             answer = self._extract_answer(result)
         except Exception as exc:
             answer = f"[#ef4444]Error: {exc}[/]"
@@ -494,6 +505,7 @@ class DevsperApp(App):
     # ------------------------------------------------------------------
 
     def action_quit(self) -> None:
+        self._kill_voice_proc()
         self.session.close()
         self.exit()
 

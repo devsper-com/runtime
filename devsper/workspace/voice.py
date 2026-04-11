@@ -48,6 +48,7 @@ class DictationHelper:
     def __init__(self, console=None) -> None:
         self._console = console
         self._available: bool | None = None   # None = not yet checked
+        self._current_proc: subprocess.Popen | None = None
 
     @property
     def available(self) -> bool:
@@ -124,6 +125,8 @@ class DictationHelper:
             log.warning("[voice] could not launch dictation helper: %s", exc)
             return ""
 
+        self._current_proc = proc  # expose for external termination
+
         self._print(
             "  [bold yellow]🎤[/] [dim]Speak now — pause to finish"
             + ("" if tui_mode else ", Enter to cancel")
@@ -165,6 +168,8 @@ class DictationHelper:
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout, _ = proc.communicate()
+        finally:
+            self._current_proc = None  # clear ref once process is gone
 
         if cancel_thread:
             cancel_thread.join(timeout=0.2)
