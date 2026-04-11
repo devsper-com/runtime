@@ -28,6 +28,7 @@ bootstrap_tool_packages(
         "devsper.tools.memory",
         "devsper.tools.hitl_request",
         "devsper.tools.workspace",
+        "devsper.tools.forge",
     ]
 )
 
