@@ -2,18 +2,22 @@
 //
 // Protocol:
 //   • Starts capturing mic audio immediately on launch.
-//   • Streams audio through SFSpeechRecognizer (on-device, no network needed).
-//   • Partial results are written to stderr so Python can show live feedback.
-//   • When Python closes the stdin pipe (spacebar released), audio ends.
-//   • Final transcript is printed to stdout, then the process exits.
+//   • Streams audio through SFSpeechRecognizer (on-device when available).
+//   • Partial results are written to stderr so Python can show live text.
+//   • Stops automatically when speech silence is detected (isFinal = true).
+//   • Also stops on SIGTERM (Python sends this for early cancellation).
+//   • Final transcript printed to stdout, then exits 0.
 //
 // Compile:
 //   swiftc -framework Foundation -framework Speech -framework AVFoundation \
 //          -O devsper_dictation.swift -o devsper-dictation
 
+import AVFoundation
 import Foundation
 import Speech
-import AVFoundation
+
+// Global used by the SIGTERM handler (C fn pointers can't capture context)
+var _gRequest: SFSpeechAudioBufferRecognitionRequest?
 
 // MARK: - Helpers
 
@@ -22,95 +26,84 @@ func fail(_ msg: String) -> Never {
     exit(1)
 }
 
-// MARK: - Authorization
+// MARK: - Authorization (synchronous)
 
-func requestAuthorization() {
+func authorize() {
     let sem = DispatchSemaphore(value: 0)
     SFSpeechRecognizer.requestAuthorization { _ in sem.signal() }
     sem.wait()
 
-    let status = SFSpeechRecognizer.authorizationStatus()
-    guard status == .authorized else {
-        fail("speech recognition not authorized — grant access in System Settings › Privacy & Security › Speech Recognition")
+    guard SFSpeechRecognizer.authorizationStatus() == .authorized else {
+        fail(
+            "speech recognition not authorized — go to System Settings › Privacy & Security › Speech Recognition"
+        )
     }
 }
 
 // MARK: - Main
 
 func run() {
-    requestAuthorization()
+    authorize()
 
-    // Prefer on-device recognition when available (macOS 13+, no network required)
-    guard let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer() else {
-        fail("no speech recognizer available for this locale")
-    }
-    guard recognizer.isAvailable else {
-        fail("speech recognizer is unavailable right now")
-    }
+    guard let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer()
+    else { fail("no speech recognizer available for this locale") }
+    guard recognizer.isAvailable else { fail("speech recognizer is unavailable right now") }
 
-    let engine   = AVAudioEngine()
-    let request  = SFSpeechAudioBufferRecognitionRequest()
-
+    let engine = AVAudioEngine()
+    let request = SFSpeechAudioBufferRecognitionRequest()
     request.shouldReportPartialResults = true
-    // On-device model when supported (private API check — safe to ignore failure)
     if #available(macOS 13, *) {
+        // Prefer on-device — no network needed, faster, private
         request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
         request.addsPunctuation = true
     }
 
-    // Tap the input bus
     let inputNode = engine.inputNode
-    let format    = inputNode.outputFormat(forBus: 0)
+    let format = inputNode.outputFormat(forBus: 0)
     inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buf, _ in
         request.append(buf)
     }
 
-    // ── Recognition task ────────────────────────────────────────────────────
     var latestTranscript = ""
-    let finalSem = DispatchSemaphore(value: 0)
+    let doneSem = DispatchSemaphore(value: 0)
 
     recognizer.recognitionTask(with: request) { result, error in
         if let result {
             latestTranscript = result.bestTranscription.formattedString
-            // Stream partial results to stderr so Python can show live text
-            fputs("\r\u{1B}[2K" + latestTranscript, stderr)
+            // Overwrite the same line on stderr — Python mirrors this live
+            fputs("\r\u{1B}[2K\(latestTranscript)", stderr)
             if result.isFinal {
-                finalSem.signal()
+                doneSem.signal()
             }
         }
         if let error {
-            // Don't treat "no speech detected" (216) as a hard error
-            let nsError = error as NSError
-            if nsError.code != 216 {
+            let code = (error as NSError).code
+            // 216 = "no speech detected" — soft, not a crash
+            if code != 216 {
                 fputs("\nerror: \(error.localizedDescription)\n", stderr)
             }
-            finalSem.signal()
+            doneSem.signal()
         }
     }
 
-    // ── Start engine ────────────────────────────────────────────────────────
-    do {
-        try engine.start()
-    } catch {
-        fail("could not start audio engine: \(error)")
-    }
+    do { try engine.start() } catch { fail("could not start audio engine: \(error)") }
 
-    // ── Wait for stdin close (Python releases spacebar) ─────────────────────
-    // Python closes the write end of the pipe → stdin reaches EOF here.
-    DispatchQueue.global(qos: .userInteractive).async {
-        FileHandle.standardInput.readDataToEndOfFile()
-        // Signal end of audio to the recognizer
+    // SIGTERM handler — Python sends this when user cancels early.
+    // C function pointers can't capture context, so store request in a global.
+    _gRequest = request
+    signal(SIGTERM) { _ in _gRequest?.endAudio() }
+
+    // Hard timeout: 60 s max, in case silence detection never fires
+    DispatchQueue.global().asyncAfter(deadline: .now() + 60) {
         request.endAudio()
-        engine.stop()
-        inputNode.removeTap(onBus: 0)
-        // Give the recognizer up to 4 s to produce a final result
-        let waited = finalSem.wait(timeout: .now() + 4.0)
-        if waited == .timedOut { finalSem.signal() }
     }
 
-    finalSem.wait()
+    doneSem.wait()
 
-    // Clear the partial-result line on stderr, print final to stdout
+    engine.stop()
+    inputNode.removeTap(onBus: 0)
+
+    // Clear the partial-result stderr line, print final to stdout
     fputs("\r\u{1B}[2K", stderr)
     if !latestTranscript.isEmpty {
         print(latestTranscript)

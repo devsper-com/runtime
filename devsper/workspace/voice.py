@@ -98,14 +98,19 @@ class DictationHelper:
         return True
 
     def record(self) -> str:
-        """Launch the helper, record until stop() called, return transcript."""
+        """Launch the helper, wait for silence detection, return transcript.
+
+        The Swift binary stops itself via SFSpeechRecognizer's isFinal callback
+        (fires ~1-2 s after the user stops talking). Pressing Enter or Ctrl+C
+        sends SIGTERM for early cancellation.
+        """
         if not self.ensure_compiled():
             return ""
 
         try:
             proc = subprocess.Popen(
                 [str(_BIN_PATH)],
-                stdin=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,   # no stdin needed — silence detection handles stop
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
@@ -114,54 +119,66 @@ class DictationHelper:
             return ""
 
         self._print(
-            "  [bold yellow]🎤[/] [dim]Recording — release Space or press Enter to send...[/]",
+            "  [bold yellow]🎤[/] [dim]Speak now — pause to finish, Enter to cancel[/]",
             markup=True,
         )
 
-        # Stream partial results from stderr to the terminal while recording
-        partial_lines: list[str] = []
-        stop_stderr = threading.Event()
-
+        # ── Stream partial results from stderr live ──────────────────────────
         def _stream_stderr():
-            while not stop_stderr.is_set():
+            while proc.poll() is None:
                 try:
                     ready, _, _ = select.select([proc.stderr], [], [], 0.05)
                     if ready:
                         chunk = proc.stderr.read(256)
                         if chunk:
-                            text = chunk.decode("utf-8", errors="replace")
-                            # The Swift side writes \r + ANSI clear + partial text
-                            # Mirror that to the terminal
-                            sys.stderr.write(text)
+                            sys.stderr.write(chunk.decode("utf-8", errors="replace"))
                             sys.stderr.flush()
-                            partial_lines.append(text)
                 except Exception:
                     break
 
         stderr_thread = threading.Thread(target=_stream_stderr, daemon=True)
         stderr_thread.start()
 
-        # ── Wait for stop signal (spacebar release / Enter / other key) ──────
-        self._wait_for_stop_signal()
+        # ── Watch for Enter / Ctrl+C to cancel early (raw mode, background) ─
+        def _watch_cancel():
+            import tty
+            import termios
+            fd = sys.stdin.fileno()
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                # select so we don't block forever if proc already exited
+                while proc.poll() is None:
+                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
+                    if ready:
+                        ch = sys.stdin.read(1)
+                        if ch in ("\r", "\n", "\x03", "\x04", " "):
+                            proc.terminate()
+                            break
+            except Exception:
+                pass
+            finally:
+                try:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old)
+                except Exception:
+                    pass
 
-        # Close stdin → signals the Swift helper to finalize the transcript
+        cancel_thread = threading.Thread(target=_watch_cancel, daemon=True)
+        cancel_thread.start()
+
+        # ── Wait for binary to finish (silence detection or cancel) ─────────
         try:
-            proc.stdin.close()
-        except OSError:
-            pass
-
-        stop_stderr.set()
-        stderr_thread.join(timeout=0.5)
-
-        # Clear partial-result line
-        sys.stderr.write("\r\033[2K")
-        sys.stderr.flush()
-
-        try:
-            stdout, _ = proc.communicate(timeout=5)
+            stdout, _ = proc.communicate(timeout=65)
         except subprocess.TimeoutExpired:
             proc.kill()
-            stdout = b""
+            stdout, _ = proc.communicate()
+
+        stderr_thread.join(timeout=0.5)
+        cancel_thread.join(timeout=0.2)
+
+        # Clear the partial-result line Swift left on stderr
+        sys.stderr.write("\r\033[2K")
+        sys.stderr.flush()
 
         transcript = stdout.decode("utf-8", errors="replace").strip()
         if transcript:
@@ -170,36 +187,6 @@ class DictationHelper:
             self._print("  [dim]Nothing heard — try again.[/]", markup=True)
 
         return transcript
-
-    # ------------------------------------------------------------------
-
-    def _wait_for_stop_signal(self) -> None:
-        """Block in raw terminal mode until spacebar release or any key press."""
-        import tty
-        import termios
-
-        fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
-        last_space_at = time.monotonic()
-
-        try:
-            tty.setraw(fd)
-            while True:
-                ready, _, _ = select.select([sys.stdin], [], [], 0.05)
-                now = time.monotonic()
-                if ready:
-                    ch = sys.stdin.read(1)
-                    if ch in ("\r", "\n", "\x03", "\x04"):
-                        break
-                    if ch == " ":
-                        last_space_at = now   # still holding
-                    else:
-                        break                 # any other key stops
-                else:
-                    if now - last_space_at > 0.3:
-                        break                 # 300 ms silence = released
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
     def _print(self, text: str, *, markup: bool = False) -> None:
         if self._console:
