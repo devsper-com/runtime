@@ -1,17 +1,17 @@
 """Voice input for the coding REPL.
 
-Hold the spacebar to record, release to transcribe. Requires the `voice`
-optional extra (sounddevice + numpy). Transcription uses the OpenAI Whisper
-API if an API key is present, falling back to a local whisper model if the
-`openai-whisper` package is installed.
+On macOS, uses the native Speech Recognition framework via a compiled Swift helper
+(devsper_dictation). The helper is compiled automatically on first use with swiftc.
+No API keys or extra Python packages required on macOS.
+
+On other platforms (or if swiftc is unavailable), falls back to sounddevice +
+OpenAI Whisper API / local whisper package.
 
 Usage::
 
     voice = VoiceInput(console=rich_console)
     if voice.available:
         text = voice.prompt_with_voice("[bold cyan]myproject[/] [dim]>[/] ")
-    else:
-        text = console.input("[bold cyan]myproject[/] [dim]>[/] ")
 """
 
 from __future__ import annotations
@@ -20,26 +20,202 @@ import io
 import logging
 import re
 import select
+import shutil
+import subprocess
 import sys
 import threading
 import time
 import wave
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+
+_SWIFT_SRC  = Path(__file__).parent / "devsper_dictation.swift"
+_BIN_DIR    = Path.home() / ".local" / "share" / "devsper" / "bin"
+_BIN_PATH   = _BIN_DIR / "devsper-dictation"
 
 # ---------------------------------------------------------------------------
-# Dependency checks
+# macOS native dictation via Swift helper
+# ---------------------------------------------------------------------------
+
+class DictationHelper:
+    """Manages compilation and use of the Swift dictation binary."""
+
+    def __init__(self, console=None) -> None:
+        self._console = console
+        self._available: bool | None = None   # None = not yet checked
+
+    @property
+    def available(self) -> bool:
+        if self._available is None:
+            self._available = self._check()
+        return self._available
+
+    def _check(self) -> bool:
+        if sys.platform != "darwin":
+            return False
+        if not _SWIFT_SRC.exists():
+            return False
+        # Binary already compiled?
+        if _BIN_PATH.exists():
+            return True
+        # Can we compile?
+        return bool(shutil.which("swiftc"))
+
+    def ensure_compiled(self) -> bool:
+        """Compile the Swift helper if not already done. Returns True on success."""
+        if _BIN_PATH.exists():
+            return True
+        if not shutil.which("swiftc"):
+            return False
+
+        self._print(
+            "  [dim]Compiling dictation helper (first time only)...[/]",
+            markup=True,
+        )
+        _BIN_DIR.mkdir(parents=True, exist_ok=True)
+        result = subprocess.run(
+            [
+                "swiftc",
+                "-framework", "Foundation",
+                "-framework", "Speech",
+                "-framework", "AVFoundation",
+                "-O",
+                str(_SWIFT_SRC),
+                "-o", str(_BIN_PATH),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            log.warning("[voice] swiftc failed:\n%s", result.stderr)
+            self._available = False
+            return False
+        return True
+
+    def record(self) -> str:
+        """Launch the helper, record until stop() called, return transcript."""
+        if not self.ensure_compiled():
+            return ""
+
+        try:
+            proc = subprocess.Popen(
+                [str(_BIN_PATH)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except OSError as exc:
+            log.warning("[voice] could not launch dictation helper: %s", exc)
+            return ""
+
+        self._print(
+            "  [bold yellow]🎤[/] [dim]Recording — release Space or press Enter to send...[/]",
+            markup=True,
+        )
+
+        # Stream partial results from stderr to the terminal while recording
+        partial_lines: list[str] = []
+        stop_stderr = threading.Event()
+
+        def _stream_stderr():
+            while not stop_stderr.is_set():
+                try:
+                    ready, _, _ = select.select([proc.stderr], [], [], 0.05)
+                    if ready:
+                        chunk = proc.stderr.read(256)
+                        if chunk:
+                            text = chunk.decode("utf-8", errors="replace")
+                            # The Swift side writes \r + ANSI clear + partial text
+                            # Mirror that to the terminal
+                            sys.stderr.write(text)
+                            sys.stderr.flush()
+                            partial_lines.append(text)
+                except Exception:
+                    break
+
+        stderr_thread = threading.Thread(target=_stream_stderr, daemon=True)
+        stderr_thread.start()
+
+        # ── Wait for stop signal (spacebar release / Enter / other key) ──────
+        self._wait_for_stop_signal()
+
+        # Close stdin → signals the Swift helper to finalize the transcript
+        try:
+            proc.stdin.close()
+        except OSError:
+            pass
+
+        stop_stderr.set()
+        stderr_thread.join(timeout=0.5)
+
+        # Clear partial-result line
+        sys.stderr.write("\r\033[2K")
+        sys.stderr.flush()
+
+        try:
+            stdout, _ = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout = b""
+
+        transcript = stdout.decode("utf-8", errors="replace").strip()
+        if transcript:
+            self._print(f"  [bold cyan]Heard:[/] {transcript}", markup=True)
+        else:
+            self._print("  [dim]Nothing heard — try again.[/]", markup=True)
+
+        return transcript
+
+    # ------------------------------------------------------------------
+
+    def _wait_for_stop_signal(self) -> None:
+        """Block in raw terminal mode until spacebar release or any key press."""
+        import tty
+        import termios
+
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        last_space_at = time.monotonic()
+
+        try:
+            tty.setraw(fd)
+            while True:
+                ready, _, _ = select.select([sys.stdin], [], [], 0.05)
+                now = time.monotonic()
+                if ready:
+                    ch = sys.stdin.read(1)
+                    if ch in ("\r", "\n", "\x03", "\x04"):
+                        break
+                    if ch == " ":
+                        last_space_at = now   # still holding
+                    else:
+                        break                 # any other key stops
+                else:
+                    if now - last_space_at > 0.3:
+                        break                 # 300 ms silence = released
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    def _print(self, text: str, *, markup: bool = False) -> None:
+        if self._console:
+            self._console.print(text, markup=markup)
+        else:
+            print(re.sub(r"\[/?[^\]]*\]", "", text))
+
+
+# ---------------------------------------------------------------------------
+# Fallback: sounddevice + Whisper
 # ---------------------------------------------------------------------------
 
 def _has_audio_deps() -> bool:
     try:
         import sounddevice  # noqa: F401
-        import numpy  # noqa: F401
+        import numpy        # noqa: F401
         return True
     except ImportError:
         return False
@@ -59,14 +235,8 @@ def _can_transcribe() -> bool:
     return False
 
 
-# ---------------------------------------------------------------------------
-# Audio → WAV bytes (no soundfile dependency)
-# ---------------------------------------------------------------------------
-
 def _to_wav_bytes(audio, sample_rate: int) -> bytes:
-    """Convert float32 numpy array to 16-bit WAV bytes using stdlib wave."""
     import numpy as np
-
     audio_int16 = (audio * 32767).clip(-32768, 32767).astype("int16")
     buf = io.BytesIO()
     with wave.open(buf, "w") as wf:
@@ -78,91 +248,60 @@ def _to_wav_bytes(audio, sample_rate: int) -> bytes:
     return buf.read()
 
 
-# ---------------------------------------------------------------------------
-# Transcription
-# ---------------------------------------------------------------------------
-
-def _transcribe(audio, sample_rate: int) -> str:
-    """Transcribe a numpy float32 audio array. Tries OpenAI then local whisper."""
-    import numpy as np
-
+def _whisper_transcribe(audio, sample_rate: int) -> str:
     wav_bytes = _to_wav_bytes(audio, sample_rate)
-
-    # ── OpenAI Whisper API ──────────────────────────────────────────────────
     try:
         import openai
-
         client = openai.OpenAI()
-        wav_file = io.BytesIO(wav_bytes)
-        wav_file.name = "audio.wav"
-        result = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=wav_file,
-            response_format="text",
-        )
-        return str(result).strip()
+        f = io.BytesIO(wav_bytes)
+        f.name = "audio.wav"
+        return str(client.audio.transcriptions.create(model="whisper-1", file=f, response_format="text")).strip()
     except Exception as exc:
-        log.debug("[voice] OpenAI Whisper failed: %s", exc)
-
-    # ── Local openai-whisper package ────────────────────────────────────────
+        log.debug("[voice] OpenAI whisper failed: %s", exc)
     try:
         import tempfile
-        from pathlib import Path
-        import whisper
-
-        model = whisper.load_model("base")
+        import whisper as _whisper
+        model = _whisper.load_model("base")
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             f.write(wav_bytes)
             tmp = f.name
         try:
-            result = model.transcribe(tmp)
-            return result["text"].strip()
+            return _whisper.transcribe(model, tmp)["text"].strip()
         finally:
             Path(tmp).unlink(missing_ok=True)
     except Exception as exc:
         log.debug("[voice] local whisper failed: %s", exc)
-
     return ""
 
 
 # ---------------------------------------------------------------------------
-# VoiceInput
+# VoiceInput — public API
 # ---------------------------------------------------------------------------
 
 class VoiceInput:
     """Hold-space voice input for the terminal REPL.
 
-    When the user holds the spacebar at the prompt, audio is recorded via
-    sounddevice. Releasing space (detected by 300 ms of key-repeat silence)
-    stops recording and triggers Whisper transcription. Any other key also
-    stops recording.
-
-    Falls back transparently to normal text input when deps are missing or on
-    Windows (where raw-mode terminal handling differs).
+    On macOS uses the native Speech framework (via compiled Swift helper).
+    Falls back to sounddevice + Whisper on other platforms.
     """
 
-    SAMPLE_RATE = 16_000  # Hz — Whisper's native rate
+    SAMPLE_RATE = 16_000
 
     def __init__(self, console=None) -> None:
         self._console = console
-        self._audio_ok = _has_audio_deps()
-        self._xscribe_ok = _can_transcribe()
+        self._dictation = DictationHelper(console=console)
+        self._whisper_ok = _has_audio_deps() and _can_transcribe()
 
     @property
     def available(self) -> bool:
-        """True if both recording and transcription deps are present."""
-        return self._audio_ok and self._xscribe_ok and sys.platform != "win32"
+        if sys.platform == "win32":
+            return False
+        return self._dictation.available or self._whisper_ok
 
-    # ------------------------------------------------------------------
-    # Public entry point
     # ------------------------------------------------------------------
 
     def prompt_with_voice(self, prompt_text: str) -> str:
-        """Display *prompt_text* and return user input.
-
-        If the user's first keystroke is Space, enters voice recording mode.
-        Otherwise falls back to normal line input.
-        """
+        """Show prompt; if user's first key is Space, record and transcribe."""
         if not self.available:
             return self._normal_input(prompt_text)
         try:
@@ -170,11 +309,11 @@ class VoiceInput:
         except (KeyboardInterrupt, EOFError):
             raise
         except Exception as exc:
-            log.debug("[voice] voice input error, falling back: %s", exc)
+            log.debug("[voice] error, falling back to normal input: %s", exc)
             return self._normal_input(prompt_text)
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # Internals
     # ------------------------------------------------------------------
 
     def _print(self, text: str, *, markup: bool = False) -> None:
@@ -189,11 +328,10 @@ class VoiceInput:
                 return self._console.input(prompt_text)
             except Exception:
                 pass
-        clean = re.sub(r"\[/?[^\]]*\]", "", prompt_text)
-        return input(clean)
+        return input(re.sub(r"\[/?[^\]]*\]", "", prompt_text))
 
     def _voice_aware_input(self, prompt_text: str) -> str:
-        """Raw-mode prompt: intercept first Space for voice, else normal input."""
+        """Raw-mode prompt — intercept first Space for voice, else normal input."""
         import tty
         import termios
 
@@ -209,16 +347,14 @@ class VoiceInput:
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
-        if first == "\x03":  # Ctrl+C
+        if first == "\x03":
             raise KeyboardInterrupt
-        if first in ("\x04", ""):  # Ctrl+D / EOF
+        if first in ("\x04", ""):
             raise EOFError
-        if first == "\r" or first == "\n":
+        if first in ("\r", "\n"):
             return ""
-
         if first == " ":
-            # Spacebar held — enter voice mode
-            return self._record_and_transcribe()
+            return self._record()
 
         # Normal typing: echo the char and read the rest of the line
         sys.stdout.write(first)
@@ -229,20 +365,25 @@ class VoiceInput:
             rest = ""
         return first + rest
 
-    def _record_and_transcribe(self) -> str:
-        """Record audio until space is released, then transcribe."""
+    def _record(self) -> str:
+        """Route to macOS dictation or Whisper fallback."""
+        if self._dictation.available:
+            return self._dictation.record()
+        return self._whisper_record()
+
+    def _whisper_record(self) -> str:
         import sounddevice as sd
         import numpy as np
 
         self._print(
-            "\n  [bold yellow]🎤[/] [dim]Recording — release Space or press Enter to send...[/]",
+            "  [bold yellow]🎤[/] [dim]Recording — release Space or press Enter...[/]",
             markup=True,
         )
 
         chunks: list = []
         stop_event = threading.Event()
 
-        def _audio_cb(indata, frames, time_info, status):
+        def _cb(indata, frames, time_info, status):
             if not stop_event.is_set():
                 chunks.append(indata.copy())
 
@@ -250,12 +391,11 @@ class VoiceInput:
             samplerate=self.SAMPLE_RATE,
             channels=1,
             dtype="float32",
-            callback=_audio_cb,
+            callback=_cb,
         )
 
         import tty
         import termios
-
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
         last_space_at = time.monotonic()
@@ -271,11 +411,10 @@ class VoiceInput:
                         if ch in ("\r", "\n", "\x03", "\x04"):
                             break
                         if ch == " ":
-                            last_space_at = now  # still holding
+                            last_space_at = now
                         else:
-                            break  # any other key stops
+                            break
                     else:
-                        # No space char for > 300 ms → user released spacebar
                         if now - last_space_at > 0.3:
                             break
             finally:
@@ -287,17 +426,14 @@ class VoiceInput:
             return ""
 
         audio = np.concatenate(chunks, axis=0).flatten()
-
         if float(np.abs(audio).max()) < 0.005:
-            self._print("  [dim]Too quiet — nothing heard.[/]", markup=True)
+            self._print("  [dim]Too quiet.[/]", markup=True)
             return ""
 
         self._print("  [dim]Transcribing...[/]", markup=True)
-        text = _transcribe(audio, self.SAMPLE_RATE)
-
+        text = _whisper_transcribe(audio, self.SAMPLE_RATE)
         if text:
             self._print(f"  [bold cyan]Heard:[/] {text}", markup=True)
         else:
-            self._print("  [dim]Could not transcribe — try again.[/]", markup=True)
-
+            self._print("  [dim]Could not transcribe.[/]", markup=True)
         return text
