@@ -25,9 +25,24 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from devsper.missions.base_agent import MissionAgent
-from devsper.missions.models import MissionType
 from devsper.utils.models import generate
+
+
+# ---------------------------------------------------------------------------
+# Minimal agent base — just a named wrapper around generate()
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass as _dc
+
+
+@_dc(slots=True)
+class _Agent:
+    name: str
+    model_name: str = "auto"
+
+
+# Alias so the rest of the file can use MissionAgent unchanged
+MissionAgent = _Agent
 
 log = logging.getLogger(__name__)
 

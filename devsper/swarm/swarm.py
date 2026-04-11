@@ -341,6 +341,27 @@ class Swarm:
                 )
                 subtasks = planner.plan(root)
 
+                # Emit the planned task list so the REPL display can show it
+                # before execution starts. We call the callback directly rather
+                # than append_event() to avoid the Event schema validation.
+                _plan_payload = {
+                    "type": "task_plan",
+                    "tasks": [
+                        {
+                            "id": t.id,
+                            "description": (t.description or "")[:100],
+                            "dependencies": list(t.dependencies or []),
+                        }
+                        for t in subtasks
+                    ],
+                }
+                _cb = getattr(self.event_log, "_callback", None)
+                if callable(_cb):
+                    try:
+                        _cb(_plan_payload)
+                    except Exception:
+                        pass
+
                 scheduler = Scheduler()
                 scheduler.add_tasks(subtasks)
                 scheduler.run_id = getattr(self.event_log, "run_id", "") or ""

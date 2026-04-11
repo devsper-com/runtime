@@ -39,6 +39,18 @@ def format_event_line(event: dict) -> str | None:
         role = event.get("role") or event.get("agent_role", "agent")
         return f"  [green]◎[/] [dim]Agent ({role}) done[/]"
 
+    if event_type == "task_plan":
+        tasks = event.get("tasks", [])
+        if not tasks:
+            return None
+        lines = [f"\n  [bold]Plan[/] [dim]({len(tasks)} task{'s' if len(tasks) != 1 else ''})[/]"]
+        for i, t in enumerate(tasks, 1):
+            desc = t.get("description", "")
+            deps = t.get("dependencies", [])
+            dep_str = f" [dim]← depends on {len(deps)}[/]" if deps else " [dim]← parallel[/]"
+            lines.append(f"  [dim]{i}.[/] {desc}{dep_str}")
+        return "\n".join(lines)
+
     # Suppress everything else
     return None
 

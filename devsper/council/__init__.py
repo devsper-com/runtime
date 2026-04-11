@@ -10,5 +10,17 @@ Applied selectively to subtasks above a complexity threshold.
 """
 
 from devsper.council.council import Council, CouncilResult, CouncilConfig
+from devsper.council.research_to_code import (
+    ResearchHandoff,
+    ResearchToCodeMission,
+    ResearchToCodeResult,
+)
 
-__all__ = ["Council", "CouncilResult", "CouncilConfig"]
+__all__ = [
+    "Council",
+    "CouncilResult",
+    "CouncilConfig",
+    "ResearchHandoff",
+    "ResearchToCodeMission",
+    "ResearchToCodeResult",
+]

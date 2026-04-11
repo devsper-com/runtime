@@ -14,11 +14,12 @@ from devsper.workspace.context import WorkspaceContext
 from devsper.workspace.session import SessionHistory
 from devsper.workspace.display import CallbackEventLog, ToolCallDisplay
 from devsper.workspace.living import WorkspaceIntelligence
+from devsper.workspace.voice import VoiceInput
 
 
 _HELP_TEXT = """\
 Slash-commands:
-  /init         Generate devsper.md project instructions (like Claude Code /init)
+  /init         Generate devsper.md project instructions
   /new          Start a fresh session (keeps semantic memory)
   /sessions     List past sessions for this project
   /memory       Query project semantic memory
@@ -26,6 +27,10 @@ Slash-commands:
   /council      Run a task through draft→critique→synthesize council
   /help         Show this help
   /exit /quit   Exit
+
+Voice input:
+  Hold [Space] at the prompt to record. Release to transcribe (Whisper).
+  Requires: pip install devsper[voice]
 """
 
 
@@ -52,6 +57,7 @@ class CodeREPL:
         self._display = ToolCallDisplay()
         self._console = self._display._console
         self._intelligence = WorkspaceIntelligence(workspace)
+        self._voice = VoiceInput(console=self._console)
 
     # ------------------------------------------------------------------
     # Public API
@@ -95,9 +101,12 @@ class CodeREPL:
 
     def _prompt(self) -> str:
         project = self.workspace.project_name
+        prompt_text = f"[bold cyan]{project}[/] [dim]>[/] "
+        if self._voice.available:
+            return self._voice.prompt_with_voice(prompt_text)
         try:
             if self._console:
-                return self._console.input(f"[bold cyan]{project}[/] [dim]>[/] ")
+                return self._console.input(prompt_text)
             else:
                 return input(f"{project} > ")
         except Exception:
@@ -208,6 +217,7 @@ class CodeREPL:
         from devsper.config import get_config
         from devsper.swarm.swarm import Swarm
 
+        cfg = None
         try:
             cfg = get_config()
             # Deep copy so we don't mutate the global config
@@ -218,7 +228,18 @@ class CodeREPL:
         except Exception:
             cfg = None
 
-        return Swarm(event_log=event_log, config=cfg)
+        if cfg is not None:
+            return Swarm(event_log=event_log, config=cfg)
+
+        # No devsper.toml found — use real models with sensible defaults so
+        # the REPL works out of the box without a config file.
+        return Swarm(
+            event_log=event_log,
+            worker_model="auto",
+            planner_model="auto",
+            use_tools=True,
+            adaptive=True,
+        )
 
     def _extract_answer(self, result: dict) -> str:
         """Pull a readable answer string from Swarm result dict."""
@@ -250,7 +271,7 @@ class CodeREPL:
 
         if mission_type in ("r2c", "research-code", "research_to_code"):
             try:
-                from devsper.missions.research_to_code import ResearchToCodeMission
+                from devsper.council.research_to_code import ResearchToCodeMission
                 self._print(
                     f"[dim]Running Research→Code mission: [cyan]{goal[:80]}[/] ...[/]",
                     markup=True,
@@ -361,9 +382,10 @@ class CodeREPL:
         hint = "" if has_md else "\n  → Type [cyan]/init[/] to generate project instructions."
         n_facts = self._intelligence.fact_count()
         fact_str = f" · {n_facts} learned facts" if n_facts else ""
+        voice_str = " · 🎤 voice on" if self._voice.available else ""
 
         banner = (
-            f"\n[bold]devsper v{__version__}[/] · [cyan]{project}[/]  [dim]{md_status}{fact_str}[/]"
+            f"\n[bold]devsper v{__version__}[/] · [cyan]{project}[/]  [dim]{md_status}{fact_str}{voice_str}[/]"
             + hint
             + "\n"
         )
