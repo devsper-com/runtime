@@ -1,8 +1,10 @@
 """Textual-based interactive coding interface for devsper.
 
-Layout mirrors Claude Code: scrollable conversation log fills the screen,
-a single-line input bar docks at the bottom, tool-call events stream in
-inline as the swarm works.
+Claude Code-style layout:
+  • Full-screen scrollable conversation log
+  • Sticky input bar at the bottom with voice indicator
+  • Tool-call events stream in-line as the swarm executes
+  • Keyboard shortcuts mirroring common terminal AI tools
 
 Usage (internal — launched by devsper/cli/main.py)::
 
@@ -21,8 +23,9 @@ from typing import TYPE_CHECKING
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Input, RichLog, Static
+from textual.containers import Horizontal
+from textual.message import Message as _TMsg
+from textual.widgets import Footer, Input, Label, RichLog, Static
 
 if TYPE_CHECKING:
     from devsper.workspace.context import WorkspaceContext
@@ -35,45 +38,107 @@ if TYPE_CHECKING:
 
 _CSS = """
 Screen {
-    background: $background;
+    background: #0d0f14;
+    layers: base overlay;
 }
 
-#header-bar {
+/* ── Header ─────────────────────────────────────────────────────────── */
+#header {
     height: 1;
-    background: $primary-darken-3;
+    background: #1a1d27;
     padding: 0 2;
-    color: $text;
+    border-bottom: tall #2a2d3e;
+    layout: horizontal;
 }
 
-#project-name {
-    color: $accent;
+#header-logo {
+    color: #7c6af7;
     text-style: bold;
+    width: auto;
 }
 
-#header-meta {
-    color: $text-muted;
-    text-align: right;
+#header-sep {
+    color: #3a3d52;
+    width: auto;
+    padding: 0 1;
+}
+
+#header-project {
+    color: #e2e8f0;
+    text-style: bold;
+    width: auto;
+}
+
+#header-branch {
+    color: #64748b;
+    width: auto;
+    padding: 0 1;
+}
+
+#header-spacer {
     width: 1fr;
 }
 
+#header-model {
+    color: #475569;
+    width: auto;
+    text-align: right;
+}
+
+/* ── Conversation log ────────────────────────────────────────────────── */
 #conversation {
     height: 1fr;
-    padding: 1 2;
-    scrollbar-gutter: stable;
+    background: #0d0f14;
+    padding: 1 3;
+    scrollbar-color: #2a2d3e #0d0f14;
+    scrollbar-size: 1 1;
+    border: none;
 }
 
-#input-container {
-    height: 3;
-    border-top: tall $primary-darken-2;
-    padding: 0 2;
-    background: $surface;
-    align: left middle;
+/* ── Status bar (above input) ────────────────────────────────────────── */
+#status-bar {
+    height: 1;
+    background: #111420;
+    padding: 0 3;
+    border-top: tall #1e2130;
+    layout: horizontal;
 }
 
-#prompt-prefix {
+#status-text {
+    color: #475569;
+    width: 1fr;
+    text-style: italic;
+}
+
+#status-voice {
+    color: #f59e0b;
     width: auto;
-    color: $accent;
+    display: none;
+}
+
+#status-voice.active {
+    display: block;
+}
+
+#status-session {
+    color: #334155;
+    width: auto;
+}
+
+/* ── Input row ───────────────────────────────────────────────────────── */
+#input-row {
+    height: 3;
+    background: #111420;
+    padding: 0 3;
+    layout: horizontal;
+    align: left middle;
+    border-top: tall #1e2130;
+}
+
+#input-prefix {
+    color: #7c6af7;
     text-style: bold;
+    width: auto;
     padding: 0 1 0 0;
 }
 
@@ -81,59 +146,26 @@ Screen {
     width: 1fr;
     border: none;
     background: transparent;
+    color: #e2e8f0;
     padding: 0;
 }
 
-#voice-hint {
+#user-input:focus {
+    border: none;
+    background: transparent;
+}
+
+#voice-badge {
+    color: #374151;
     width: auto;
-    color: $text-muted;
-    padding: 0 0 0 1;
-    display: none;
-}
-
-#voice-hint.visible {
-    display: block;
-}
-
-.user-msg {
-    color: $accent;
-    text-style: bold;
-    margin-top: 1;
-}
-
-.user-text {
-    padding: 0 0 0 2;
-    margin-bottom: 1;
-}
-
-.tool-line {
-    color: $text-muted;
-    padding: 0 0 0 2;
-}
-
-.answer-text {
-    padding: 0 0 0 2;
-    margin-bottom: 1;
-}
-
-.separator {
-    height: 1;
-    color: $primary-darken-2;
-}
-
-.status-thinking {
-    color: $warning;
     padding: 0 0 0 2;
 }
 """
 
 
 # ---------------------------------------------------------------------------
-# Custom messages for thread → UI communication
+# Thread → UI messages
 # ---------------------------------------------------------------------------
-
-from textual.message import Message as _TMsg
-
 
 class AppendLine(_TMsg):
     def __init__(self, text: str, markup: bool = True) -> None:
@@ -154,26 +186,34 @@ class VoiceResult(_TMsg):
         self.text = text
 
 
+class StatusUpdate(_TMsg):
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self.text = text
+
+
 # ---------------------------------------------------------------------------
 # DevsperApp
 # ---------------------------------------------------------------------------
 
 class DevsperApp(App):
-    """Claude Code-style Textual interface for devsper."""
+    """devsper interactive coding interface."""
 
     CSS = _CSS
+    TITLE = "devsper"
 
     BINDINGS = [
-        Binding("ctrl+c", "quit", "Quit"),
+        Binding("ctrl+c", "quit", "Quit", priority=True),
         Binding("ctrl+n", "new_session", "New session"),
-        Binding("ctrl+l", "clear", "Clear"),
-        Binding("ctrl+h", "show_help", "Help"),
+        Binding("ctrl+l", "clear_screen", "Clear"),
+        Binding("escape", "cancel_voice", "Cancel voice", show=False),
+        Binding("f1", "show_help", "Help"),
     ]
 
     def __init__(
         self,
-        workspace: WorkspaceContext,
-        session: SessionHistory,
+        workspace: "WorkspaceContext",
+        session: "SessionHistory",
         new_session: bool = False,
     ) -> None:
         super().__init__()
@@ -181,8 +221,10 @@ class DevsperApp(App):
         self.session = session
         self._new_session = new_session
         self._busy = False
+        self._recording = False
         self._voice = None
         self._intelligence = None
+        self._active_voice_proc = None
         self._init_subsystems()
 
     def _init_subsystems(self) -> None:
@@ -202,20 +244,31 @@ class DevsperApp(App):
     # ------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
-        project = self.workspace.project_name
-        voice_str = "  🎤" if (self._voice and self._voice.available) else ""
+        p = self.workspace.project_name
+        branch = self._git_branch()
+        voice_hint = "  ⎵ voice" if (self._voice and self._voice.available) else ""
 
         yield Horizontal(
-            Static(f"[bold]{project}[/]", id="project-name"),
-            Static(f"devsper  {voice_str}", id="header-meta"),
-            id="header-bar",
+            Static("devsper", id="header-logo"),
+            Static("›", id="header-sep"),
+            Static(p, id="header-project"),
+            Static(branch, id="header-branch"),
+            Static("", id="header-spacer"),
+            Static("claude-sonnet", id="header-model"),
+            id="header",
         )
-        yield RichLog(id="conversation", wrap=True, markup=True, highlight=False)
+        yield RichLog(id="conversation", wrap=True, markup=True, highlight=True, auto_scroll=True)
         yield Horizontal(
-            Static(f"{project} ›", id="prompt-prefix"),
-            Input(placeholder="message… (Space for voice)", id="user-input"),
-            Static("🎤 space", id="voice-hint"),
-            id="input-container",
+            Label("", id="status-text"),
+            Label("🎤 recording…", id="status-voice"),
+            Label("", id="status-session"),
+            id="status-bar",
+        )
+        yield Horizontal(
+            Static("›", id="input-prefix"),
+            Input(placeholder="ask anything…", id="user-input"),
+            Static(voice_hint, id="voice-badge"),
+            id="input-row",
         )
         yield Footer()
 
@@ -225,12 +278,9 @@ class DevsperApp(App):
         else:
             self.session.load_last_session()
 
+        self._update_status_session()
         self._print_banner()
         self.query_one("#user-input", Input).focus()
-
-        # Show voice hint if available
-        if self._voice and self._voice.available:
-            self.query_one("#voice-hint").add_class("visible")
 
     # ------------------------------------------------------------------
     # Banner
@@ -240,18 +290,31 @@ class DevsperApp(App):
         log = self.query_one("#conversation", RichLog)
         try:
             from devsper import __version__
+            ver = __version__
         except Exception:
-            __version__ = "?"
+            ver = "?"
 
         has_md = self.workspace.md_content is not None
         n_facts = self._intelligence.fact_count() if self._intelligence else 0
 
-        md_note = "[green]devsper.md loaded[/]" if has_md else "[yellow]no devsper.md[/]"
-        facts_note = f"  ·  {n_facts} facts" if n_facts else ""
-        log.write(f"[bold]devsper v{__version__}[/]  ·  {md_note}{facts_note}\n")
+        log.write(
+            f"[bold #7c6af7]devsper[/] [#334155]v{ver}[/]"
+            f"  [#334155]·[/]  [bold #e2e8f0]{self.workspace.project_name}[/]"
+        )
 
-        if not has_md:
-            log.write("[dim]  → /init to generate project instructions[/]\n")
+        if has_md:
+            log.write("[#22c55e]  ✓ devsper.md loaded[/]")
+        else:
+            log.write("[#f59e0b]  ⚠ no devsper.md[/]  [#334155]→ /init to generate[/]")
+
+        if n_facts:
+            log.write(f"[#334155]  {n_facts} memory facts loaded[/]")
+
+        if self._voice and self._voice.available:
+            log.write("[#334155]  🎤 voice ready — press Space at empty prompt[/]")
+
+        log.write("")
+        log.write("[#1e2130]" + "─" * 60 + "[/]")
         log.write("")
 
     # ------------------------------------------------------------------
@@ -265,7 +328,7 @@ class DevsperApp(App):
         if not text:
             return
         if self._busy:
-            self._log("[dim]Still working — please wait.[/]")
+            self._log("[#f59e0b]Still working — please wait.[/]")
             return
         if text.startswith("/"):
             self._handle_slash(text)
@@ -274,12 +337,12 @@ class DevsperApp(App):
 
     @on(Input.Changed, "#user-input")
     def handle_input_changed(self, event: Input.Changed) -> None:
-        # Intercept Space at empty input → voice
         if (
             event.value == " "
             and self._voice
             and self._voice.available
             and not self._busy
+            and not self._recording
         ):
             event.input.clear()
             self._start_voice()
@@ -289,24 +352,52 @@ class DevsperApp(App):
     # ------------------------------------------------------------------
 
     def _start_voice(self) -> None:
-        self._log("  [bold yellow]🎤[/] [dim]Recording — speak, then pause…[/]")
-        self._set_busy(True)
+        self._recording = True
+        self._set_voice_ui(True)
+        self._set_status("recording…")
 
         def _record():
             try:
-                text = self._voice.record()
-            except Exception:
+                # tui_mode=True: skip raw-stdin cancel watcher (Textual owns stdin)
+                text = self._voice._record(tui_mode=True)
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).debug("voice error: %s", exc)
                 text = ""
             self.post_message(VoiceResult(text))
 
         threading.Thread(target=_record, daemon=True).start()
 
+    def action_cancel_voice(self) -> None:
+        """Escape cancels an in-progress recording."""
+        if self._recording and self._voice and self._voice._dictation:
+            try:
+                import signal, subprocess
+                # Send SIGTERM to the dictation subprocess if it's running
+                proc = getattr(self._voice._dictation, "_proc", None)
+                if proc and proc.poll() is None:
+                    proc.terminate()
+            except Exception:
+                pass
+
     def on_voice_result(self, msg: VoiceResult) -> None:
-        self._set_busy(False)
+        self._recording = False
+        self._set_voice_ui(False)
         if msg.text:
+            self._set_status("")
             self._run_turn(msg.text)
         else:
-            self._log("  [dim]Nothing heard — try again.[/]")
+            self._set_status("")
+            self._log("[#64748b]  Nothing heard.[/]")
+
+    def _set_voice_ui(self, active: bool) -> None:
+        badge = self.query_one("#status-voice")
+        if active:
+            badge.add_class("active")
+        else:
+            badge.remove_class("active")
+        inp = self.query_one("#user-input", Input)
+        inp.disabled = active or self._busy
 
     # ------------------------------------------------------------------
     # Turn execution
@@ -314,45 +405,49 @@ class DevsperApp(App):
 
     def _run_turn(self, user_text: str) -> None:
         log = self.query_one("#conversation", RichLog)
-        log.write(f"\n[bold cyan]You[/]")
-        log.write(f"  {user_text}\n")
+        log.write("")
+        log.write(f"[bold #93c5fd]  you[/]")
+        log.write(f"[#cbd5e1]  {user_text}[/]")
+        log.write("")
         self.session.save_turn("user", user_text)
         self._set_busy(True)
+        self._set_status("thinking…")
         self._execute_turn(user_text)
 
     @work(thread=True)
     def _execute_turn(self, user_text: str) -> None:
-        """Run the swarm in a worker thread; post events back to UI."""
         from devsper.workspace.display import CallbackEventLog, format_event_line
 
-        def _on_event(event_dict: dict) -> None:
-            line = format_event_line(event_dict)
+        def _on_event(evt: dict) -> None:
+            line = format_event_line(evt)
             if line:
-                self.post_message(AppendLine(f"[dim]{line}[/]"))
+                self.post_message(AppendLine(f"[#475569]  {line}[/]"))
 
         event_log = CallbackEventLog(callback=_on_event)
         swarm = self._make_swarm(event_log)
-
         task = self._build_task(user_text)
-        self.post_message(AppendLine("  [dim]● Thinking…[/]"))
 
         try:
-            result = swarm.run(task)
+            import asyncio
+            result = asyncio.run(swarm.run(task)) if asyncio.iscoroutinefunction(swarm.run) else swarm.run(task)
             answer = self._extract_answer(result)
         except Exception as exc:
-            answer = f"[red]Error: {exc}[/]"
+            answer = f"[#ef4444]Error: {exc}[/]"
 
         self.post_message(TurnDone(answer or ""))
 
     def on_turn_done(self, msg: TurnDone) -> None:
         log = self.query_one("#conversation", RichLog)
         if msg.answer:
-            log.write(f"\n[bold green]devsper[/]")
-            log.write(f"  {msg.answer}\n")
+            log.write(f"[bold #a78bfa]  devsper[/]")
+            log.write(f"[#e2e8f0]{self._indent(msg.answer)}[/]")
+            log.write("")
+            log.write("[#1e2130]" + "─" * 60 + "[/]")
+            log.write("")
         self.session.save_turn("assistant", msg.answer)
         self._set_busy(False)
+        self._set_status("")
 
-        # Non-blocking fact extraction
         if self._intelligence and msg.answer:
             def _extract():
                 try:
@@ -362,8 +457,10 @@ class DevsperApp(App):
             threading.Thread(target=_extract, daemon=True).start()
 
     def on_append_line(self, msg: AppendLine) -> None:
-        log = self.query_one("#conversation", RichLog)
-        log.write(msg.text, markup=msg.markup)
+        self.query_one("#conversation", RichLog).write(msg.text, markup=msg.markup)
+
+    def on_status_update(self, msg: StatusUpdate) -> None:
+        self._set_status(msg.text)
 
     # ------------------------------------------------------------------
     # Slash commands
@@ -374,27 +471,23 @@ class DevsperApp(App):
         cmd = parts[0].lower()
         arg = parts[1] if len(parts) > 1 else ""
 
-        if cmd in ("/exit", "/quit"):
-            self.exit()
-        elif cmd == "/new":
-            sid = self.session.start_new_session()
-            self._log(f"New session [cyan]{sid[:8]}[/]")
-        elif cmd == "/sessions":
-            self._show_sessions()
-        elif cmd == "/memory":
-            self._query_memory(arg.strip())
-        elif cmd == "/init":
-            self._run_init(force=arg.strip() == "--force")
-        elif cmd == "/mission":
-            self._run_mission(arg.strip())
-        elif cmd == "/council":
-            self._run_council(arg.strip())
-        elif cmd == "/help":
-            self._show_help()
-        elif cmd == "/clear":
-            self.action_clear()
+        dispatch = {
+            "/exit": lambda: self.action_quit(),
+            "/quit": lambda: self.action_quit(),
+            "/new": lambda: self._cmd_new(),
+            "/sessions": lambda: self._show_sessions(),
+            "/memory": lambda: self._query_memory(arg.strip()),
+            "/init": lambda: self._run_init(force=arg.strip() == "--force"),
+            "/mission": lambda: self._run_mission(arg.strip()),
+            "/council": lambda: self._run_council(arg.strip()),
+            "/help": lambda: self._show_help(),
+            "/clear": lambda: self.action_clear_screen(),
+        }
+        fn = dispatch.get(cmd)
+        if fn:
+            fn()
         else:
-            self._log(f"[dim]Unknown: {cmd}. /help for commands.[/]")
+            self._log(f"[#64748b]Unknown: {cmd}  —  /help for commands[/]")
 
     # ------------------------------------------------------------------
     # Actions
@@ -405,10 +498,9 @@ class DevsperApp(App):
         self.exit()
 
     def action_new_session(self) -> None:
-        sid = self.session.start_new_session()
-        self._log(f"New session [cyan]{sid[:8]}[/]")
+        self._cmd_new()
 
-    def action_clear(self) -> None:
+    def action_clear_screen(self) -> None:
         self.query_one("#conversation", RichLog).clear()
         self._print_banner()
 
@@ -425,14 +517,43 @@ class DevsperApp(App):
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
         inp = self.query_one("#user-input", Input)
-        inp.disabled = busy
+        inp.disabled = busy or self._recording
+
+    def _set_status(self, text: str) -> None:
+        try:
+            self.query_one("#status-text", Label).update(f"  {text}" if text else "")
+        except Exception:
+            pass
+
+    def _update_status_session(self) -> None:
+        try:
+            sid = getattr(self.session, "_session_id", "")
+            label = f"{sid[:8]}  " if sid else ""
+            self.query_one("#status-session", Label).update(label)
+        except Exception:
+            pass
+
+    def _indent(self, text: str, spaces: int = 2) -> str:
+        pad = " " * spaces
+        return "\n".join(pad + line for line in text.splitlines())
+
+    def _git_branch(self) -> str:
+        try:
+            import subprocess
+            r = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=self.workspace.project_root,
+                capture_output=True, text=True, timeout=2,
+            )
+            b = r.stdout.strip()
+            return f"git:{b}" if b and b != "HEAD" else ""
+        except Exception:
+            return ""
 
     def _build_task(self, user_message: str) -> str:
         parts: list[str] = []
         if self.workspace.md_content:
-            parts.append(
-                f"<project_instructions>\n{self.workspace.md_content}\n</project_instructions>"
-            )
+            parts.append(f"<project_instructions>\n{self.workspace.md_content}\n</project_instructions>")
         history = self.session.format_history_for_context(max_turns=10)
         if history:
             parts.append(f"<conversation_history>\n{history}\n</conversation_history>")
@@ -446,7 +567,6 @@ class DevsperApp(App):
     def _make_swarm(self, event_log):
         from devsper.config import get_config
         from devsper.swarm.swarm import Swarm
-
         cfg = None
         try:
             cfg = get_config()
@@ -466,7 +586,7 @@ class DevsperApp(App):
             adaptive=True,
         )
 
-    def _extract_answer(self, result: dict) -> str:
+    def _extract_answer(self, result) -> str:
         if not isinstance(result, dict):
             return str(result)
         for key in ("answer", "result", "output", "summary", "response"):
@@ -476,80 +596,103 @@ class DevsperApp(App):
         parts = [v.strip() for v in result.values() if isinstance(v, str) and v.strip()]
         return "\n\n".join(parts)
 
+    # ------------------------------------------------------------------
+    # Slash helpers
+    # ------------------------------------------------------------------
+
+    def _cmd_new(self) -> None:
+        sid = self.session.start_new_session()
+        self._update_status_session()
+        self._log(f"[#22c55e]  ✓ new session {sid[:8]}[/]")
+
     def _show_sessions(self) -> None:
         sessions = self.session.list_sessions()
         if not sessions:
-            self._log("[dim]No sessions.[/]")
+            self._log("[#64748b]  no sessions[/]")
             return
         active = self.session._session_id
+        self._log("[bold #7c6af7]  sessions[/]")
         for s in sessions:
-            mark = " [green](active)[/]" if s["session_id"] == active else ""
-            self._log(f"  [cyan]{s['session_id'][:8]}[/]  {s['turn_count']} turns{mark}")
+            mark = "  [#22c55e]← active[/]" if s["session_id"] == active else ""
+            self._log(
+                f"  [#475569]{s['session_id'][:8]}[/]"
+                f"  [#334155]{s['turn_count']} turns[/]{mark}"
+            )
 
     def _query_memory(self, query: str) -> None:
         try:
             from devsper.memory.memory_store import get_default_store
             store = get_default_store()
             ns = f"project:{self.workspace.project_id}"
-            results = store.search(query, namespace=ns, top_k=5) if query else store.list(namespace=ns, limit=10)
+            results = (
+                store.search(query, namespace=ns, top_k=5)
+                if query
+                else store.list(namespace=ns, limit=10)
+            )
             if not results:
-                self._log("[dim]No memories found.[/]")
+                self._log("[#64748b]  no memories found[/]")
             else:
+                self._log("[bold #7c6af7]  memory[/]")
                 for i, item in enumerate(results, 1):
                     text = getattr(item, "text", None) or str(item)
-                    self._log(f"  {i}. {text[:120]}")
+                    self._log(f"  [#475569]{i}.[/] {text[:120]}")
         except Exception as exc:
-            self._log(f"[red]Memory unavailable: {exc}[/]")
+            self._log(f"[#ef4444]  memory unavailable: {exc}[/]")
 
     def _run_init(self, force: bool = False) -> None:
         md_path = self.workspace.project_root / "devsper.md"
         if md_path.exists() and not force:
-            self._log("[yellow]devsper.md exists.[/] Use [cyan]/init --force[/] to regenerate.")
+            self._log(
+                "[#f59e0b]  devsper.md already exists[/]"
+                "  [#334155]→ /init --force to regenerate[/]"
+            )
             return
-        self._log("[dim]Generating devsper.md…[/]")
+        self._log("[#475569]  generating devsper.md…[/]")
+        self._set_busy(True)
 
         def _do():
             try:
                 from devsper.cli.init import run_init_md
                 rc = run_init_md(self.workspace.project_root, overwrite=force)
-                if rc == 0:
-                    self.post_message(AppendLine("[green]devsper.md ready.[/]"))
-                else:
-                    self.post_message(AppendLine("[red]init failed.[/]"))
+                self.post_message(
+                    AppendLine("[#22c55e]  ✓ devsper.md ready[/]" if rc == 0 else "[#ef4444]  init failed[/]")
+                )
             except Exception as exc:
-                self.post_message(AppendLine(f"[red]init error: {exc}[/]"))
+                self.post_message(AppendLine(f"[#ef4444]  init error: {exc}[/]"))
+            finally:
+                self.post_message(TurnDone(""))
 
         threading.Thread(target=_do, daemon=True).start()
 
     def _run_mission(self, arg: str) -> None:
         parts = arg.split(None, 1)
-        if not parts or len(parts) < 2:
-            self._log("Usage: /mission r2c <goal>")
+        if len(parts) < 2:
+            self._log("[#64748b]  usage: /mission r2c <goal>[/]")
             return
         mission_type, goal = parts[0].lower(), parts[1]
         if mission_type not in ("r2c", "research-code", "research_to_code"):
-            self._log(f"[dim]Unknown mission: {mission_type}. Available: r2c[/]")
+            self._log(f"[#64748b]  unknown mission: {mission_type}[/]")
             return
-        self._log(f"[dim]Research→Code: {goal[:60]}…[/]")
+        self._log(f"[#475569]  research → code: {goal[:70]}…[/]")
         self._set_busy(True)
 
         def _do():
             try:
                 from devsper.council.research_to_code import ResearchToCodeMission
                 result = ResearchToCodeMission().run(goal)
-                self.post_message(AppendLine(f"[bold]Summary:[/] {result.handoff.summary}"))
+                self.post_message(AppendLine(f"[#7c6af7]  summary:[/] {result.handoff.summary}"))
                 self.post_message(TurnDone(result.final_code))
             except Exception as exc:
-                self.post_message(AppendLine(f"[red]Mission failed: {exc}[/]"))
+                self.post_message(AppendLine(f"[#ef4444]  mission failed: {exc}[/]"))
                 self.post_message(TurnDone(""))
 
         threading.Thread(target=_do, daemon=True).start()
 
     def _run_council(self, task: str) -> None:
         if not task:
-            self._log("Usage: /council <task>")
+            self._log("[#64748b]  usage: /council <task>[/]")
             return
-        self._log("[dim]Council: drafting → critiquing → synthesizing…[/]")
+        self._log("[#475569]  council: draft → critique → synthesize…[/]")
         self._set_busy(True)
 
         def _do():
@@ -558,23 +701,28 @@ class DevsperApp(App):
                 result = Council(CouncilConfig()).run(task)
                 self.post_message(TurnDone(result.final))
             except Exception as exc:
-                self.post_message(AppendLine(f"[red]Council failed: {exc}[/]"))
+                self.post_message(AppendLine(f"[#ef4444]  council failed: {exc}[/]"))
                 self.post_message(TurnDone(""))
 
         threading.Thread(target=_do, daemon=True).start()
 
     def _show_help(self) -> None:
         self._log("""
-[bold]Slash commands[/]
-  /init [--force]   Generate devsper.md
-  /new              New session
-  /sessions         List sessions
-  /memory [query]   Search project memory
-  /mission r2c      Research→Code pipeline
-  /council <task>   Draft→Critique→Synthesize
-  /clear            Clear screen
-  /help             This message
-  /exit             Quit
+[bold #7c6af7]  commands[/]
+  [#93c5fd]/init[/] [#475569][--force][/]    generate devsper.md
+  [#93c5fd]/new[/]              new session
+  [#93c5fd]/sessions[/]         list sessions
+  [#93c5fd]/memory[/] [#475569][query][/]    search project memory
+  [#93c5fd]/mission r2c[/]      research → code pipeline
+  [#93c5fd]/council[/] [#475569]<task>[/]   draft → critique → synthesize
+  [#93c5fd]/clear[/]            clear screen
+  [#93c5fd]/help[/]             this message
+  [#93c5fd]/exit[/]             quit
 
-[bold]Voice[/]  Press [cyan]Space[/] at empty prompt to record
+[bold #7c6af7]  voice[/]
+  press [#f59e0b]Space[/] at empty prompt  [#475569]→ speak, pause to finish[/]
+  press [#f59e0b]Escape[/]                 [#475569]→ cancel recording[/]
+
+[bold #7c6af7]  keys[/]
+  [#f59e0b]Ctrl+N[/]  new session  [#475569]·[/]  [#f59e0b]Ctrl+L[/]  clear  [#475569]·[/]  [#f59e0b]Ctrl+C[/]  quit
 """)

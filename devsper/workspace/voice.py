@@ -97,12 +97,15 @@ class DictationHelper:
             return False
         return True
 
-    def record(self) -> str:
+    def record(self, tui_mode: bool = False) -> str:
         """Launch the helper, wait for silence detection, return transcript.
 
         The Swift binary stops itself via SFSpeechRecognizer's isFinal callback
-        (fires ~1-2 s after the user stops talking). Pressing Enter or Ctrl+C
-        sends SIGTERM for early cancellation.
+        (fires ~1-2 s after the user stops talking).
+
+        When ``tui_mode=True`` (running inside Textual) the raw-stdin cancel
+        watcher is skipped because Textual already owns stdin.  SIGTERM is still
+        sent on timeout.  The user cancels by pressing Escape in the TUI.
         """
         if not self.ensure_compiled():
             return ""
@@ -112,10 +115,9 @@ class DictationHelper:
                 [str(_BIN_PATH)],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                # stderr intentionally NOT piped — Swift writes partial results
-                # directly to the terminal via \r overwrites.  Piping stderr and
-                # also calling communicate() creates a read-race that starves
-                # stdout, causing empty transcripts.
+                # stderr NOT piped — Swift writes partial results (\r overwrite)
+                # directly to the terminal.  Piping stderr + calling communicate()
+                # creates a read-race that starves stdout → empty transcripts.
                 stderr=None,
             )
         except OSError as exc:
@@ -123,48 +125,54 @@ class DictationHelper:
             return ""
 
         self._print(
-            "  [bold yellow]🎤[/] [dim]Speak now — pause to finish, Enter to cancel[/]",
+            "  [bold yellow]🎤[/] [dim]Speak now — pause to finish"
+            + ("" if tui_mode else ", Enter to cancel")
+            + "[/]",
             markup=True,
         )
 
-        # ── Watch for Enter / Ctrl+C to cancel early (raw mode, background) ─
-        def _watch_cancel():
-            import tty
-            import termios
-            fd = sys.stdin.fileno()
-            old = termios.tcgetattr(fd)
-            try:
-                tty.setraw(fd)
-                while proc.poll() is None:
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if ready:
-                        ch = sys.stdin.read(1)
-                        if ch in ("\r", "\n", "\x03", "\x04"):
-                            proc.terminate()
-                            break
-            except Exception:
-                pass
-            finally:
+        cancel_thread = None
+        if not tui_mode:
+            # ── Watch for Enter / Ctrl+C to cancel early (raw mode) ──────────
+            def _watch_cancel():
+                import tty
+                import termios
+                fd = sys.stdin.fileno()
+                old = termios.tcgetattr(fd)
                 try:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, old)
+                    tty.setraw(fd)
+                    while proc.poll() is None:
+                        ready, _, _ = select.select([sys.stdin], [], [], 0.1)
+                        if ready:
+                            ch = sys.stdin.read(1)
+                            if ch in ("\r", "\n", "\x03", "\x04"):
+                                proc.terminate()
+                                break
                 except Exception:
                     pass
+                finally:
+                    try:
+                        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+                    except Exception:
+                        pass
 
-        cancel_thread = threading.Thread(target=_watch_cancel, daemon=True)
-        cancel_thread.start()
+            cancel_thread = threading.Thread(target=_watch_cancel, daemon=True)
+            cancel_thread.start()
 
-        # ── Wait for binary to finish (silence detection or cancel) ─────────
+        # ── Wait for binary to finish (silence detection or cancel) ──────────
         try:
             stdout, _ = proc.communicate(timeout=65)
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout, _ = proc.communicate()
 
-        cancel_thread.join(timeout=0.2)
+        if cancel_thread:
+            cancel_thread.join(timeout=0.2)
 
-        # Clear the partial-result line Swift left on stderr
-        sys.stderr.write("\r\033[2K")
-        sys.stderr.flush()
+        if not tui_mode:
+            # Clear the partial-result line Swift left on stderr
+            sys.stderr.write("\r\033[2K")
+            sys.stderr.flush()
 
         transcript = stdout.decode("utf-8", errors="replace").strip()
         if transcript:
@@ -338,10 +346,10 @@ class VoiceInput:
             rest = ""
         return first + rest
 
-    def _record(self) -> str:
+    def _record(self, tui_mode: bool = False) -> str:
         """Route to macOS dictation or Whisper fallback."""
         if self._dictation.available:
-            return self._dictation.record()
+            return self._dictation.record(tui_mode=tui_mode)
         return self._whisper_record()
 
     def _whisper_record(self) -> str:
