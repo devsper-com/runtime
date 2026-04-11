@@ -39,8 +39,10 @@ _DEFAULT_DB_URL = f"sqlite:///{_DEFAULT_DB_PATH}"
 try:
     from trulens.core import TruSession
     from trulens.apps.custom import TruCustomApp, instrument
-
-    _TRULENS_AVAILABLE = True
+    import importlib as _il
+    _TRULENS_AVAILABLE = _il.util.find_spec("trulens.feedback") is not None
+    if not _TRULENS_AVAILABLE:
+        log.debug("trulens.feedback not installed; TruLens recording disabled to avoid spam")
 except ImportError:
     _TRULENS_AVAILABLE = False
     TruSession = None  # type: ignore[assignment,misc]

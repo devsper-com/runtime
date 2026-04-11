@@ -968,12 +968,15 @@ def _run_tui() -> int:
 
 
 def _run_repl(args=None) -> int:
-    """Launch the interactive coding REPL (default when no subcommand given)."""
+    """Launch the interactive coding REPL (default when no subcommand given).
+
+    Tries to start the Textual TUI first; falls back to the plain-terminal
+    CodeREPL if Textual is unavailable or the terminal doesn't support it.
+    """
     from pathlib import Path
 
     from devsper.workspace.context import WorkspaceContext
     from devsper.workspace.session import SessionHistory
-    from devsper.workspace.repl import CodeREPL
 
     workspace = WorkspaceContext.discover(Path.cwd())
     workspace.storage_dir.mkdir(parents=True, exist_ok=True)
@@ -991,6 +994,17 @@ def _run_repl(args=None) -> int:
             print(f"Session '{session_id}' not found.")
             return 1
 
+    # Try Textual TUI first
+    try:
+        from devsper.workspace.tui_app import DevSperApp
+        app = DevSperApp(workspace=workspace, session=session, new_session=new_session)
+        app.run()
+        return 0
+    except Exception:
+        pass
+
+    # Fallback: plain-terminal REPL
+    from devsper.workspace.repl import CodeREPL
     repl = CodeREPL(workspace, session, new_session=new_session)
     repl.start()
     return 0

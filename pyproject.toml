@@ -41,6 +41,14 @@ dependencies = [
     "opentelemetry-sdk>=1.27.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
     "duckduckgo-search>=8.1.1",
+    # Observability — bundled by default
+    "trulens-core>=1.0",
+    # Prompt optimization — bundled by default
+    "gepa>=0.1",
+    # Eval harness extras — bundled by default
+    "openevals>=0.0.6",
+    # LangGraph planner — bundled by default
+    "langgraph>=1.0.0,<2",
 ]
 
 [project.urls]

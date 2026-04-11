@@ -152,7 +152,7 @@ class DictationHelper:
                     ready, _, _ = select.select([sys.stdin], [], [], 0.1)
                     if ready:
                         ch = sys.stdin.read(1)
-                        if ch in ("\r", "\n", "\x03", "\x04", " "):
+                        if ch in ("\r", "\n", "\x03", "\x04"):
                             proc.terminate()
                             break
             except Exception:
