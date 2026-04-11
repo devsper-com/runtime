@@ -729,25 +729,9 @@ Output ONLY the markdown content, no preamble.
 """
 
 
-def run_init_md(project_root: Path) -> int:
-    """Generate devsper.md for *project_root* using an LLM and write it to disk."""
+def _gather_project_context(project_root: Path, console) -> str:
+    """Collect rich project context for LLM-based devsper.md generation."""
     import subprocess
-
-    try:
-        from rich.console import Console
-        console = Console()
-    except ImportError:
-        class _Console:  # type: ignore[no-redef]
-            def print(self, *a, **kw): print(*a)
-        console = _Console()  # type: ignore[assignment]
-
-    md_path = project_root / "devsper.md"
-    if md_path.exists():
-        console.print(f"[yellow]devsper.md already exists at {md_path}[/]")
-        console.print("Delete it first or edit it directly.")
-        return 1
-
-    console.print(f"[dim]Collecting project context from {project_root} ...[/]")
 
     context_parts: list[str] = []
 
@@ -760,7 +744,7 @@ def run_init_md(project_root: Path) -> int:
             break
 
     # Project manifest
-    for name in ("pyproject.toml", "package.json", "Cargo.toml", "go.mod"):
+    for name in ("pyproject.toml", "package.json", "Cargo.toml", "go.mod", "setup.py"):
         manifest = project_root / name
         if manifest.exists():
             text = manifest.read_text(encoding="utf-8", errors="replace")[:2000]
@@ -769,34 +753,71 @@ def run_init_md(project_root: Path) -> int:
 
     # Git log
     try:
-        log = subprocess.check_output(
+        git_log = subprocess.check_output(
             ["git", "log", "--oneline", "-20"],
             cwd=str(project_root),
             stderr=subprocess.DEVNULL,
             text=True,
         )
-        context_parts.append(f"## Recent git log\n{log}")
+        context_parts.append(f"## Recent git log\n{git_log}")
     except Exception:
         pass
 
-    # Directory structure (top-level + one level deep)
+    # Code structure via tree-sitter parser (animus-ported)
     try:
-        entries = []
-        for p in sorted(project_root.iterdir()):
-            if p.name.startswith(".") or p.name in ("__pycache__", "node_modules", ".git"):
-                continue
-            if p.is_dir():
-                entries.append(f"{p.name}/")
-                for sub in sorted(p.iterdir())[:8]:
-                    if not sub.name.startswith("_"):
-                        entries.append(f"  {sub.name}{'/' if sub.is_dir() else ''}")
-            else:
-                entries.append(p.name)
-        context_parts.append("## Project structure\n" + "\n".join(entries[:60]))
+        from devsper.code_intelligence.parser import parse_repository, repo_context_for_llm
+        console.print("[dim]  Parsing codebase with tree-sitter ...[/]")
+        parse_result = parse_repository(project_root, max_files=500)
+        if parse_result.functions:
+            context_parts.append(f"## Code structure (auto-parsed)\n{repo_context_for_llm(parse_result, max_entries=100)}")
+        console.print(f"[dim]  {parse_result.summary()}[/]")
+    except Exception:
+        # Fallback: simple directory listing
+        try:
+            entries = []
+            for p in sorted(project_root.iterdir()):
+                if p.name.startswith(".") or p.name in ("__pycache__", "node_modules", ".git"):
+                    continue
+                if p.is_dir():
+                    entries.append(f"{p.name}/")
+                    for sub in sorted(p.iterdir())[:8]:
+                        if not sub.name.startswith("_"):
+                            entries.append(f"  {sub.name}{'/' if sub.is_dir() else ''}")
+                else:
+                    entries.append(p.name)
+            context_parts.append("## Project structure\n" + "\n".join(entries[:80]))
+        except Exception:
+            pass
+
+    # Code metrics
+    try:
+        from devsper.code_intelligence.metrics import analyze_repository
+        rm = analyze_repository(project_root)
+        context_parts.append(f"## Code metrics\n{rm.summary()}")
     except Exception:
         pass
 
-    context = "\n\n".join(context_parts)
+    return "\n\n".join(context_parts)
+
+
+def run_init_md(project_root: Path, overwrite: bool = False) -> int:
+    """Generate devsper.md for *project_root* using an LLM and write it to disk."""
+    try:
+        from rich.console import Console
+        console = Console()
+    except ImportError:
+        class _Console:  # type: ignore[no-redef]
+            def print(self, *a, **kw): print(*a)
+        console = _Console()  # type: ignore[assignment]
+
+    md_path = project_root / "devsper.md"
+    if md_path.exists() and not overwrite:
+        console.print(f"[yellow]devsper.md already exists at {md_path}[/]")
+        console.print("Delete it first or pass overwrite=True.")
+        return 1
+
+    console.print(f"[dim]Collecting project context from {project_root} ...[/]")
+    context = _gather_project_context(project_root, console)
     prompt = f"Here is context about the project:\n\n{context}\n\nNow write the devsper.md file."
 
     console.print("[dim]Calling LLM to draft devsper.md ...[/]")

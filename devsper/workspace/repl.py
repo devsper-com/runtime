@@ -17,6 +17,7 @@ from devsper.workspace.display import CallbackEventLog, ToolCallDisplay
 
 _HELP_TEXT = """\
 Slash-commands:
+  /init         Generate devsper.md project instructions (like Claude Code /init)
   /new          Start a fresh session (keeps semantic memory)
   /sessions     List past sessions for this project
   /memory       Query project semantic memory
@@ -107,6 +108,10 @@ class CodeREPL:
         if cmd in ("/exit", "/quit"):
             self._print("Bye.")
             return True
+
+        if cmd == "/init":
+            self._run_init(force=arg.strip() == "--force")
+            return False
 
         if cmd == "/new":
             sid = self.session.start_new_session()
@@ -209,6 +214,37 @@ class CodeREPL:
                 parts.append(val.strip())
         return "\n\n".join(parts) if parts else ""
 
+    def _run_init(self, force: bool = False) -> None:
+        """Generate devsper.md inline — like Claude Code's /init command."""
+        from devsper.cli.init import run_init_md
+
+        md_path = self.workspace.project_root / "devsper.md"
+        if md_path.exists() and not force:
+            self._print(
+                f"[yellow]devsper.md already exists.[/] Use [cyan]/init --force[/] to regenerate.",
+                markup=True,
+            )
+            return
+
+        self._print(
+            f"[dim]Generating devsper.md for [cyan]{self.workspace.project_name}[/] ...[/]",
+            markup=True,
+        )
+        rc = run_init_md(self.workspace.project_root, overwrite=force)
+        if rc == 0:
+            # Reload md_content into workspace so it's available immediately
+            try:
+                self.workspace = self.workspace.__class__(
+                    project_root=self.workspace.project_root,
+                    project_id=self.workspace.project_id,
+                    project_name=self.workspace.project_name,
+                    md_content=md_path.read_text(encoding="utf-8"),
+                    storage_dir=self.workspace.storage_dir,
+                )
+            except Exception:
+                pass
+            self._print("[green]devsper.md ready — project instructions now loaded.[/]", markup=True)
+
     def _query_memory(self, query: str) -> None:
         """Search project semantic memory."""
         try:
@@ -239,7 +275,7 @@ class CodeREPL:
         project = self.workspace.project_name
         has_md = self.workspace.md_content is not None
         md_status = "devsper.md loaded" if has_md else "no devsper.md"
-        hint = "" if has_md else "\n  → Run [cyan]devsper init --md[/] to generate project instructions."
+        hint = "" if has_md else "\n  → Type [cyan]/init[/] to generate project instructions."
 
         banner = (
             f"\n[bold]devsper v{__version__}[/] · [cyan]{project}[/]  [dim]{md_status}[/]"

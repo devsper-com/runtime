@@ -43,6 +43,8 @@ Thumbs.db
 *.swp
 *.swo
 .cursor/
+.claude/
+.worktrees/
 
 tmp
 **/build-errors.log

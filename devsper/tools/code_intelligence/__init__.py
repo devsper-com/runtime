@@ -1,5 +1,11 @@
-"""Codebase intelligence tools: indexing, dependencies, architecture, API, patterns."""
+"""Codebase intelligence tools: indexing, dependencies, architecture, API, patterns.
 
+Also includes animus-ported tools: parse_codebase, scan_security, code_metrics.
+"""
+
+from devsper.tools.code_intelligence.parse_codebase import ParseCodebaseTool
+from devsper.tools.code_intelligence.scan_security import ScanSecurityTool
+from devsper.tools.code_intelligence.code_metrics import CodeMetricsTool
 from devsper.tools.code_intelligence.codebase_indexer import CodebaseIndexerTool
 from devsper.tools.code_intelligence.repository_semantic_index import RepositorySemanticIndexTool
 from devsper.tools.code_intelligence.dependency_graph_builder import DependencyGraphBuilderTool

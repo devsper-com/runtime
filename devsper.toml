@@ -14,8 +14,8 @@ prefetch_max_age_seconds = 30
 remote_agents = []
 
 [models]
-planner = "azure:gpt-5-mini"
-worker = "azure:gpt-5-mini"
+planner = "auto"
+worker = "auto"
 
 [memory]
 enabled = true
