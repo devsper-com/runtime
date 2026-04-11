@@ -26,6 +26,7 @@ from devsper.swarm.scheduler import Scheduler
 from devsper.types.event import Event, events
 from devsper.utils.event_logger import EventLog
 from devsper.events import ClarificationResponse
+from devsper.intelligence.adaptive_replanner import AdaptiveReplanner
 from datetime import datetime, timezone
 
 
@@ -114,6 +115,10 @@ class Executor:
         for task in self.scheduler.get_all_tasks():
             self.execution_graph.add_task(task)
         self._had_task_failure = False
+        self._adaptive_replanner = AdaptiveReplanner(
+            planner=planner if self._adaptive else None,
+            max_replan_depth=2,
+        )
 
     def _sync_emit(self, event_type: events, payload: dict) -> None:
         log = getattr(self.event_stream, "_event_log", None)
@@ -289,6 +294,21 @@ class Executor:
                         self.state.mark_failed(task.id, err)
                         self.execution_graph.mark_failed(task.id)
                         self._had_task_failure = True
+                        # Adaptive re-planning: inject alternatives for failed task
+                        if self._adaptive and self._adaptive_replanner._planner is not None:
+                            alt_tasks = self._adaptive_replanner.on_task_failed(task, self.scheduler)
+                            for alt in alt_tasks:
+                                self.state.add_tasks([alt])
+                                self.execution_graph.add_task(alt)
+                                await self.event_stream.publish(events.TASK_CREATED, {
+                                    "task_id": alt.id,
+                                    "description": alt.description,
+                                    "lineage_parent": task.id,
+                                    "replanned": True,
+                                })
+                            # If we injected alternatives, don't count this as a hard failure
+                            if alt_tasks:
+                                self._had_task_failure = False
                         if self._enable_speculative:
                             cancelled = self._speculative_planner.cancel_unused(task.id, self.scheduler)
                             for cid in cancelled:
