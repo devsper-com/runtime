@@ -167,6 +167,35 @@ Screen {
 
 
 # ---------------------------------------------------------------------------
+# Custom Input — intercepts Space synchronously before character insertion
+# ---------------------------------------------------------------------------
+
+class _DevsperInput(Input):
+    """Input that blocks Space from being inserted when field is empty,
+    routing it to the app's push-to-talk handler instead."""
+
+    def _on_key(self, event) -> None:  # fires before character is inserted
+        try:
+            app = self.app
+        except Exception:
+            super()._on_key(event)
+            return
+
+        if event.key == "space" and not self.value.strip() and hasattr(app, "_recording"):
+            event.stop()  # never bubbles; never inserts
+            if app._busy:
+                return
+            if app._recording:
+                app._last_space_t = time.monotonic()
+            elif app._voice and app._voice.available:
+                app._last_space_t = time.monotonic()
+                app._start_voice()
+            return  # skip super() → no insertion
+
+        super()._on_key(event)
+
+
+# ---------------------------------------------------------------------------
 # Thread → UI messages
 # ---------------------------------------------------------------------------
 
@@ -270,7 +299,7 @@ class DevsperApp(App):
         )
         yield Horizontal(
             Static("›", id="input-prefix"),
-            Input(placeholder="ask anything…", id="user-input"),
+            _DevsperInput(placeholder="ask anything…", id="user-input"),
             Static(voice_hint, id="voice-badge"),
             id="input-row",
         )
@@ -294,7 +323,8 @@ class DevsperApp(App):
             ).start()
 
     def on_unmount(self) -> None:
-        """Kill any in-progress Swift dictation process when app closes."""
+        """Kill Swift on close — terminate only, daemon thread handles cleanup."""
+        self._cancel_hold_timer()
         self._kill_voice_proc()
 
     # ------------------------------------------------------------------
@@ -360,19 +390,7 @@ class DevsperApp(App):
 
     @on(Input.Changed, "#user-input")
     def handle_input_changed(self, event: Input.Changed) -> None:
-        # Space on empty input → push-to-talk
-        if event.value != " " or self._busy:
-            return
-        if not self._voice or not self._voice.available:
-            return
-        event.input.clear()
-        if not self._recording:
-            # Initial press — start recording and begin hold-detection timer
-            self._last_space_t = time.monotonic()
-            self._start_voice()
-        else:
-            # Key-repeat while holding — keep alive
-            self._last_space_t = time.monotonic()
+        pass  # Space handled in _DevsperInput._on_key before insertion
 
     # ------------------------------------------------------------------
     # Voice
@@ -420,13 +438,14 @@ class DevsperApp(App):
             self._hold_timer = None
 
     def _kill_voice_proc(self) -> None:
-        """Terminate the Swift dictation subprocess."""
+        """Send SIGTERM to Swift. Do NOT wait — the recording thread's
+        proc.communicate() owns stdout collection; calling wait() here
+        races with it and eats the transcript."""
         try:
             if self._voice and self._voice._dictation:
                 proc = self._voice._dictation._current_proc
                 if proc and proc.poll() is None:
                     proc.terminate()
-                    proc.wait(timeout=2)
         except Exception:
             pass
 
