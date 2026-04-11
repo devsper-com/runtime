@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 from devsper.workspace.context import WorkspaceContext
 from devsper.workspace.session import SessionHistory
 from devsper.workspace.display import CallbackEventLog, ToolCallDisplay
+from devsper.workspace.living import WorkspaceIntelligence
 
 
 _HELP_TEXT = """\
@@ -48,6 +49,7 @@ class CodeREPL:
         self._new_session = new_session
         self._display = ToolCallDisplay()
         self._console = self._display._console
+        self._intelligence = WorkspaceIntelligence(workspace)
 
     # ------------------------------------------------------------------
     # Public API
@@ -165,6 +167,12 @@ class CodeREPL:
 
         self.session.save_turn("assistant", answer or str(result))
 
+        # Non-blocking: extract and store facts from this exchange
+        try:
+            self._intelligence.extract_and_store(user_message, answer or "")
+        except Exception:
+            pass
+
     def _build_task(self, user_message: str) -> str:
         """Build the full task string injecting project context and history."""
         parts: list[str] = []
@@ -177,6 +185,10 @@ class CodeREPL:
         history = self.session.format_history_for_context(max_turns=10)
         if history:
             parts.append(f"<conversation_history>\n{history}\n</conversation_history>")
+
+        intel_ctx = self._intelligence.load_context()
+        if intel_ctx:
+            parts.append(f"<project_knowledge>\n{intel_ctx}\n</project_knowledge>")
 
         parts.append(user_message)
         return "\n\n".join(parts)
@@ -276,9 +288,11 @@ class CodeREPL:
         has_md = self.workspace.md_content is not None
         md_status = "devsper.md loaded" if has_md else "no devsper.md"
         hint = "" if has_md else "\n  → Type [cyan]/init[/] to generate project instructions."
+        n_facts = self._intelligence.fact_count()
+        fact_str = f" · {n_facts} learned facts" if n_facts else ""
 
         banner = (
-            f"\n[bold]devsper v{__version__}[/] · [cyan]{project}[/]  [dim]{md_status}[/]"
+            f"\n[bold]devsper v{__version__}[/] · [cyan]{project}[/]  [dim]{md_status}{fact_str}[/]"
             + hint
             + "\n"
         )
