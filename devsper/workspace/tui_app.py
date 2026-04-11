@@ -16,7 +16,10 @@ Usage (internal — launched by devsper/cli/main.py)::
 from __future__ import annotations
 
 import copy
+import os
+import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -206,7 +209,7 @@ class DevsperApp(App):
         Binding("ctrl+c", "quit", "Quit", priority=True),
         Binding("ctrl+n", "new_session", "New session"),
         Binding("ctrl+l", "clear_screen", "Clear"),
-        Binding("escape", "cancel_voice", "Cancel voice", show=False),
+        Binding("ctrl+e", "edit_in_editor", "Edit in $EDITOR"),
         Binding("f1", "show_help", "Help"),
     ]
 
@@ -224,7 +227,8 @@ class DevsperApp(App):
         self._recording = False
         self._voice = None
         self._intelligence = None
-        self._active_voice_proc = None
+        self._last_space_t: float = 0.0
+        self._hold_timer = None
         self._init_subsystems()
 
     def _init_subsystems(self) -> None:
@@ -282,6 +286,13 @@ class DevsperApp(App):
         self._print_banner()
         self.query_one("#user-input", Input).focus()
 
+        # Pre-compile the Swift binary in the background so it's ready on first
+        # Space press — avoids the "starts on release" perception from compile lag.
+        if self._voice and self._voice._dictation:
+            threading.Thread(
+                target=self._voice._dictation.ensure_compiled, daemon=True
+            ).start()
+
     def on_unmount(self) -> None:
         """Kill any in-progress Swift dictation process when app closes."""
         self._kill_voice_proc()
@@ -331,6 +342,10 @@ class DevsperApp(App):
 
     @on(Input.Submitted, "#user-input")
     def handle_submit(self, event: Input.Submitted) -> None:
+        if self._recording:
+            # Enter while holding: stop recording, submit whatever was transcribed
+            self._stop_recording()
+            return
         text = event.value.strip()
         event.input.clear()
         if not text:
@@ -345,15 +360,19 @@ class DevsperApp(App):
 
     @on(Input.Changed, "#user-input")
     def handle_input_changed(self, event: Input.Changed) -> None:
-        if (
-            event.value == " "
-            and self._voice
-            and self._voice.available
-            and not self._busy
-            and not self._recording
-        ):
-            event.input.clear()
+        # Space on empty input → push-to-talk
+        if event.value != " " or self._busy:
+            return
+        if not self._voice or not self._voice.available:
+            return
+        event.input.clear()
+        if not self._recording:
+            # Initial press — start recording and begin hold-detection timer
+            self._last_space_t = time.monotonic()
             self._start_voice()
+        else:
+            # Key-repeat while holding — keep alive
+            self._last_space_t = time.monotonic()
 
     # ------------------------------------------------------------------
     # Voice
@@ -361,12 +380,13 @@ class DevsperApp(App):
 
     def _start_voice(self) -> None:
         self._recording = True
-        self._set_voice_ui(True)
-        self._set_status("recording…")
+        self._set_voice_active(True)
+        self._set_status("recording… release Space to finish")
+        # Timer polls every 120 ms; if no Space key-repeat for 280 ms → released
+        self._hold_timer = self.set_interval(0.12, self._check_space_released)
 
         def _record():
             try:
-                # tui_mode=True: skip raw-stdin cancel watcher (Textual owns stdin)
                 text = self._voice._record(tui_mode=True)
             except Exception as exc:
                 import logging
@@ -376,13 +396,31 @@ class DevsperApp(App):
 
         threading.Thread(target=_record, daemon=True).start()
 
-    def action_cancel_voice(self) -> None:
-        """Escape cancels an in-progress recording."""
-        if self._recording:
-            self._kill_voice_proc()
+    def _check_space_released(self) -> None:
+        """Timer callback — fires every 120 ms while recording."""
+        if not self._recording:
+            self._cancel_hold_timer()
+            return
+        if time.monotonic() - self._last_space_t > 0.28:
+            # Space was released → stop the dictation process
+            self._cancel_hold_timer()
+            self._stop_recording()
+
+    def _stop_recording(self) -> None:
+        """Send SIGTERM to Swift — it will flush its final transcript to stdout."""
+        self._cancel_hold_timer()
+        self._kill_voice_proc()
+
+    def _cancel_hold_timer(self) -> None:
+        if self._hold_timer is not None:
+            try:
+                self._hold_timer.stop()
+            except Exception:
+                pass
+            self._hold_timer = None
 
     def _kill_voice_proc(self) -> None:
-        """Terminate the Swift dictation subprocess if it is running."""
+        """Terminate the Swift dictation subprocess."""
         try:
             if self._voice and self._voice._dictation:
                 proc = self._voice._dictation._current_proc
@@ -394,22 +432,25 @@ class DevsperApp(App):
 
     def on_voice_result(self, msg: VoiceResult) -> None:
         self._recording = False
-        self._set_voice_ui(False)
+        self._cancel_hold_timer()
+        self._set_voice_active(False)
+        self._set_status("")
+        inp = self.query_one("#user-input", Input)
         if msg.text:
-            self._set_status("")
-            self._run_turn(msg.text)
+            # Put transcript in input field — user can edit before submitting
+            inp.value = msg.text
+            inp.cursor_position = len(msg.text)
         else:
-            self._set_status("")
             self._log("[#64748b]  Nothing heard.[/]")
+        inp.disabled = False
+        inp.focus()
 
-    def _set_voice_ui(self, active: bool) -> None:
+    def _set_voice_active(self, active: bool) -> None:
         badge = self.query_one("#status-voice")
         if active:
             badge.add_class("active")
         else:
             badge.remove_class("active")
-        inp = self.query_one("#user-input", Input)
-        inp.disabled = active or self._busy
 
     # ------------------------------------------------------------------
     # Turn execution
@@ -519,6 +560,37 @@ class DevsperApp(App):
     def action_show_help(self) -> None:
         self._show_help()
 
+    def action_edit_in_editor(self) -> None:
+        """Open current input content in $EDITOR; paste result back on save."""
+        inp = self.query_one("#user-input", Input)
+        current = inp.value
+
+        editor = (
+            os.environ.get("EDITOR")
+            or os.environ.get("VISUAL")
+            or "nvim"
+        )
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".md", mode="w", delete=False, prefix="devsper_prompt_"
+        ) as f:
+            f.write(current)
+            tmpfile = f.name
+
+        try:
+            with self.suspend():
+                import subprocess
+                subprocess.run([editor, tmpfile], check=False)
+            with open(tmpfile) as f:
+                new_text = f.read().rstrip("\n")
+            inp.value = new_text
+            inp.cursor_position = len(new_text)
+        except Exception as exc:
+            self._log(f"[#ef4444]  editor error: {exc}[/]")
+        finally:
+            Path(tmpfile).unlink(missing_ok=True)
+        inp.focus()
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -529,7 +601,7 @@ class DevsperApp(App):
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
         inp = self.query_one("#user-input", Input)
-        inp.disabled = busy or self._recording
+        inp.disabled = busy  # voice recording manages its own disabled state
 
     def _set_status(self, text: str) -> None:
         try:
@@ -732,9 +804,11 @@ class DevsperApp(App):
   [#93c5fd]/exit[/]             quit
 
 [bold #7c6af7]  voice[/]
-  press [#f59e0b]Space[/] at empty prompt  [#475569]→ speak, pause to finish[/]
-  press [#f59e0b]Escape[/]                 [#475569]→ cancel recording[/]
+  hold [#f59e0b]Space[/]   [#475569]→ speak while held, release to finish[/]
+  [#f59e0b]Enter[/]        [#475569]→ stop early, transcript lands in input[/]
+  transcript appears in input — edit then [#f59e0b]Enter[/] to submit
 
 [bold #7c6af7]  keys[/]
+  [#f59e0b]Ctrl+E[/]  open in $EDITOR
   [#f59e0b]Ctrl+N[/]  new session  [#475569]·[/]  [#f59e0b]Ctrl+L[/]  clear  [#475569]·[/]  [#f59e0b]Ctrl+C[/]  quit
 """)
