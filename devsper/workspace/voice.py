@@ -110,9 +110,13 @@ class DictationHelper:
         try:
             proc = subprocess.Popen(
                 [str(_BIN_PATH)],
-                stdin=subprocess.DEVNULL,   # no stdin needed — silence detection handles stop
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                # stderr intentionally NOT piped — Swift writes partial results
+                # directly to the terminal via \r overwrites.  Piping stderr and
+                # also calling communicate() creates a read-race that starves
+                # stdout, causing empty transcripts.
+                stderr=None,
             )
         except OSError as exc:
             log.warning("[voice] could not launch dictation helper: %s", exc)
@@ -123,22 +127,6 @@ class DictationHelper:
             markup=True,
         )
 
-        # ── Stream partial results from stderr live ──────────────────────────
-        def _stream_stderr():
-            while proc.poll() is None:
-                try:
-                    ready, _, _ = select.select([proc.stderr], [], [], 0.05)
-                    if ready:
-                        chunk = proc.stderr.read(256)
-                        if chunk:
-                            sys.stderr.write(chunk.decode("utf-8", errors="replace"))
-                            sys.stderr.flush()
-                except Exception:
-                    break
-
-        stderr_thread = threading.Thread(target=_stream_stderr, daemon=True)
-        stderr_thread.start()
-
         # ── Watch for Enter / Ctrl+C to cancel early (raw mode, background) ─
         def _watch_cancel():
             import tty
@@ -147,7 +135,6 @@ class DictationHelper:
             old = termios.tcgetattr(fd)
             try:
                 tty.setraw(fd)
-                # select so we don't block forever if proc already exited
                 while proc.poll() is None:
                     ready, _, _ = select.select([sys.stdin], [], [], 0.1)
                     if ready:
@@ -173,7 +160,6 @@ class DictationHelper:
             proc.kill()
             stdout, _ = proc.communicate()
 
-        stderr_thread.join(timeout=0.5)
         cancel_thread.join(timeout=0.2)
 
         # Clear the partial-result line Swift left on stderr
