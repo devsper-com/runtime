@@ -300,6 +300,31 @@ class Swarm:
                 selected = selector.select(root)
                 strategy_instance = get_strategy_for(selected)
                 prompt_suffix = selector.suggest_planner_prompt_suffix(selected)
+
+                # Multi-Model Council: for complex tasks, enrich the planner prompt
+                # with a draft→critique→synthesize pass before decomposition.
+                council_cfg = getattr(self._config, "council", None) if self._config else None
+                council_enabled = getattr(council_cfg, "enabled", False) if council_cfg else False
+                if council_enabled:
+                    try:
+                        from devsper.council import Council, CouncilConfig
+                        _ccfg = CouncilConfig(
+                            drafter_model=getattr(council_cfg, "drafter_model", "auto"),
+                            critic_model=getattr(council_cfg, "critic_model", "auto"),
+                            synthesizer_model=getattr(council_cfg, "synthesizer_model", "auto"),
+                            complexity_threshold=getattr(council_cfg, "complexity_threshold", 3),
+                        )
+                        _council = Council(_ccfg)
+                        if _council.should_engage(user_task):
+                            log.debug("[swarm] council engaged for complex task")
+                            _council_result = _council.run(user_task)
+                            if _council_result.final:
+                                prompt_suffix = (
+                                    f"{prompt_suffix}\n\n"
+                                    f"## Council Pre-Analysis\n{_council_result.final[:2000]}"
+                                ).strip()
+                    except Exception as _ce:
+                        log.debug("[swarm] council step skipped: %s", _ce)
                 guide_planning = False
                 min_confidence = 0.30
                 if self._config is not None and getattr(self._config, "knowledge", None):

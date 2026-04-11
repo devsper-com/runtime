@@ -22,6 +22,8 @@ Slash-commands:
   /new          Start a fresh session (keeps semantic memory)
   /sessions     List past sessions for this project
   /memory       Query project semantic memory
+  /mission r2c  Research→Code: research a topic then implement it
+  /council      Run a task through draft→critique→synthesize council
   /help         Show this help
   /exit /quit   Exit
 """
@@ -141,6 +143,14 @@ class CodeREPL:
             self._print(_HELP_TEXT)
             return False
 
+        if cmd == "/mission":
+            self._run_mission(arg.strip())
+            return False
+
+        if cmd == "/council":
+            self._run_council(arg.strip())
+            return False
+
         self._print(f"Unknown command: {cmd}. Type /help for commands.")
         return False
 
@@ -225,6 +235,67 @@ class CodeREPL:
             if isinstance(val, str) and val.strip():
                 parts.append(val.strip())
         return "\n\n".join(parts) if parts else ""
+
+    def _run_mission(self, arg: str) -> None:
+        """Run a named mission from the REPL. Usage: /mission r2c <goal>"""
+        parts = arg.split(None, 1)
+        if not parts:
+            self._print("Usage: /mission r2c <goal>")
+            return
+        mission_type = parts[0].lower()
+        goal = parts[1] if len(parts) > 1 else ""
+        if not goal:
+            self._print(f"Usage: /mission {mission_type} <goal>")
+            return
+
+        if mission_type in ("r2c", "research-code", "research_to_code"):
+            try:
+                from devsper.missions.research_to_code import ResearchToCodeMission
+                self._print(
+                    f"[dim]Running Research→Code mission: [cyan]{goal[:80]}[/] ...[/]",
+                    markup=True,
+                )
+                mission = ResearchToCodeMission()
+                result = mission.run(goal)
+                self._print("\n[bold]Research Summary[/]", markup=True)
+                self._print(result.handoff.summary)
+                if result.handoff.patterns:
+                    self._print("\n[bold]Key Patterns[/]", markup=True)
+                    for p in result.handoff.patterns:
+                        self._print(f"  • {p}")
+                self._print("\n[bold]Implementation[/]", markup=True)
+                self._print(result.final_code)
+                reviewed_note = " (reviewed)" if result.reviewed else ""
+                self._print(
+                    f"\n[dim]Mission {result.mission_id}{reviewed_note} complete.[/]",
+                    markup=True,
+                )
+                self.session.save_turn("user", f"/mission r2c {goal}")
+                self.session.save_turn("assistant", result.final_code)
+            except Exception as exc:
+                self._print(f"[red]Mission failed: {exc}[/]", markup=True)
+        else:
+            self._print(f"Unknown mission type: {mission_type}. Available: r2c")
+
+    def _run_council(self, task: str) -> None:
+        """Run a task through the Multi-Model Council (draft→critique→synthesize)."""
+        if not task:
+            self._print("Usage: /council <task description>")
+            return
+        try:
+            from devsper.council import Council, CouncilConfig
+            self._print(
+                "[dim]Council engaged: drafting → critiquing → synthesizing ...[/]",
+                markup=True,
+            )
+            council = Council(CouncilConfig())
+            result = council.run(task)
+            self._print("\n[bold]Council Result[/]", markup=True)
+            self._print(result.final)
+            self.session.save_turn("user", f"/council {task}")
+            self.session.save_turn("assistant", result.final)
+        except Exception as exc:
+            self._print(f"[red]Council failed: {exc}[/]", markup=True)
 
     def _run_init(self, force: bool = False) -> None:
         """Generate devsper.md inline — like Claude Code's /init command."""

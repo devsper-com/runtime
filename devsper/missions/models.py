@@ -10,6 +10,7 @@ class MissionType(str, Enum):
     CODING = "coding"
     EXPERIMENT = "experiment"
     GENERAL = "general"
+    RESEARCH_TO_CODE = "research_to_code"
 
 
 @dataclass(slots=True)
