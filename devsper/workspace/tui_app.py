@@ -6,8 +6,8 @@ inline as the swarm works.
 
 Usage (internal — launched by devsper/cli/main.py)::
 
-    from devsper.workspace.tui_app import DevSperApp
-    app = DevSperApp(workspace, session)
+    from devsper.workspace.tui_app import DevsperApp
+    app = DevsperApp(workspace, session)
     app.run()
 """
 
@@ -155,10 +155,10 @@ class VoiceResult(_TMsg):
 
 
 # ---------------------------------------------------------------------------
-# DevSperApp
+# DevsperApp
 # ---------------------------------------------------------------------------
 
-class DevSperApp(App):
+class DevsperApp(App):
     """Claude Code-style Textual interface for devsper."""
 
     CSS = _CSS

@@ -996,8 +996,8 @@ def _run_repl(args=None) -> int:
 
     # Try Textual TUI first
     try:
-        from devsper.workspace.tui_app import DevSperApp
-        app = DevSperApp(workspace=workspace, session=session, new_session=new_session)
+        from devsper.workspace.tui_app import DevsperApp
+        app = DevsperApp(workspace=workspace, session=session, new_session=new_session)
         app.run()
         return 0
     except Exception:
