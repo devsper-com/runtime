@@ -2,10 +2,10 @@
 //
 // Protocol:
 //   • Starts capturing mic audio immediately on launch.
-//   • Streams audio through SFSpeechRecognizer (on-device when available).
-//   • Partial results are written to stderr so Python can show live text.
-//   • Stops automatically when speech silence is detected (isFinal = true).
-//   • Also stops on SIGTERM (Python sends this for early cancellation).
+//   • Streams audio through SFSpeechRecognizer (server-based, works all locales).
+//   • Partial results written to stderr (\r overwrite) for live feedback.
+//   • Stops automatically on speech silence (SFSpeechRecognizer isFinal).
+//   • SIGTERM for early cancellation (Python calls proc.terminate()).
 //   • Final transcript printed to stdout, then exits 0.
 //
 // Compile:
@@ -16,98 +16,99 @@ import AVFoundation
 import Foundation
 import Speech
 
-// Global used by the SIGTERM handler (C fn pointers can't capture context)
+// Global for SIGTERM handler — C fn ptrs can't capture context
 var _gRequest: SFSpeechAudioBufferRecognitionRequest?
+var _gEngine: AVAudioEngine?
+var _gLatestTranscript = ""
 
-// MARK: - Helpers
-
-func fail(_ msg: String) -> Never {
-    fputs("error: \(msg)\n", stderr)
-    exit(1)
+func finish(_ transcript: String) -> Never {
+    _gEngine?.stop()
+    fputs("\r\u{1B}[2K", stderr)  // clear partial-result line
+    if !transcript.isEmpty {
+        print(transcript)
+    }
+    exit(0)
 }
 
-// MARK: - Authorization (synchronous)
-
 func authorize() {
+    // SFSpeechRecognizer auth must run on main thread; since we call this
+    // before RunLoop.main.run() we use a semaphore to wait inline.
     let sem = DispatchSemaphore(value: 0)
     SFSpeechRecognizer.requestAuthorization { _ in sem.signal() }
     sem.wait()
 
     guard SFSpeechRecognizer.authorizationStatus() == .authorized else {
-        fail(
-            "speech recognition not authorized — go to System Settings › Privacy & Security › Speech Recognition"
-        )
+        fputs("error: speech recognition not authorized — System Settings › Privacy & Security › Speech Recognition\n", stderr)
+        exit(1)
     }
 }
 
-// MARK: - Main
+authorize()
 
-func run() {
-    authorize()
+// Prefer current locale; fall back to en-US / en-GB.
+// On-device models are locale-specific and often absent (e.g. en-IN).
+let localesToTry = [Locale.current, Locale(identifier: "en-US"), Locale(identifier: "en-GB")]
+guard let recognizer = localesToTry
+    .compactMap({ SFSpeechRecognizer(locale: $0) })
+    .first(where: { $0.isAvailable })
+else {
+    fputs("error: no available speech recognizer\n", stderr)
+    exit(1)
+}
+fputs("locale: \(recognizer.locale.identifier)\n", stderr)
 
-    guard let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer()
-    else { fail("no speech recognizer available for this locale") }
-    guard recognizer.isAvailable else { fail("speech recognizer is unavailable right now") }
+let engine = AVAudioEngine()
+_gEngine = engine
 
-    let engine = AVAudioEngine()
-    let request = SFSpeechAudioBufferRecognitionRequest()
-    request.shouldReportPartialResults = true
-    if #available(macOS 13, *) {
-        // Prefer on-device — no network needed, faster, private
-        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
-        request.addsPunctuation = true
-    }
+let request = SFSpeechAudioBufferRecognitionRequest()
+_gRequest = request
+request.shouldReportPartialResults = true
+// Server-based recognition — works for all locales, no on-device model needed
+if #available(macOS 13, *) {
+    request.addsPunctuation = true
+}
 
-    let inputNode = engine.inputNode
-    let format = inputNode.outputFormat(forBus: 0)
-    inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buf, _ in
-        request.append(buf)
-    }
+let inputNode = engine.inputNode
+let format = inputNode.outputFormat(forBus: 0)
+inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buf, _ in
+    request.append(buf)
+}
 
-    var latestTranscript = ""
-    let doneSem = DispatchSemaphore(value: 0)
-
-    recognizer.recognitionTask(with: request) { result, error in
-        if let result {
-            latestTranscript = result.bestTranscription.formattedString
-            // Overwrite the same line on stderr — Python mirrors this live
-            fputs("\r\u{1B}[2K\(latestTranscript)", stderr)
-            if result.isFinal {
-                doneSem.signal()
-            }
-        }
-        if let error {
-            let code = (error as NSError).code
-            // 216 = "no speech detected" — soft, not a crash
-            if code != 216 {
-                fputs("\nerror: \(error.localizedDescription)\n", stderr)
-            }
-            doneSem.signal()
+recognizer.recognitionTask(with: request) { result, error in
+    if let result {
+        _gLatestTranscript = result.bestTranscription.formattedString
+        fputs("\r\u{1B}[2K\(_gLatestTranscript)", stderr)
+        if result.isFinal {
+            finish(_gLatestTranscript)
         }
     }
-
-    do { try engine.start() } catch { fail("could not start audio engine: \(error)") }
-
-    // SIGTERM handler — Python sends this when user cancels early.
-    // C function pointers can't capture context, so store request in a global.
-    _gRequest = request
-    signal(SIGTERM) { _ in _gRequest?.endAudio() }
-
-    // Hard timeout: 60 s max, in case silence detection never fires
-    DispatchQueue.global().asyncAfter(deadline: .now() + 60) {
-        request.endAudio()
-    }
-
-    doneSem.wait()
-
-    engine.stop()
-    inputNode.removeTap(onBus: 0)
-
-    // Clear the partial-result stderr line, print final to stdout
-    fputs("\r\u{1B}[2K", stderr)
-    if !latestTranscript.isEmpty {
-        print(latestTranscript)
+    if let error {
+        let code = (error as NSError).code
+        // 216 = no speech, 203 = interrupted/cancelled — both are expected
+        if code != 216 && code != 203 {
+            fputs("\nerror: \(error.localizedDescription)\n", stderr)
+        }
+        finish(_gLatestTranscript)
     }
 }
 
-run()
+do {
+    try engine.start()
+} catch {
+    fputs("error: could not start audio engine: \(error)\n", stderr)
+    exit(1)
+}
+
+// SIGTERM — Python calls proc.terminate() for early cancellation
+signal(SIGTERM) { _ in
+    _gRequest?.endAudio()
+    // finish() will be called from the recognition callback above
+}
+
+// 60 s hard timeout
+DispatchQueue.global().asyncAfter(deadline: .now() + 60) {
+    _gRequest?.endAudio()
+}
+
+// Keep main RunLoop alive — recognition callbacks are delivered here
+RunLoop.main.run()
