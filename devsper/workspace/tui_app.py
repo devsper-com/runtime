@@ -121,34 +121,29 @@ Screen { background: #0d0f14; }
 
 
 # ---------------------------------------------------------------------------
-# Thread → UI messages
+# Thread → UI messages  (no leading _ — Textual handler discovery requires
+# snake_case derivable names: MsgFoo → on_msg_foo)
 # ---------------------------------------------------------------------------
 
-class _AppendWidget(_TMsg):
-    def __init__(self, widget: Static) -> None:
-        super().__init__()
-        self.widget = widget
-
-
-class _AppendLine(_TMsg):
+class MsgLine(_TMsg):
     def __init__(self, text: str) -> None:
         super().__init__()
         self.text = text
 
 
-class _TurnDone(_TMsg):
+class MsgDone(_TMsg):
     def __init__(self, answer: str) -> None:
         super().__init__()
         self.answer = answer
 
 
-class _VoiceResult(_TMsg):
+class MsgVoice(_TMsg):
     def __init__(self, text: str) -> None:
         super().__init__()
         self.text = text
 
 
-class _SetStatus(_TMsg):
+class MsgStatus(_TMsg):
     def __init__(self, text: str) -> None:
         super().__init__()
         self.text = text
@@ -186,13 +181,13 @@ class DevsperApp(App):
     TITLE = "devsper"
 
     BINDINGS = [
-        Binding("ctrl+c",     "quit",             "Quit",         priority=True),
-        Binding("ctrl+space", "toggle_voice",      "Voice",        show=False),
-        Binding("escape",     "cancel_voice",      "Cancel voice", show=False),
-        Binding("ctrl+e",     "edit_in_editor",    "Edit in $EDITOR"),
-        Binding("ctrl+n",     "new_session",       "New session"),
-        Binding("ctrl+l",     "clear_screen",      "Clear"),
-        Binding("f1",         "show_help",         "Help"),
+        Binding("ctrl+c",  "quit",          "Quit",         priority=True),
+        Binding("f2",      "toggle_voice",  "Voice",        show=False),   # ctrl+space = macOS input switcher
+        Binding("escape",  "cancel_voice",  "Cancel voice", show=False),
+        Binding("ctrl+e",  "edit_in_editor","Edit in $EDITOR"),
+        Binding("ctrl+n",  "new_session",   "New session"),
+        Binding("ctrl+l",  "clear_screen",  "Clear"),
+        Binding("f1",      "show_help",     "Help"),
     ]
 
     def __init__(
@@ -230,7 +225,7 @@ class DevsperApp(App):
     def compose(self) -> ComposeResult:
         branch = self._git_branch()
         has_voice = bool(self._voice and self._voice.available)
-        hint = "  ^Space voice  ^E editor  F1 help" if has_voice else "  ^E editor  F1 help"
+        hint = "  F2 voice  ^E editor  F1 help" if has_voice else "  ^E editor  F1 help"
 
         yield Horizontal(
             Static("devsper", id="hd-logo"),
@@ -339,7 +334,7 @@ class DevsperApp(App):
     def _start_voice(self) -> None:
         self._recording = True
         self._set_voice_badge(True)
-        self._set_status("recording — Ctrl+Space or Escape to stop")
+        self._set_status("recording — F2 or Escape to stop")
         self.query_one("#user-input", Input).disabled = True
 
         def _record() -> None:
@@ -347,7 +342,7 @@ class DevsperApp(App):
                 text = self._voice._record(tui_mode=True)
             except Exception:
                 text = ""
-            self.post_message(_VoiceResult(text))
+            self.post_message(MsgVoice(text))
 
         threading.Thread(target=_record, daemon=True).start()
 
@@ -364,7 +359,7 @@ class DevsperApp(App):
         except Exception:
             pass
 
-    def on__voice_result(self, msg: _VoiceResult) -> None:
+    def on_msg_voice(self, msg: MsgVoice) -> None:
         self._recording = False
         self._set_voice_badge(False)
         self._set_status("")
@@ -398,12 +393,21 @@ class DevsperApp(App):
 
     @work(thread=True)
     def _execute_turn(self, user_text: str) -> None:
+        # Fast path: conversational / short queries skip the swarm planner entirely
+        if self._is_simple_chat(user_text):
+            try:
+                answer = self._direct_llm(user_text)
+            except Exception as exc:
+                answer = f"**Error:** {exc}"
+            self.post_message(MsgDone(answer or ""))
+            return
+
         from devsper.workspace.display import CallbackEventLog, format_event_line
 
         def _on_event(evt: dict) -> None:
             line = format_event_line(evt)
             if line:
-                self.post_message(_AppendLine(f"  [#334155]● {line}[/]"))
+                self.post_message(MsgLine(f"  [#334155]● {line}[/]"))
 
         event_log = CallbackEventLog(callback=_on_event)
         swarm = self._make_swarm(event_log)
@@ -413,9 +417,9 @@ class DevsperApp(App):
             answer = self._extract_answer(result)
         except Exception as exc:
             answer = f"**Error:** {exc}"
-        self.post_message(_TurnDone(answer or ""))
+        self.post_message(MsgDone(answer or ""))
 
-    def on__turn_done(self, msg: _TurnDone) -> None:
+    def on_msg_done(self, msg: MsgDone) -> None:
         # Remove thinking indicator
         try:
             self.query_one("#thinking-indicator").remove()
@@ -448,10 +452,10 @@ class DevsperApp(App):
                     pass
             threading.Thread(target=_extract, daemon=True).start()
 
-    def on__append_line(self, msg: _AppendLine) -> None:
+    def on_msg_line(self, msg: MsgLine) -> None:
         self._mount_widget(Static(msg.text, classes="thinking-wrap"))
 
-    def on__set_status(self, msg: _SetStatus) -> None:
+    def on_msg_status(self, msg: MsgStatus) -> None:
         self._set_status(msg.text)
 
     # ------------------------------------------------------------------
@@ -587,10 +591,10 @@ class DevsperApp(App):
             try:
                 from devsper.cli.init import run_init_md
                 rc = run_init_md(self.workspace.project_root, overwrite=force)
-                self.post_message(_AppendLine("[#22c55e]  ✓ devsper.md ready[/]" if rc == 0 else "[#ef4444]  init failed[/]"))
+                self.post_message(MsgLine("[#22c55e]  ✓ devsper.md ready[/]" if rc == 0 else "[#ef4444]  init failed[/]"))
             except Exception as exc:
-                self.post_message(_AppendLine(f"[#ef4444]  init error: {exc}[/]"))
-            self.post_message(_TurnDone(""))
+                self.post_message(MsgLine(f"[#ef4444]  init error: {exc}[/]"))
+            self.post_message(MsgDone(""))
 
         threading.Thread(target=_do, daemon=True).start()
 
@@ -606,11 +610,11 @@ class DevsperApp(App):
             try:
                 from devsper.council.research_to_code import ResearchToCodeMission
                 result = ResearchToCodeMission().run(goal)
-                self.post_message(_AppendLine(f"[#7c6af7]  summary:[/] {result.handoff.summary}"))
-                self.post_message(_TurnDone(result.final_code))
+                self.post_message(MsgLine(f"[#7c6af7]  summary:[/] {result.handoff.summary}"))
+                self.post_message(MsgDone(result.final_code))
             except Exception as exc:
-                self.post_message(_AppendLine(f"[#ef4444]  mission failed: {exc}[/]"))
-                self.post_message(_TurnDone(""))
+                self.post_message(MsgLine(f"[#ef4444]  mission failed: {exc}[/]"))
+                self.post_message(MsgDone(""))
 
         threading.Thread(target=_do, daemon=True).start()
 
@@ -624,10 +628,10 @@ class DevsperApp(App):
             try:
                 from devsper.council import Council, CouncilConfig
                 result = Council(CouncilConfig()).run(task)
-                self.post_message(_TurnDone(result.final))
+                self.post_message(MsgDone(result.final))
             except Exception as exc:
-                self.post_message(_AppendLine(f"[#ef4444]  council failed: {exc}[/]"))
-                self.post_message(_TurnDone(""))
+                self.post_message(MsgLine(f"[#ef4444]  council failed: {exc}[/]"))
+                self.post_message(MsgDone(""))
 
         threading.Thread(target=_do, daemon=True).start()
 
@@ -686,6 +690,33 @@ class DevsperApp(App):
             return Swarm(event_log=event_log, config=cfg)
         except Exception:
             return Swarm(event_log=event_log, worker_model="auto", planner_model="auto", use_tools=True, adaptive=True)
+
+    _CODING_SIGNALS = frozenset({
+        "file", "code", "function", "class", "import", "bug", "fix", "error",
+        "test", "refactor", "implement", "write", "create", "build", "run",
+        "install", "deploy", "debug", "edit", ".py", ".js", ".ts", ".go",
+        ".rs", "def ", "async ", "await ", "import ", "from ", "```",
+    })
+
+    def _is_simple_chat(self, text: str) -> bool:
+        """True when query is conversational and doesn't need multi-agent planning."""
+        t = text.lower()
+        if len(t) > 200:
+            return False
+        if any(sig in t for sig in self._CODING_SIGNALS):
+            return False
+        return True
+
+    def _direct_llm(self, user_text: str) -> str:
+        """Single LLM call — bypasses swarm planner for simple chat."""
+        from devsper.providers import generate
+        history = self.session.format_history_for_context(max_turns=6)
+        system = "You are devsper, an AI coding assistant. Answer helpfully and concisely."
+        if self.workspace.md_content:
+            system += f"\n\nProject context:\n{self.workspace.md_content[:2000]}"
+        prompt = f"{history}\n\nUser: {user_text}" if history else user_text
+        result = generate(prompt, system=system, model="auto")
+        return result if isinstance(result, str) else str(result)
 
     def _extract_answer(self, result) -> str:
         if not isinstance(result, dict):

@@ -66,11 +66,28 @@ def get_llm_router() -> LLMRouter | None:
             router.register(GitHubBackend())
         except Exception:
             pass
+    # Ollama: register when explicitly enabled in config OR when OLLAMA_HOST is set.
+    # Also attempt auto-register on localhost as a convenience (silent if unreachable).
+    _ollama_url = ""
     if getattr(pc, "ollama", None) and getattr(pc.ollama, "enabled", False):
-        try:
-            router.register(OllamaBackend(base_url=pc.ollama.base_url or "http://localhost:11434"))
-        except Exception:
-            pass
+        _ollama_url = getattr(pc.ollama, "base_url", "") or ""
+    if not _ollama_url:
+        _ollama_url = os.environ.get("OLLAMA_HOST", "")
+    if not _ollama_url:
+        _ollama_url = "http://localhost:11434"  # always try localhost
+    try:
+        _keep_alive = "5m"
+        _num_ctx = 8192
+        if getattr(pc, "ollama", None):
+            _keep_alive = getattr(pc.ollama, "keep_alive", "5m") or "5m"
+            _num_ctx = int(getattr(pc.ollama, "num_ctx", 8192) or 8192)
+        router.register(OllamaBackend(
+            base_url=_ollama_url,
+            keep_alive=_keep_alive,
+            num_ctx=_num_ctx,
+        ))
+    except Exception:
+        pass
     if getattr(pc, "vllm", None) and getattr(pc.vllm, "enabled", False):
         try:
             router.register(VLLMBackend(base_url=pc.vllm.base_url or "http://localhost:8000", api_key=pc.vllm.api_key or ""))
