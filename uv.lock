@@ -721,7 +721,6 @@ dependencies = [
     { name = "rich" },
     { name = "shtab" },
     { name = "textual" },
-    { name = "trulens-core" },
 ]
 
 [package.optional-dependencies]
@@ -862,7 +861,6 @@ requires-dist = [
     { name = "sse-starlette", marker = "extra == 'a2a'", specifier = ">=2.0" },
     { name = "sse-starlette", marker = "extra == 'server'", specifier = ">=2.0" },
     { name = "textual", specifier = ">=0.50.0" },
-    { name = "trulens-core", specifier = ">=1.0" },
     { name = "trulens-core", marker = "extra == 'trulens'", specifier = ">=1.0" },
     { name = "uvicorn", marker = "extra == 'a2a'", specifier = ">=0.29" },
     { name = "uvicorn", marker = "extra == 'distributed'", specifier = ">=0.29.0" },
