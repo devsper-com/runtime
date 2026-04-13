@@ -55,3 +55,16 @@ def test_graph_spec_two_identical_specs_same_version():
             edges=[],
         )
     assert make().version == make().version
+
+
+def test_graph_spec_version_order_independent():
+    """Same nodes/edges in different insertion order must produce the same version."""
+    spec_a = GraphSpec(
+        nodes=[NodeSpec(id="n1", role="a"), NodeSpec(id="n2", role="b")],
+        edges=[EdgeSpec(src="n1", dst="n2")],
+    )
+    spec_b = GraphSpec(
+        nodes=[NodeSpec(id="n2", role="b"), NodeSpec(id="n1", role="a")],
+        edges=[EdgeSpec(src="n1", dst="n2")],
+    )
+    assert spec_a.version == spec_b.version

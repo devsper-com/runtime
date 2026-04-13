@@ -1,4 +1,5 @@
 from __future__ import annotations
+import dataclasses as _dc
 from dataclasses import dataclass, field
 from typing import Literal
 import json
@@ -31,6 +32,11 @@ class EdgeSpec:
     condition: str | None = None
 
 
+# Module-level field sets for forward-compat filtering in from_dict (avoids recomputing per call)
+_node_fields: set[str] = {f.name for f in _dc.fields(NodeSpec)}
+_edge_fields: set[str] = {f.name for f in _dc.fields(EdgeSpec)}
+
+
 @dataclass
 class GraphSpec:
     nodes: list[NodeSpec]
@@ -41,10 +47,14 @@ class GraphSpec:
     version: str = ""
 
     def __post_init__(self) -> None:
+        # mutation_points is always derived from node.is_mutation_point — any caller-supplied value is overwritten
         self.mutation_points = [n.id for n in self.nodes if n.is_mutation_point]
         if not self.version:
             payload = json.dumps(
-                {"nodes": [n.id for n in self.nodes], "edges": [(e.src, e.dst) for e in self.edges]},
+                {
+                    "nodes": sorted(n.id for n in self.nodes),
+                    "edges": sorted((e.src, e.dst) for e in self.edges),
+                },
                 sort_keys=True,
             )
             self.version = hashlib.sha256(payload.encode()).hexdigest()[:8]
@@ -62,7 +72,7 @@ class GraphSpec:
                 for n in self.nodes
             ],
             "edges": [{"src": e.src, "dst": e.dst, "condition": e.condition} for e in self.edges],
-            "mutation_points": self.mutation_points,
+            "mutation_points": self.mutation_points,  # derivative of node flags; not read by from_dict
             "state_schema": self.state_schema,
             "metadata": self.metadata,
             "version": self.version,
@@ -70,8 +80,8 @@ class GraphSpec:
 
     @classmethod
     def from_dict(cls, data: dict) -> "GraphSpec":
-        nodes = [NodeSpec(**n) for n in data["nodes"]]
-        edges = [EdgeSpec(**e) for e in data["edges"]]
+        nodes = [NodeSpec(**{k: v for k, v in n.items() if k in _node_fields}) for n in data["nodes"]]
+        edges = [EdgeSpec(**{k: v for k, v in e.items() if k in _edge_fields}) for e in data["edges"]]
         spec = cls(
             nodes=nodes,
             edges=edges,
