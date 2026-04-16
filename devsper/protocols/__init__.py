@@ -1,6 +1,0 @@
-"""Protocol version constants for MCP and A2A."""
-
-MCP_PROTOCOL_VERSION = "2024-11-05"
-A2A_PROTOCOL_VERSION = "0.2.1"
-
-__all__ = ["MCP_PROTOCOL_VERSION", "A2A_PROTOCOL_VERSION"]
