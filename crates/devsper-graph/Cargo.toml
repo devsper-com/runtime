@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 devsper-core = { path = "../devsper-core" }
 petgraph = { workspace = true }
-tokio = { workspace = true, features = ["sync", "macros", "rt"] }
+tokio = { workspace = true, features = ["sync", "macros", "rt", "time"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
