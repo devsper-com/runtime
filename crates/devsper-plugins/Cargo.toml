@@ -10,7 +10,7 @@ lua-vendored = ["mlua/vendored"]
 [dependencies]
 devsper-core = { path = "../devsper-core" }
 mlua = { workspace = true }
-tokio = { workspace = true, features = ["sync", "macros", "rt"] }
+tokio = { workspace = true, features = ["sync", "macros", "rt", "fs"] }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

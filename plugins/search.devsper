@@ -1,2 +1,30 @@
--- search.devsper: search tools plugin
--- TODO: Phase 6 implementation
+-- search.devsper: Code and file search tools
+
+devsper.tool("search.grep", {
+    description = "Search for a pattern in files",
+    params = {
+        pattern = { type = "string", required = true },
+        path = { type = "string", default = "." },
+        recursive = { type = "boolean", default = true },
+    },
+    run = function(ctx, args)
+        local grep_args = {"-n"}
+        if args.recursive then table.insert(grep_args, "-r") end
+        table.insert(grep_args, args.pattern)
+        table.insert(grep_args, args.path or ".")
+        local r = devsper.exec("grep", grep_args)
+        return { matches = r.stdout, success = r.code == 0 }
+    end,
+})
+
+devsper.tool("search.files", {
+    description = "Find files by name pattern",
+    params = {
+        pattern = { type = "string", required = true },
+        path = { type = "string", default = "." },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("find", {args.path or ".", "-name", args.pattern})
+        return { files = r.stdout, success = r.code == 0 }
+    end,
+})

@@ -1,2 +1,50 @@
--- git.devsper: git tools plugin
--- TODO: Phase 6 implementation
+-- git.devsper: Git operations plugin
+
+devsper.tool("git.clone", {
+    description = "Clone a git repository",
+    params = {
+        url = { type = "string", required = true },
+        path = { type = "string", default = "./repo" },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("git", {"clone", args.url, args.path or "./repo"})
+        return { success = r.code == 0, path = args.path, stdout = r.stdout, stderr = r.stderr }
+    end,
+})
+
+devsper.tool("git.diff", {
+    description = "Show git diff for a repository",
+    params = {
+        path = { type = "string", required = true },
+        staged = { type = "boolean", default = false },
+    },
+    run = function(ctx, args)
+        local git_args = {"-C", args.path, "diff"}
+        if args.staged then table.insert(git_args, "--staged") end
+        local r = devsper.exec("git", git_args)
+        return { diff = r.stdout, success = r.code == 0 }
+    end,
+})
+
+devsper.tool("git.log", {
+    description = "Show git commit log",
+    params = {
+        path = { type = "string", required = true },
+        n = { type = "number", default = 10 },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("git", {"-C", args.path, "log", "--oneline", "-n", tostring(args.n or 10)})
+        return { log = r.stdout, success = r.code == 0 }
+    end,
+})
+
+devsper.tool("git.status", {
+    description = "Show git status",
+    params = {
+        path = { type = "string", required = true },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("git", {"-C", args.path, "status", "--short"})
+        return { status = r.stdout, success = r.code == 0 }
+    end,
+})

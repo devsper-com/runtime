@@ -1,2 +1,30 @@
--- http.devsper: http tools plugin
--- TODO: Phase 6 implementation
+-- http.devsper: HTTP request tools
+
+devsper.tool("http.get", {
+    description = "Make an HTTP GET request",
+    params = {
+        url = { type = "string", required = true },
+        headers = { type = "table", default = {} },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("curl", {"-s", "-L", "-w", "\n%{http_code}", args.url})
+        return { body = r.stdout, success = r.code == 0 }
+    end,
+})
+
+devsper.tool("http.post", {
+    description = "Make an HTTP POST request with JSON body",
+    params = {
+        url = { type = "string", required = true },
+        body = { type = "string", required = true },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("curl", {
+            "-s", "-X", "POST",
+            "-H", "Content-Type: application/json",
+            "-d", args.body,
+            args.url,
+        })
+        return { body = r.stdout, success = r.code == 0 }
+    end,
+})
