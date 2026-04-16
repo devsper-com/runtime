@@ -365,6 +365,21 @@ mod tests {
     }
 
     #[test]
+    fn node_terminal_states() {
+        let make_node = |status: NodeStatus| {
+            let mut node = Node::new(NodeSpec::new("test"));
+            node.status = status;
+            node
+        };
+        assert!(make_node(NodeStatus::Completed).is_terminal());
+        assert!(make_node(NodeStatus::Failed).is_terminal());
+        assert!(make_node(NodeStatus::Abandoned).is_terminal());
+        assert!(!make_node(NodeStatus::Running).is_terminal());
+        assert!(!make_node(NodeStatus::Ready).is_terminal());
+        assert!(!make_node(NodeStatus::Speculative).is_terminal());
+    }
+
+    #[test]
     fn graph_mutation_serializes() {
         let m = GraphMutation::AddNode {
             spec: NodeSpec::new("a task"),

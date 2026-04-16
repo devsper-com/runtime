@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde_json::Value;
 
 /// A search result from semantic memory
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MemoryHit {
     pub key: String,
     pub value: Value,
@@ -33,7 +33,7 @@ pub trait Bus: Send + Sync {
     async fn subscribe(
         &self,
         topic: &str,
-        handler: Box<dyn Fn(BusMessage) + Send + Sync>,
+        handler: Box<dyn Fn(BusMessage) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>,
     ) -> Result<()>;
 
     /// Start the bus
