@@ -1,1 +1,9 @@
-// TODO: Phase 8 — Raft-lite peer mesh
+pub mod node;
+pub mod peer;
+pub mod protocol;
+pub mod registry;
+
+pub use node::{ClusterConfig, ClusterNode, NodeRole};
+pub use peer::PeerInfo;
+pub use protocol::{ClusterMessage, ClusterMessageKind};
+pub use registry::WorkerRegistry;
