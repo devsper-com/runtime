@@ -1,0 +1,17 @@
+[package]
+name = "devsper-cluster"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+devsper-core = { path = "../devsper-core" }
+devsper-bus = { path = "../devsper-bus" }
+devsper-graph = { path = "../devsper-graph" }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }

@@ -1,0 +1,13 @@
+[package]
+name = "devsper-compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+devsper-core = { path = "../devsper-core" }
+devsper-plugins = { path = "../devsper-plugins" }
+mlua = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

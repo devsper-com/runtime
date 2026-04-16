@@ -1,0 +1,26 @@
+[package]
+name = "devsper-bin"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "devsper"
+path = "src/main.rs"
+
+[dependencies]
+devsper-core = { path = "../devsper-core" }
+devsper-graph = { path = "../devsper-graph" }
+devsper-executor = { path = "../devsper-executor" }
+devsper-scheduler = { path = "../devsper-scheduler" }
+devsper-bus = { path = "../devsper-bus" }
+devsper-providers = { path = "../devsper-providers" }
+devsper-plugins = { path = "../devsper-plugins" }
+devsper-compiler = { path = "../devsper-compiler" }
+devsper-cluster = { path = "../devsper-cluster" }
+devsper-memory = { path = "../devsper-memory" }
+tokio = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde_json = { workspace = true }

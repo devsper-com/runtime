@@ -1,0 +1,13 @@
+[package]
+name = "devsper-executor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+devsper-core = { path = "../devsper-core" }
+devsper-graph = { path = "../devsper-graph" }
+devsper-scheduler = { path = "../devsper-scheduler" }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }

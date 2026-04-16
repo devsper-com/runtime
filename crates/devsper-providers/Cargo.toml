@@ -1,0 +1,16 @@
+[package]
+name = "devsper-providers"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+devsper-core = { path = "../devsper-core" }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
