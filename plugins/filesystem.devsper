@@ -1,0 +1,47 @@
+-- filesystem.devsper: File system operations plugin
+
+devsper.tool("fs.read", {
+    description = "Read a file's contents",
+    params = {
+        path = { type = "string", required = true },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("cat", {args.path})
+        return { content = r.stdout, success = r.code == 0 }
+    end,
+})
+
+devsper.tool("fs.list", {
+    description = "List files in a directory",
+    params = {
+        path = { type = "string", default = "." },
+        pattern = { type = "string", default = "" },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("ls", {"-la", args.path or "."})
+        return { listing = r.stdout, success = r.code == 0 }
+    end,
+})
+
+devsper.tool("fs.write", {
+    description = "Write content to a file",
+    params = {
+        path = { type = "string", required = true },
+        content = { type = "string", required = true },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("sh", {"-c", string.format("cat > %q", args.path)})
+        return { success = r.code == 0 }
+    end,
+})
+
+devsper.tool("fs.exists", {
+    description = "Check if a file or directory exists",
+    params = {
+        path = { type = "string", required = true },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("test", {"-e", args.path})
+        return { exists = r.code == 0 }
+    end,
+})

@@ -1,0 +1,37 @@
+-- code.devsper: Code analysis and execution tools
+
+devsper.tool("code.run_python", {
+    description = "Execute a Python script",
+    params = {
+        script = { type = "string", required = true },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("python3", {"-c", args.script})
+        return { output = r.stdout, error = r.stderr, success = r.code == 0 }
+    end,
+})
+
+devsper.tool("code.count_lines", {
+    description = "Count lines of code in a file or directory",
+    params = {
+        path = { type = "string", required = true },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("wc", {"-l", args.path})
+        return { count = r.stdout, success = r.code == 0 }
+    end,
+})
+
+devsper.tool("code.format_json", {
+    description = "Format JSON content",
+    params = {
+        json = { type = "string", required = true },
+    },
+    run = function(ctx, args)
+        local r = devsper.exec("python3", {"-c", string.format(
+            "import json, sys; print(json.dumps(json.loads(%q), indent=2))",
+            args.json
+        )})
+        return { formatted = r.stdout, success = r.code == 0 }
+    end,
+})

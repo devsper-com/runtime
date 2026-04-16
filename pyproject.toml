@@ -78,6 +78,7 @@ distributed = [
     "fastapi>=0.110.0",
     "uvicorn>=0.29.0",
     "hiredis>=2.3.0",
+    "aiokafka>=0.10",
 ]
 # TruLens observability (default since 2.6.0).
 # trulens-core pins rich<14; we override that constraint via [tool.uv.override-dependencies].

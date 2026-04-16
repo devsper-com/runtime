@@ -8,10 +8,18 @@ from devsper.bus.backends.redis import RedisBus
 
 def get_bus(config: object) -> BusBackend:
     """Return bus backend from config. Default InMemoryBus if bus config missing."""
-    backend = getattr(getattr(config, "bus", None), "backend", "memory")
+    bus_cfg = getattr(config, "bus", None)
+    backend = getattr(bus_cfg, "backend", "memory")
     if backend == "redis":
-        redis_url = getattr(getattr(config, "bus", None), "redis_url", "redis://localhost:6379")
+        redis_url = getattr(bus_cfg, "redis_url", "redis://localhost:6379")
         return RedisBus(redis_url=redis_url)
+    if backend == "kafka":
+        from devsper.bus.backends.kafka import KafkaBus
+        kafka_cfg = getattr(bus_cfg, "kafka", None)
+        bootstrap_servers = getattr(kafka_cfg, "bootstrap_servers", ["localhost:9092"])
+        group_id = getattr(kafka_cfg, "group_id", "devsper-workers")
+        client_id = getattr(kafka_cfg, "client_id", "devsper-bus")
+        return KafkaBus(bootstrap_servers=bootstrap_servers, group_id=group_id, client_id=client_id)
     return InMemoryBus()
 
 
@@ -22,6 +30,7 @@ __all__ = [
     "BusBackend",
     "InMemoryBus",
     "RedisBus",
+    "KafkaBus",
     "create_bus_message",
 ]
 

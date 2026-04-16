@@ -1,0 +1,14 @@
+[package]
+name = "devsper-executor"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+devsper-core = { path = "../devsper-core" }
+devsper-graph = { path = "../devsper-graph" }
+devsper-scheduler = { path = "../devsper-scheduler" }
+tokio = { workspace = true, features = ["sync", "macros", "rt", "time"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }

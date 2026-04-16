@@ -1,3 +1,41 @@
 [workspace]
+members = [
+    "crates/devsper-core",
+    "crates/devsper-graph",
+    "crates/devsper-executor",
+    "crates/devsper-scheduler",
+    "crates/devsper-bus",
+    "crates/devsper-providers",
+    "crates/devsper-plugins",
+    "crates/devsper-compiler",
+    "crates/devsper-cluster",
+    "crates/devsper-memory",
+    "crates/devsper-bin",
+    "worker",
+    "supermemory-core",
+]
 resolver = "2"
-members = ["worker", "supermemory-core"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+rust-version = "1.80"
+
+[workspace.dependencies]
+tokio        = { version = "1" }
+serde        = { version = "1", features = ["derive"] }
+serde_json   = "1"
+anyhow       = "1"
+tracing      = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+async-trait  = "0.1"
+uuid         = { version = "1", features = ["v4"] }
+petgraph     = "0.6"
+mlua         = { version = "0.10", features = ["lua54", "async"] }
+reqwest      = { version = "0.12", features = ["json", "stream"] }
+redis        = { version = "0.27", features = ["tokio-comp"] }
+axum         = "0.7"
+clap         = { version = "4", features = ["derive"] }
+thiserror    = "1"
+tokio-stream = "0.1"
+futures      = "0.3"

@@ -1,0 +1,17 @@
+[package]
+name = "devsper-plugins"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = ["lua-vendored"]
+lua-vendored = ["mlua/vendored"]
+
+[dependencies]
+devsper-core = { path = "../devsper-core" }
+mlua = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros", "rt", "fs"] }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "devsper"
+version = "2.9.0"
+description = "Devsper runtime CLI — self-evolving AI workflow engine"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+keywords = ["AI", "agents", "workflow", "runtime", "swarm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+tui = [
+    "textual>=0.80",
+    "rich>=13",
+]
+
+[project.scripts]
+devsper = "devsper.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["devsper"]
