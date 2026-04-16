@@ -1,12 +1,16 @@
 [package]
 name = "devsper-plugins"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = ["lua-vendored"]
+lua-vendored = ["mlua/vendored"]
 
 [dependencies]
 devsper-core = { path = "../devsper-core" }
 mlua = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros", "rt"] }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

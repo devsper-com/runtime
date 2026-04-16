@@ -1,12 +1,12 @@
 [package]
 name = "devsper-graph"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 devsper-core = { path = "../devsper-core" }
 petgraph = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros", "rt"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

@@ -1,11 +1,11 @@
 [package]
 name = "devsper-bus"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 devsper-core = { path = "../devsper-core" }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros", "rt"] }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

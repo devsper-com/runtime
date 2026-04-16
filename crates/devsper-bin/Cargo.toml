@@ -1,7 +1,7 @@
 [package]
 name = "devsper-bin"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [[bin]]
 name = "devsper"
@@ -14,11 +14,10 @@ devsper-executor = { path = "../devsper-executor" }
 devsper-scheduler = { path = "../devsper-scheduler" }
 devsper-bus = { path = "../devsper-bus" }
 devsper-providers = { path = "../devsper-providers" }
-devsper-plugins = { path = "../devsper-plugins" }
 devsper-compiler = { path = "../devsper-compiler" }
 devsper-cluster = { path = "../devsper-cluster" }
 devsper-memory = { path = "../devsper-memory" }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 clap = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
