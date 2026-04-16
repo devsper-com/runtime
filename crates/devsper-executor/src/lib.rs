@@ -1,1 +1,2 @@
-// TODO: Phase 4 — executor
+pub mod executor;
+pub use executor::{AgentFn, AgentOutput, Executor, ExecutorConfig};

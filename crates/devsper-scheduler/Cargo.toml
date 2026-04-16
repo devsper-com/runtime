@@ -9,3 +9,4 @@ devsper-graph = { path = "../devsper-graph" }
 tokio = { workspace = true, features = ["sync", "macros", "rt"] }
 anyhow = { workspace = true }
 tracing = { workspace = true }
+serde_json = { workspace = true }
