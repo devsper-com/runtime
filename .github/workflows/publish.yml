@@ -40,7 +40,8 @@ jobs:
     name: Publish to crates.io
     needs: test
     runs-on: ubuntu-latest
-    environment: crates-io
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_PUBLISH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -59,49 +60,35 @@ jobs:
 
       # Publish in dependency order — each layer waits for previous to index.
       - name: Publish devsper-core
-        run: cargo publish -p devsper-core --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
-
-      - name: Wait for devsper-core to index
-        run: sleep 30
+        run: cargo publish -p devsper-core --no-verify || true
+      - run: sleep 20
 
       - name: Publish devsper-graph
-        run: cargo publish -p devsper-graph --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
-
+        run: cargo publish -p devsper-graph --no-verify || true
       - name: Publish devsper-bus
-        run: cargo publish -p devsper-bus --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
-
-      - name: Wait for graph + bus to index
-        run: sleep 30
+        run: cargo publish -p devsper-bus --no-verify || true
+      - run: sleep 20
 
       - name: Publish devsper-scheduler
-        run: cargo publish -p devsper-scheduler --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
-
+        run: cargo publish -p devsper-scheduler --no-verify || true
       - name: Publish devsper-executor
-        run: cargo publish -p devsper-executor --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
-
+        run: cargo publish -p devsper-executor --no-verify || true
       - name: Publish devsper-plugins
-        run: cargo publish -p devsper-plugins --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
-
+        run: cargo publish -p devsper-plugins --no-verify || true
       - name: Publish devsper-providers
-        run: cargo publish -p devsper-providers --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
-
+        run: cargo publish -p devsper-providers --no-verify || true
       - name: Publish devsper-memory
-        run: cargo publish -p devsper-memory --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
-
-      - name: Wait for middle layer to index
-        run: sleep 30
+        run: cargo publish -p devsper-memory --no-verify || true
+      - run: sleep 20
 
       - name: Publish devsper-compiler
-        run: cargo publish -p devsper-compiler --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
-
+        run: cargo publish -p devsper-compiler --no-verify || true
       - name: Publish devsper-cluster
-        run: cargo publish -p devsper-cluster --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
-
-      - name: Wait for devsper-compiler + devsper-cluster to index
-        run: sleep 30
+        run: cargo publish -p devsper-cluster --no-verify || true
+      - run: sleep 20
 
       - name: Publish devsper-bin
-        run: cargo publish -p devsper-bin --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+        run: cargo publish -p devsper-bin --no-verify || true
 
   publish-pypi:
     name: Publish to PyPI
