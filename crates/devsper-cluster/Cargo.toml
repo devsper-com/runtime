@@ -11,9 +11,9 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-devsper-core = { path = "../devsper-core", version = "0.1.0" }
-devsper-bus = { path = "../devsper-bus", version = "0.1.0" }
-devsper-graph = { path = "../devsper-graph", version = "0.1.0" }
+devsper-core = { path = "../devsper-core", version = "0.2.0" }
+devsper-bus = { path = "../devsper-bus", version = "0.2.0" }
+devsper-graph = { path = "../devsper-graph", version = "0.2.0" }
 tokio = { workspace = true, features = ["sync", "macros", "rt"] }
 async-trait = { workspace = true }
 axum = { workspace = true }
