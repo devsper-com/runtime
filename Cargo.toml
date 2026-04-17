@@ -12,14 +12,22 @@ members = [
     "crates/devsper-memory",
     "crates/devsper-bin",
     "worker",
-    "supermemory-core",
 ]
 resolver = "2"
 
 [workspace.package]
-edition = "2021"
-version = "0.1.0"
+description  = "Distributed AI Swarm Runtime"
+
+edition      = "2021"
+version      = "0.2.0"
 rust-version = "1.80"
+license      = "GPL-3.0-or-later"
+repository   = "https://github.com/devsper-com/runtime"
+homepage     = "https://devsper.com"
+documentation = "https://docs.devsper.com"
+authors      = ["devsper contributors"]
+keywords     = ["ai", "agents", "llm", "workflow", "dag"]
+categories   = ["asynchronous", "concurrency", "development-tools"]
 
 [workspace.dependencies]
 tokio        = { version = "1" }

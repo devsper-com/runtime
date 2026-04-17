@@ -1,11 +1,14 @@
 [package]
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
 name = "devsper-worker"
 version = "1.10.0"
 edition = "2021"
 rust-version = "1.78"
-description = "Rust worker node for devsper distributed AI swarm runtime"
-license = "GPL-3.0-or-later"
-repository = "https://github.com/devsper-com/runtime"
 readme = "README.md"
 
 [[bin]]
@@ -26,7 +29,8 @@ clap = { version = "4", features = ["derive", "env"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 opentelemetry = "0.24"
-opentelemetry-otlp = "0.17"
+opentelemetry_sdk = { version = "0.24", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.17", features = ["grpc-tonic", "tonic"] }
 tracing-opentelemetry = "0.25"
 thiserror = "1"
 uuid = { version = "1", features = ["v4"] }

@@ -505,9 +505,14 @@ dependencies = [
  "devsper-memory",
  "devsper-providers",
  "devsper-scheduler",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry-semantic-conventions",
+ "opentelemetry_sdk",
  "serde_json",
  "tokio",
  "tracing",
+ "tracing-opentelemetry",
  "tracing-subscriber",
 ]
 
@@ -604,7 +609,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
  "devsper-core",
+ "regex",
  "serde",
  "serde_json",
  "tokio",
@@ -653,16 +660,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "devsper-supermemory-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "regex",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "devsper-worker"
 version = "1.10.0"
 dependencies = [
@@ -676,6 +673,7 @@ dependencies = [
  "hostname",
  "opentelemetry",
  "opentelemetry-otlp",
+ "opentelemetry_sdk",
  "pyo3",
  "redis 0.25.4",
  "regex",
@@ -1680,6 +1678,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "opentelemetry-http"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad31e9de44ee3538fb9d64fe3376c1362f406162434609e79aea2a41a0af78ab"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "http",
+ "opentelemetry",
+ "reqwest",
+]
+
+[[package]]
 name = "opentelemetry-otlp"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1689,9 +1700,11 @@ dependencies = [
  "futures-core",
  "http",
  "opentelemetry",
+ "opentelemetry-http",
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "prost",
+ "reqwest",
  "thiserror",
  "tokio",
  "tonic",
@@ -1710,6 +1723,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "opentelemetry-semantic-conventions"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1cefe0543875379e47eb5f1e68ff83f45cc41366a92dfd0d073d513bf68e9a05"
+
+[[package]]
 name = "opentelemetry_sdk"
 version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1726,6 +1745,8 @@ dependencies = [
  "rand",
  "serde_json",
  "thiserror",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
@@ -2133,6 +2154,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",

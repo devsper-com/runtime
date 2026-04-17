@@ -17,6 +17,16 @@ remote_agents = []
 planner = "auto"
 worker = "auto"
 
+[providers.ollama]
+enabled   = true
+base_url  = ""      # empty → $OLLAMA_HOST → http://localhost:11434
+keep_alive = "5m"
+num_ctx    = 8192
+
+[providers.zai]
+enabled  = false    # set true + ZAI_API_KEY env var to activate
+base_url = ""       # empty → $ZAI_BASE_URL → https://api.z.ai/v1
+
 [memory]
 enabled = true
 

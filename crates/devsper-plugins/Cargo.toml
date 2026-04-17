@@ -1,5 +1,12 @@
 [package]
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
 name = "devsper-plugins"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 
@@ -8,7 +15,7 @@ default = ["lua-vendored"]
 lua-vendored = ["mlua/vendored"]
 
 [dependencies]
-devsper-core = { path = "../devsper-core" }
+devsper-core = { path = "../devsper-core", version = "0.1.0" }
 mlua = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros", "rt", "fs"] }
 anyhow = { workspace = true }

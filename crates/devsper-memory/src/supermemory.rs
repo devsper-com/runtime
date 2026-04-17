@@ -148,7 +148,7 @@ fn memory_type_weight(memory_type: Option<&str>) -> f32 {
     }
 }
 
-fn main() {
+pub fn run_ranking() {
     let mut argv = std::env::args();
     let _bin = argv.next();
     let cmd = argv.next().unwrap_or_else(|| "rank".to_string());
@@ -317,7 +317,7 @@ fn main() {
             }
         }
 
-        let mut relevant: Vec<&Candidate> = req
+        let relevant: Vec<&Candidate> = req
             .ranked_candidates
             .iter()
             .filter(|c| {

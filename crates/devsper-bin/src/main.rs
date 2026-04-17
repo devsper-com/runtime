@@ -74,18 +74,63 @@ fn parse_key_val(s: &str) -> Result<(String, String), String> {
         .ok_or_else(|| format!("expected KEY=VALUE, got '{s}'"))
 }
 
+fn init_tracing(verbose: bool) -> Option<opentelemetry_sdk::trace::Tracer> {
+    use opentelemetry::trace::TracerProvider as _;
+    use opentelemetry_otlp::WithExportConfig;
+    use tracing_subscriber::prelude::*;
+
+    let level = if verbose { "debug" } else { "info" };
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(level));
+
+    let fmt_layer = tracing_subscriber::fmt::layer();
+
+    if let Ok(endpoint) = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
+        let exporter = opentelemetry_otlp::new_exporter()
+            .http()
+            .with_endpoint(endpoint);
+
+        let provider = opentelemetry_otlp::new_pipeline()
+            .tracing()
+            .with_exporter(exporter)
+            .with_trace_config(
+                opentelemetry_sdk::trace::Config::default().with_resource(
+                    opentelemetry_sdk::Resource::new(vec![
+                        opentelemetry::KeyValue::new("service.name", "devsper"),
+                        opentelemetry::KeyValue::new(
+                            "service.version",
+                            env!("CARGO_PKG_VERSION"),
+                        ),
+                    ]),
+                ),
+            )
+            .install_batch(opentelemetry_sdk::runtime::Tokio)
+            .expect("OTEL tracer init failed");
+
+        let tracer = provider.tracer("devsper");
+        let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer.clone());
+
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt_layer)
+            .with(otel_layer)
+            .init();
+
+        Some(tracer)
+    } else {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt_layer)
+            .init();
+        None
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    // Initialize tracing
-    let level = if cli.verbose { "debug" } else { "info" };
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(level)),
-        )
-        .init();
+    let _tracer = init_tracing(cli.verbose);
 
     match cli.command {
         Command::Run {
@@ -166,19 +211,85 @@ async fn run_command(
     actor.add_initial_nodes(specs);
     tokio::spawn(actor.run());
 
-    // Build provider router — auto-detect real providers from env, fall back to mock
+    // Build provider router — load real providers from env, fall back to mock
+    use devsper_providers::{
+        anthropic::AnthropicProvider,
+        ollama::OllamaProvider,
+        openai::OpenAiProvider,
+        AzureFoundryProvider,
+        AzureOpenAiProvider,
+        GithubModelsProvider,
+        LiteLlmProvider,
+    };
     let mut router = ModelRouter::new();
-    let mock = Arc::new(MockProvider::new("[Task completed by agent]"));
-    router.add_provider(mock);
+    let mut has_real_provider = false;
+    if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
+        router.add_provider(Arc::new(AnthropicProvider::new(key)));
+        has_real_provider = true;
+    }
+    if let Ok(key) = std::env::var("OPENAI_API_KEY") {
+        router.add_provider(Arc::new(OpenAiProvider::new(key)));
+        has_real_provider = true;
+    }
+    if let Ok(key) = std::env::var("ZAI_API_KEY") {
+        let base = std::env::var("ZAI_BASE_URL")
+            .unwrap_or_else(|_| "https://api.z.ai/v1".into());
+        router.add_provider(Arc::new(OpenAiProvider::zai(key).with_base_url(base)));
+        has_real_provider = true;
+    }
+    // GitHub Models
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        router.add_provider(Arc::new(GithubModelsProvider::new(token)));
+        has_real_provider = true;
+    }
+    // Azure OpenAI
+    if let (Ok(key), Ok(endpoint), Ok(deployment)) = (
+        std::env::var("AZURE_OPENAI_API_KEY"),
+        std::env::var("AZURE_OPENAI_ENDPOINT"),
+        std::env::var("AZURE_OPENAI_DEPLOYMENT"),
+    ) {
+        let api_version = std::env::var("AZURE_OPENAI_API_VERSION")
+            .unwrap_or_else(|_| "2024-02-01".into());
+        router.add_provider(Arc::new(AzureOpenAiProvider::new(key, endpoint, deployment, api_version)));
+        has_real_provider = true;
+    }
+    // Azure AI Foundry
+    if let (Ok(key), Ok(endpoint), Ok(deployment)) = (
+        std::env::var("AZURE_FOUNDRY_API_KEY"),
+        std::env::var("AZURE_FOUNDRY_ENDPOINT"),
+        std::env::var("AZURE_FOUNDRY_DEPLOYMENT"),
+    ) {
+        router.add_provider(Arc::new(AzureFoundryProvider::new(key, endpoint, deployment)));
+        has_real_provider = true;
+    }
+    // LiteLLM proxy
+    if let Ok(base_url) = std::env::var("LITELLM_BASE_URL") {
+        let api_key = std::env::var("LITELLM_API_KEY").unwrap_or_default();
+        router.add_provider(Arc::new(LiteLlmProvider::new(base_url, api_key)));
+        has_real_provider = true;
+    }
+    let ollama_host = std::env::var("OLLAMA_HOST")
+        .unwrap_or_else(|_| "http://localhost:11434".into());
+    router.add_provider(Arc::new(OllamaProvider::new().with_base_url(ollama_host)));
+    router.add_provider(Arc::new(MockProvider::new("[Task completed by agent]")));
+    if !has_real_provider {
+        tracing::warn!("No LLM provider keys found — using mock provider (set ANTHROPIC_API_KEY, OPENAI_API_KEY, ZAI_API_KEY, GITHUB_TOKEN, AZURE_*, or LITELLM_BASE_URL for real responses)");
+    }
     let router = Arc::new(router);
+    let use_mock = !has_real_provider;
 
     // Agent function: calls LLM with task prompt
     let router_clone = router.clone();
     let agent_fn: AgentFn = Arc::new(move |spec: NodeSpec| {
         let provider = router_clone.clone();
         Box::pin(async move {
+            let model = if use_mock {
+                "mock".to_string()
+            } else {
+                spec.model.as_deref().unwrap_or("mock").to_string()
+            };
             let req = LlmRequest {
-                model: spec.model.as_deref().unwrap_or("mock").to_string(),
+                model,
                 messages: vec![LlmMessage {
                     role: LlmRole::User,
                     content: spec.prompt.clone(),

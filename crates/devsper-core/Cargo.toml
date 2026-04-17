@@ -1,5 +1,12 @@
 [package]
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
 name = "devsper-core"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 

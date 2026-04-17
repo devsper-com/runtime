@@ -90,6 +90,19 @@ fn role_str(role: &LlmRole) -> &'static str {
 #[async_trait]
 impl LlmProvider for OpenAiProvider {
     async fn generate(&self, req: LlmRequest) -> Result<LlmResponse> {
+        use tracing::Instrument;
+
+        let span = tracing::info_span!(
+            "gen_ai.chat",
+            "gen_ai.system" = self.name(),
+            "gen_ai.operation.name" = "chat",
+            "gen_ai.request.model" = req.model.as_str(),
+            "gen_ai.request.max_tokens" = req.max_tokens,
+            "gen_ai.response.model" = tracing::field::Empty,
+            "gen_ai.usage.input_tokens" = tracing::field::Empty,
+            "gen_ai.usage.output_tokens" = tracing::field::Empty,
+        );
+
         let messages: Vec<OaiMessage> = req
             .messages
             .iter()
@@ -108,43 +121,54 @@ impl LlmProvider for OpenAiProvider {
 
         debug!(model = %req.model, provider = %self.name, "OpenAI-compatible request");
 
-        let resp = self
-            .client
-            .post(format!("{}/v1/chat/completions", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
+        let result = async {
+            let resp = self
+                .client
+                .post(format!("{}/v1/chat/completions", self.base_url))
+                .header("Authorization", format!("Bearer {}", self.api_key))
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("{} API error {status}: {text}", self.name));
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(anyhow!("{} API error {status}: {text}", self.name));
+            }
+
+            let data: OaiResponse = resp.json().await?;
+            let choice = data
+                .choices
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow!("No choices in response"))?;
+
+            let stop_reason = match choice.finish_reason.as_deref() {
+                Some("tool_calls") => StopReason::ToolUse,
+                Some("length") => StopReason::MaxTokens,
+                Some("stop") | None => StopReason::EndTurn,
+                _ => StopReason::EndTurn,
+            };
+
+            Ok(LlmResponse {
+                content: choice.message.content.unwrap_or_default(),
+                tool_calls: vec![],
+                input_tokens: data.usage.prompt_tokens,
+                output_tokens: data.usage.completion_tokens,
+                model: data.model,
+                stop_reason,
+            })
         }
+        .instrument(span.clone())
+        .await;
 
-        let data: OaiResponse = resp.json().await?;
-        let choice = data
-            .choices
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow!("No choices in response"))?;
-
-        let stop_reason = match choice.finish_reason.as_deref() {
-            Some("tool_calls") => StopReason::ToolUse,
-            Some("length") => StopReason::MaxTokens,
-            Some("stop") | None => StopReason::EndTurn,
-            _ => StopReason::EndTurn,
-        };
-
-        Ok(LlmResponse {
-            content: choice.message.content.unwrap_or_default(),
-            tool_calls: vec![],
-            input_tokens: data.usage.prompt_tokens,
-            output_tokens: data.usage.completion_tokens,
-            model: data.model,
-            stop_reason,
-        })
+        if let Ok(ref resp) = result {
+            span.record("gen_ai.response.model", resp.model.as_str());
+            span.record("gen_ai.usage.input_tokens", resp.input_tokens);
+            span.record("gen_ai.usage.output_tokens", resp.output_tokens);
+        }
+        result
     }
 
     fn name(&self) -> &str {

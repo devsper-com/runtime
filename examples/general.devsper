@@ -1,0 +1,27 @@
+-- general.devsper
+-- Flexible single-agent workflow for any open-ended task.
+-- Usage: devsper run examples/general.devsper --input prompt="Draft a 1-page proposal for a community garden"
+
+local devsper = devsper
+
+local wf = devsper.workflow({
+    name    = "general-agent",
+    model   = "claude-sonnet-4-6",
+    workers = 1,
+    bus     = "memory",
+    evolution = {
+        allow_mutations = false,
+        max_depth       = 3,
+        speculative     = false,
+    },
+})
+
+wf.input("prompt", { type = "string", required = true })
+wf.input("context", { type = "string", default = "" })
+
+wf.task("execute", {
+    prompt     = "{{context}}{{prompt}}",
+    depends_on = {},
+})
+
+return wf

@@ -1,11 +1,18 @@
 [package]
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
 name = "devsper-scheduler"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-devsper-core = { path = "../devsper-core" }
-devsper-graph = { path = "../devsper-graph" }
+devsper-core = { path = "../devsper-core", version = "0.1.0" }
+devsper-graph = { path = "../devsper-graph", version = "0.1.0" }
 tokio = { workspace = true, features = ["sync", "macros", "rt"] }
 anyhow = { workspace = true }
 tracing = { workspace = true }

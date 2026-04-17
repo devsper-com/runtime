@@ -1,13 +1,22 @@
 [package]
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
 name = "devsper-memory"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-devsper-core = { path = "../devsper-core" }
+devsper-core = { path = "../devsper-core", version = "0.1.0" }
 tokio = { workspace = true, features = ["sync", "macros", "rt"] }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
+regex = "1.12.3"
+chrono = "0.4.44"

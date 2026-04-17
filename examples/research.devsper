@@ -1,0 +1,36 @@
+-- research.devsper
+-- Multi-step literature research workflow.
+-- Usage: devsper run examples/research.devsper --input topic="quantum error correction"
+
+local devsper = devsper
+
+local wf = devsper.workflow({
+    name    = "research-agent",
+    model   = "claude-sonnet-4-6",
+    workers = 3,
+    bus     = "memory",
+    evolution = {
+        allow_mutations = true,
+        max_depth       = 5,
+        speculative     = false,
+    },
+})
+
+wf.input("topic", { type = "string", required = true })
+
+wf.task("search", {
+    prompt     = "Search for the 10 most relevant recent papers and resources on: {{topic}}. Return titles, authors, year, and a one-sentence summary for each.",
+    depends_on = {},
+})
+
+wf.task("analyze", {
+    prompt     = "From the search results, identify the 3 key open problems and 3 most promising research directions in {{topic}}.",
+    depends_on = { "search" },
+})
+
+wf.task("synthesize", {
+    prompt     = "Write a 500-word executive summary of the state of the art in {{topic}}, referencing the papers found in the search step and insights from analysis.",
+    depends_on = { "search", "analyze" },
+})
+
+return wf

@@ -51,6 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         topics::TOOL_RESULTS,
         topics::SWARM_SNAPSHOT,
         topics::SWARM_CONTROL,
+        topics::GRAPH_NODE_REQUEST, // new graph runtime dispatch
     ];
     bus.start(&subscribe_topics).await?;
 
@@ -144,6 +145,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let payload = msg.payload.clone();
                 tokio::spawn(async move {
                     let _ = w.on_control(&payload).await;
+                });
+            } else if msg.topic == topics::GRAPH_NODE_REQUEST {
+                // New graph runtime: PeerNode dispatches individual NodeSpec executions
+                let w = worker_loop.clone();
+                let m = msg.clone();
+                tokio::spawn(async move {
+                    let _ = w.handle_graph_node_request(&m).await;
                 });
             }
         }

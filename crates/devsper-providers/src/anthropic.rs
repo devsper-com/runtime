@@ -74,6 +74,19 @@ fn role_to_str(role: &LlmRole) -> &'static str {
 #[async_trait]
 impl LlmProvider for AnthropicProvider {
     async fn generate(&self, req: LlmRequest) -> Result<LlmResponse> {
+        use tracing::Instrument;
+
+        let span = tracing::info_span!(
+            "gen_ai.chat",
+            "gen_ai.system" = self.name(),
+            "gen_ai.operation.name" = "chat",
+            "gen_ai.request.model" = req.model.as_str(),
+            "gen_ai.request.max_tokens" = req.max_tokens,
+            "gen_ai.response.model" = tracing::field::Empty,
+            "gen_ai.usage.input_tokens" = tracing::field::Empty,
+            "gen_ai.usage.output_tokens" = tracing::field::Empty,
+        );
+
         let messages: Vec<AnthropicMessage> = req
             .messages
             .iter()
@@ -101,52 +114,63 @@ impl LlmProvider for AnthropicProvider {
 
         debug!(model = %req.model, "Anthropic request");
 
-        let resp = self
-            .client
-            .post(format!("{}/v1/messages", self.base_url))
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
+        let result = async {
+            let resp = self
+                .client
+                .post(format!("{}/v1/messages", self.base_url))
+                .header("x-api-key", &self.api_key)
+                .header("anthropic-version", "2023-06-01")
+                .header("content-type", "application/json")
+                .json(&body)
+                .send()
+                .await?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("Anthropic API error {status}: {text}"));
-        }
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(anyhow!("Anthropic API error {status}: {text}"));
+            }
 
-        let data: AnthropicResponse = resp.json().await?;
+            let data: AnthropicResponse = resp.json().await?;
 
-        let content = data
-            .content
-            .iter()
-            .filter_map(|c| {
-                if c.content_type == "text" {
-                    c.text.clone()
-                } else {
-                    None
-                }
+            let content = data
+                .content
+                .iter()
+                .filter_map(|c| {
+                    if c.content_type == "text" {
+                        c.text.clone()
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("");
+
+            let stop_reason = match data.stop_reason.as_deref() {
+                Some("end_turn") => StopReason::EndTurn,
+                Some("tool_use") => StopReason::ToolUse,
+                Some("max_tokens") => StopReason::MaxTokens,
+                _ => StopReason::EndTurn,
+            };
+
+            Ok(LlmResponse {
+                content,
+                tool_calls: vec![],
+                input_tokens: data.usage.input_tokens,
+                output_tokens: data.usage.output_tokens,
+                model: data.model,
+                stop_reason,
             })
-            .collect::<Vec<_>>()
-            .join("");
+        }
+        .instrument(span.clone())
+        .await;
 
-        let stop_reason = match data.stop_reason.as_deref() {
-            Some("end_turn") => StopReason::EndTurn,
-            Some("tool_use") => StopReason::ToolUse,
-            Some("max_tokens") => StopReason::MaxTokens,
-            _ => StopReason::EndTurn,
-        };
-
-        Ok(LlmResponse {
-            content,
-            tool_calls: vec![],
-            input_tokens: data.usage.input_tokens,
-            output_tokens: data.usage.output_tokens,
-            model: data.model,
-            stop_reason,
-        })
+        if let Ok(ref resp) = result {
+            span.record("gen_ai.response.model", resp.model.as_str());
+            span.record("gen_ai.usage.input_tokens", resp.input_tokens);
+            span.record("gen_ai.usage.output_tokens", resp.output_tokens);
+        }
+        result
     }
 
     fn name(&self) -> &str {

@@ -467,4 +467,127 @@ impl WorkerNode {
     pub fn current_tasks_json(&self) -> Vec<serde_json::Value> {
         vec![]
     }
+
+    /// Handle a graph node dispatch from PeerNode (new graph runtime).
+    ///
+    /// Payload: `{ request_id, node_spec: {id, role, tools, model_hint, ...}, agent_state: {...} }`
+    ///
+    /// Converts NodeSpec + AgentState into an AgentRequest, runs it via the
+    /// existing subprocess executor, and publishes the result to
+    /// `worker.node_result.<request_id>`.
+    pub async fn handle_graph_node_request(self: Arc<Self>, msg: &BusMessage) -> Result<()> {
+        let request_id = msg
+            .payload
+            .get("request_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if request_id.is_empty() {
+            return Ok(());
+        }
+
+        // Extract node description and task from the payload
+        let node_spec = msg.payload.get("node_spec").cloned().unwrap_or_default();
+        let agent_state = msg.payload.get("agent_state").cloned().unwrap_or_default();
+
+        let node_id = node_spec.get("id").and_then(|v| v.as_str()).unwrap_or("node").to_string();
+        let role = node_spec.get("role").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let model_hint = node_spec
+            .get("model_hint")
+            .and_then(|v| v.as_str())
+            .unwrap_or("mid")
+            .to_string();
+        let tools: Vec<String> = node_spec
+            .get("tools")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let task_text = agent_state
+            .get("task")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let prior_results = agent_state.get("results").cloned().unwrap_or_default();
+
+        // Build context from prior results (mirrors Python nodes.py)
+        let context = if let Some(map) = prior_results.as_object() {
+            map.iter()
+                .map(|(k, v)| format!("[{}]: {}", k, v.as_str().unwrap_or("")))
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        } else {
+            String::new()
+        };
+        let full_task = if context.is_empty() {
+            format!("{}. Task: {}", role, task_text)
+        } else {
+            format!("{}. Task: {}\n\nPrior work:\n{}", role, task_text, context)
+        };
+
+        // Build AgentRequest using the Task wrapper (existing Rust type)
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let task = crate::types::Task {
+            id: task_id.clone(),
+            description: full_task,
+            dependencies: vec![],
+            status: crate::types::TaskStatus::Pending,
+            result: None,
+            error: None,
+            speculative: false,
+            role: Some(role.clone()),
+            retry_count: 0,
+            tools: if tools.is_empty() { None } else { Some(tools.clone()) },
+        };
+        let request = AgentRequest {
+            task,
+            memory_context: String::new(),
+            tools,
+            model: model_hint,
+            system_prompt: String::new(),
+            prefetch_used: false,
+            tool_results: None,
+            distributed_tools: false,
+            budget_remaining_usd: None,
+        };
+
+        let timeout_secs = Some(300u64);
+        let result = match self.config.executor_mode {
+            ExecutorMode::PyO3 => run_agent_pyo3(&request, timeout_secs).await,
+            ExecutorMode::Subprocess => {
+                run_agent_subprocess(&self.config.python_bin, &request, timeout_secs).await
+            }
+        };
+
+        // Publish result
+        let result_topic = format!(
+            "{}.{}",
+            topics::GRAPH_NODE_RESULT_PREFIX,
+            request_id
+        );
+        let result_payload = match result {
+            Ok(resp) => serde_json::json!({
+                "request_id": request_id,
+                "node_id": node_id,
+                "result": resp.result,
+            }),
+            Err(e) => serde_json::json!({
+                "request_id": request_id,
+                "node_id": node_id,
+                "result": "",
+                "error": e.to_string(),
+            }),
+        };
+
+        let out_msg = BusMessage {
+            id: uuid::Uuid::new_v4().to_string(),
+            topic: result_topic,
+            payload: result_payload,
+            sender_id: self.node_info.node_id.clone(),
+            run_id: msg.run_id.clone(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            schema_version: None,
+        };
+        self.bus.write().await.publish(&out_msg).await?;
+        Ok(())
+    }
 }

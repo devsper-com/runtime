@@ -1,0 +1,133 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build (all crates)
+        run: cargo build --workspace --release
+
+      - name: Test (all crates)
+        run: cargo test --workspace
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: test
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # Publish in dependency order — each layer waits for previous to index.
+      - name: Publish devsper-core
+        run: cargo publish -p devsper-core --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+
+      - name: Wait for devsper-core to index
+        run: sleep 30
+
+      - name: Publish devsper-graph
+        run: cargo publish -p devsper-graph --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+
+      - name: Publish devsper-bus
+        run: cargo publish -p devsper-bus --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+
+      - name: Wait for graph + bus to index
+        run: sleep 30
+
+      - name: Publish devsper-scheduler
+        run: cargo publish -p devsper-scheduler --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+
+      - name: Publish devsper-executor
+        run: cargo publish -p devsper-executor --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+
+      - name: Publish devsper-plugins
+        run: cargo publish -p devsper-plugins --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+
+      - name: Publish devsper-providers
+        run: cargo publish -p devsper-providers --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+
+      - name: Publish devsper-memory
+        run: cargo publish -p devsper-memory --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+
+      - name: Wait for middle layer to index
+        run: sleep 30
+
+      - name: Publish devsper-compiler
+        run: cargo publish -p devsper-compiler --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+
+      - name: Publish devsper-cluster
+        run: cargo publish -p devsper-cluster --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+
+      - name: Wait for devsper-compiler + devsper-cluster to index
+        run: sleep 30
+
+      - name: Publish devsper-bin
+        run: cargo publish -p devsper-bin --token ${{ secrets.CARGO_PUBLISH_TOKEN }}
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/devsper/
+    permissions:
+      id-token: write  # required for trusted publisher (OIDC)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: pip install hatch
+
+      - name: Build wheel + sdist
+        working-directory: python
+        run: hatch build
+
+      - name: Publish to PyPI (trusted publisher)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist/

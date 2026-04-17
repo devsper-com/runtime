@@ -50,6 +50,19 @@ struct OllamaResponse {
 #[async_trait]
 impl LlmProvider for OllamaProvider {
     async fn generate(&self, req: LlmRequest) -> Result<LlmResponse> {
+        use tracing::Instrument;
+
+        let span = tracing::info_span!(
+            "gen_ai.chat",
+            "gen_ai.system" = self.name(),
+            "gen_ai.operation.name" = "chat",
+            "gen_ai.request.model" = req.model.as_str(),
+            "gen_ai.request.max_tokens" = req.max_tokens,
+            "gen_ai.response.model" = tracing::field::Empty,
+            "gen_ai.usage.input_tokens" = tracing::field::Empty,
+            "gen_ai.usage.output_tokens" = tracing::field::Empty,
+        );
+
         // Flatten messages into a single prompt for Ollama
         let prompt = req
             .messages
@@ -72,29 +85,41 @@ impl LlmProvider for OllamaProvider {
             stream: false,
         };
 
-        let resp = self
-            .client
-            .post(format!("{}/api/generate", self.base_url))
-            .json(&body)
-            .send()
-            .await?;
+        let model_name = req.model.clone();
+        let result = async {
+            let resp = self
+                .client
+                .post(format!("{}/api/generate", self.base_url))
+                .json(&body)
+                .send()
+                .await?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("Ollama error {status}: {text}"));
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(anyhow!("Ollama error {status}: {text}"));
+            }
+
+            let data: OllamaResponse = resp.json().await?;
+
+            Ok(LlmResponse {
+                content: data.response,
+                tool_calls: vec![],
+                input_tokens: data.prompt_eval_count,
+                output_tokens: data.eval_count,
+                model: model_name,
+                stop_reason: StopReason::EndTurn,
+            })
         }
+        .instrument(span.clone())
+        .await;
 
-        let data: OllamaResponse = resp.json().await?;
-
-        Ok(LlmResponse {
-            content: data.response,
-            tool_calls: vec![],
-            input_tokens: data.prompt_eval_count,
-            output_tokens: data.eval_count,
-            model: req.model.clone(),
-            stop_reason: StopReason::EndTurn,
-        })
+        if let Ok(ref resp) = result {
+            span.record("gen_ai.response.model", resp.model.as_str());
+            span.record("gen_ai.usage.input_tokens", resp.input_tokens);
+            span.record("gen_ai.usage.output_tokens", resp.output_tokens);
+        }
+        result
     }
 
     fn name(&self) -> &str {

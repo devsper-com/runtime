@@ -1,0 +1,39 @@
+-- code.devsper
+-- Plan → implement → review coding workflow.
+-- Usage: devsper run examples/code.devsper --input task="implement a binary search tree in Rust with unit tests"
+
+local devsper = devsper
+
+local wf = devsper.workflow({
+    name    = "coding-agent",
+    model   = "claude-sonnet-4-6",
+    workers = 2,
+    bus     = "memory",
+    evolution = {
+        allow_mutations = true,
+        max_depth       = 8,
+        speculative     = false,
+    },
+})
+
+wf.input("task",     { type = "string", required = true })
+wf.input("language", { type = "string", default = "Rust" })
+
+wf.task("plan", {
+    prompt     = "Break the following coding task into discrete implementation steps. For each step, specify what to implement, expected inputs/outputs, and edge cases to handle. Task: {{task}}",
+    model      = "claude-opus-4-7",
+    can_mutate = true,
+    depends_on = {},
+})
+
+wf.task("implement", {
+    prompt     = "Implement the full solution in {{language}} following the plan. Include all code, tests, and a brief doc comment per public function.",
+    depends_on = { "plan" },
+})
+
+wf.task("review", {
+    prompt     = "Review the implementation for correctness, edge cases, performance issues, and idiomatic {{language}} style. List issues found and provide fixed code for each.",
+    depends_on = { "implement" },
+})
+
+return wf

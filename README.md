@@ -8,351 +8,287 @@
 <p align="center">
   <a href="https://pypi.org/project/devsper/"><img src="https://img.shields.io/pypi/v/devsper?label=PyPI" alt="PyPI"></a>
   <a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-green.svg" alt="Python 3.12+"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-green.svg" alt="Python 3.11+"></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/powered%20by-Rust-orange.svg" alt="Powered by Rust"></a>
 </p>
 
 <p align="center">
-  <em>Orchestrate multi-agent systems with a swarm execution model: tasks → DAG → parallel execution.</em>
+  <em>Python CLI · Rust execution engine · distributed agent DAGs · keyring credentials · OpenTelemetry traces</em>
 </p>
-
-> **Install:** PyPI package **`devsper`** · CLI **`devsper`**
-
----
-
-## Quick start
-
-**1. Install (Python 3.12+):**
-
-```bash
-pip install devsper
-# or: uv add devsper
-```
-
-**2. Set up API keys (pick one):**
-
-Store credentials in your OS keychain so you never re-enter them:
-
-```bash
-devsper credentials set openai api_key      # prompts for value
-devsper credentials set anthropic api_key
-devsper credentials set github token
-# or migrate from .env:
-devsper credentials migrate
-```
-
-Or use environment variables: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, etc. (see [Credentials](#credentials)).
-
-**3. Create a project and run:**
-
-```bash
-devsper init
-devsper run "Summarize swarm intelligence in one paragraph."
-```
-
-**4. Optional — shell completion:**
-
-```bash
-# Bash: add to ~/.bashrc
-eval "$(devsper completion bash)"
-
-# Zsh: add to ~/.zshrc
-eval "$(devsper completion zsh)"
-```
-
----
-
-## How devsper compares
-
-|  | devsper | swarms | crewai | autogen |
-|--|---------|--------|--------|---------|
-| Distributed execution | ✅ Python + Rust workers | ❌ Single process | ❌ | ❌ |
-| Language-agnostic protocol | ✅ HTTP wire format | ❌ Python only | ❌ | ❌ |
-| OpenTelemetry traces | ✅ Native | ❌ | ❌ | ❌ |
-| Budget-aware execution | ✅ Per-run limits | ❌ | ❌ | ❌ |
-| Persistent agent identities | ✅ Named + memory | ❌ | ⚠️ Partial | ❌ |
-| DAG-based task scheduling | ✅ | ❌ Linear/basic | ❌ | ❌ |
-| Event replay | ✅ Full run replay | ❌ | ❌ | ❌ |
-| Rust worker support | ✅ | ❌ | ❌ | ❌ |
-| Deployable agent packages | ✅ .devsper format | ❌ Prompts only | ❌ | ❌ |
-
-## Architecture diagram
-
-```mermaid
-flowchart LR
-    Planner --> Scheduler --> Executor
-    Executor --> Agents
-    Agents --> Tools
-    Agents --> Memory --> KG[Knowledge Graph]
-    Executor --> RustWorkers[Rust Workers]
-    Executor --> RemoteAgents[Remote Polyglot Agents]
-    Executor --> EventLog
-    EventLog --> Replay
-    EventLog --> Trace
-    EventLog --> EventsAPI[SSE/Topology API]
-```
-
-## Why devsper
-
-Devsper is distributed-first by design. The execution engine can run locally, across Redis-backed worker pools, or with Rust worker binaries for higher-throughput task execution.
-
-It is observable by default. Runs emit structured events and OpenTelemetry spans for planner, scheduler, executor, agent, and tool boundaries so operators can replay, trace, and debug production runs.
-
-It is polyglot-ready. The HTTP agent protocol allows Python, Rust, Go, and TypeScript services to participate as first-class agents while preserving orchestration controls such as budgeting and DAG scheduling.
-
-## Benchmarks
-
-Performance scripts live in [`benchmarks/`](benchmarks/).
-
----
-
-## Run from code
-
-**From config file:**
-
-```python
-from devsper import Swarm
-
-swarm = Swarm(config="devsper.toml")
-results = swarm.run("Analyze diffusion models and write a one-page summary.")
-```
-
-**Explicit parameters:**
-
-```python
-from devsper import Swarm
-
-swarm = Swarm(worker_count=4, worker_model="gpt-4o-mini", planner_model="gpt-4o-mini", use_tools=True)
-results = swarm.run("Your task here.")
-```
-
-Credentials are injected from the keyring (or env) when config is resolved—no code changes needed.
-
----
-
-## LangChain integration
-
-Devsper ships a **small adapter layer** (not a parallel orchestration stack) so you can keep building in **LangChain** and **LangGraph** while aligning execution with Devsper’s **task / DAG** mental model.
-
-| Module | Purpose |
-|--------|---------|
-| `devsper.integrations.langchain_adapter` | Wrap LangChain runnables and agents as tagged `Task`s; `run_langchain_runnable()` runs `ainvoke` / `invoke` and normalizes output for `Task.result`. |
-| `devsper.integrations.langgraph_adapter` | Derive a Devsper task graph from a compiled LangGraph graph (`compiled_graph_to_tasks`); `run_compiled_graph_as_devsper_tasks()` runs each node with bounded concurrency and pluggable state merge (default: concatenate list fields—good for `MessagesState`). |
-
-**Install:** `langchain` is a core dependency of the `devsper` package; **LangGraph** is pulled in transitively. To pin it explicitly: `pip install 'devsper[langgraph]'`.
-
-**Examples (from the runtime repo root):**
-
-```bash
-uv run python examples/langchain_agent.py --prompt "Say hi in one sentence."
-uv run python examples/langgraph_swarm.py --workers 4
-```
-
-Docs: [LangChain integration](https://docs.devsper.com/docs/langchain-integration) (source: `docs/docs/langchain-integration.md` in the docs tree).
-
----
-
-## Credentials
-
-API keys are **not** stored in config files. Use the **credential store** (OS keychain) or environment variables.
-
-| What you want | Command or method |
-|---------------|-------------------|
-| Store a key securely | `devsper credentials set <provider> <key>` (prompts; uses keyring) |
-| List stored keys (no values) | `devsper credentials list` |
-| Import from `.env` / TOML | `devsper credentials migrate` |
-| Export for sourcing / `.env` | `devsper credentials export <provider>` → prints `KEY=value` lines |
-| Remove a key | `devsper credentials delete <provider> <key>` |
-
-**Providers:** `openai`, `anthropic`, `github`, `gemini`, `azure`, `azure_anthropic` (keys: `api_key`, `token`, `endpoint`, `deployment`, `api_version` as applicable).
-
-**Example — export and source in a script:**
-
-```bash
-eval "$(devsper credentials export azure)"
-devsper run "Your task"
-```
-
-See [Configuration](docs/configuration.md#credentials-api-keys) and [CLI](docs/cli.md#credentials) for details.
-
----
-
-## CLI
-
-| Command | Description |
-|--------|-------------|
-| `devsper init` | Set up a new project (`devsper.toml`) |
-| `devsper doctor` | Check environment (keys, config, tools) |
-| `devsper run "task"` | Run swarm on a task |
-| `devsper tui` | Terminal UI (prompt, dashboard, logs) |
-| `devsper credentials set/list/migrate/export/delete` | Manage API keys (keyring) |
-| `devsper completion bash \| zsh` | Print shell completion script |
-| `devsper research [path]` | Literature review on a directory |
-| `devsper analyze [path]` | Analyze repository architecture |
-| `devsper memory [--limit N]` | List memory entries |
-| `devsper query "…"` | Query knowledge graph |
-| `devsper workflow <name>` | Run a workflow from `workflow.devsper.toml` |
-| `devsper graph [run_id]` | Export task DAG as Mermaid |
-| `devsper replay [run_id]` | Replay a run from event log |
-| `devsper cache stats \| clear` | Task result cache |
-| `devsper analytics` | Tool usage stats |
-| `devsper build "app description" [-o dir]` | Autonomous app builder |
-| `devsper upgrade [--check \| -y]` | Check for updates / upgrade |
-| `devsper cloud login` / `devsper cloud run` / `status` / `logs` | Hosted platform: auth (keychain), queue a job, poll results |
-
-Run `devsper --help` or `devsper <command> --help` for examples and options.
-
----
-
-## Features
-
-- **Planner → Scheduler → Executor → Agents** — DAG-based execution with configurable parallelism
-- **Strategy-based planning** — Auto-selected strategies (research, code, data science, document, experiment) or LLM fallback
-- **120+ tools** — Research, coding, data science, documents, experiments, memory; **smart tool selection** (top-k by similarity)
-- **TOML config** — `devsper.toml` / `workflow.devsper.toml`; env > project > user > defaults
-- **Memory & knowledge graph** — Episodic, semantic, research, artifact memory; summarization, namespaces, entity/relationship search
-- **Map-reduce runtime** — `swarm.map_reduce(dataset, map_fn, reduce_fn)` using the worker pool
-- **Workflows** — Define steps in `workflow.devsper.toml`; run with `devsper workflow <name>`; **structured output self-correction** (v1.7) retries with a correction prompt when JSON parsing fails
-- **Critic & agent messaging (v1.7)** — Optional second-pass critic scores results and requests one retry; per-run message bus lets agents share discoveries via `BROADCAST:`
-- **Speculative pre-fetching (v1.7)** — Pre-warm memory and tools for successor tasks while others run; reduces standing-up time
-- **Plugin ecosystem** — Discover tools via entry_points (`devsper.plugins`)
-- **Provider routing** — OpenAI, Anthropic, Azure, Gemini, **GitHub Models (Copilot)** (`provider:model` or model name); **429 retry with backoff** for GitHub rate limits
-- **Automatic model routing** — `planner = "auto"` and `worker = "auto"` for cost/latency/quality-aware selection
-- **EventLog, replay, telemetry** — Structured events for debugging and metrics
 
 ---
 
 ## Architecture
 
 ```
-    Planner
-       ↓
-    Scheduler
-       ↓
-    Executor
-       ↓
-    Agents  →  Tools  →  Memory  →  Knowledge Graph
+pip install devsper          # Python CLI (credentials, auth, eval, TUI)
+       │
+       ▼
+devsper run workflow.devsper # Python injects credentials from keyring → env
+       │
+       ▼
+devsper (Rust binary)        # DAG execution, LLM calls, OTEL spans
+       │
+       ▼
+Providers: Anthropic · OpenAI · GitHub Models · ZAI · Azure OpenAI
+           Azure Foundry · LiteLLM · Ollama
 ```
 
----
-
-## Configuration
-
-**Priority:** env > project config > user `~/.config/devsper/config.toml` > defaults.
-
-**Locations:** `./devsper.toml`, `./workflow.devsper.toml`, `~/.config/devsper/config.toml`, or legacy `.devsper/config.toml`.
-
-**Keep secrets out of TOML.** Use `devsper credentials` or environment variables for API keys. Non-secret settings (models, workers, paths) go in TOML.
-
-**Example `devsper.toml`:**
-
-```toml
-[swarm]
-workers = 6
-adaptive_planning = true
-max_iterations = 10
-critic_enabled = true
-critic_roles = ["research", "analysis", "code"]
-message_bus_enabled = true
-prefetch_enabled = true
-
-[models]
-planner = "auto"
-worker = "auto"
-
-[memory]
-enabled = true
-store_results = true
-top_k = 5
-
-[tools]
-enabled = ["research", "coding", "documents"]
-top_k = 12
-
-[telemetry]
-enabled = true
-save_events = true
-
-[providers.azure]
-endpoint = ""   # or use credentials store / env
-deployment = ""
-```
-
-Env overrides: `DEVSPER_WORKER_MODEL`, `DEVSPER_PLANNER_MODEL`, `DEVSPER_EVENTS_DIR`, `DEVSPER_DATA_DIR`, plus provider keys. Full schema: [docs/configuration.md](docs/configuration.md), [docs/providers.md](docs/providers.md).
-
----
-
-## Distributed mode (v1.10)
-
-Run a **controller** and **workers** across processes or machines. Workers can be Python or **Rust** (`devsper-worker` binary) for higher throughput.
+The Python package handles credentials, auth, eval, and TUI. The Rust binary handles workflow execution, scheduling, and LLM calls. Install both:
 
 ```bash
-# Redis + workers + controller (see examples/distributed/README.md)
-docker compose up -d
-uv run python examples/distributed/run_worker.py   # or Rust: DEVSPER_WORKER_MODEL=github:gpt-4o ./worker/target/release/devsper-worker
-uv run python examples/distributed/run_controller.py "Your task" --parallel
+pip install devsper
+cargo install devsper-bin    # or download from releases
 ```
-
-Rust workers: set `DEVSPER_WORKER_MODEL=github:gpt-4o` (or your model), `DEVSPER_PYTHON_BIN=.venv/bin/python`, `DEVSPER_RPC_PORT=0` for multiple workers on one host. Credentials load from keychain in the subprocess.
-
-**Multi-process pool (Rust default):** with `devsper[distributed]` installed, `python -m devsper.pool.local_pool --workers N` supervises *N* `devsper-worker` processes against Redis (`REDIS_URL`). Override the worker command in `devsper/pool/profiles/local.toml` (`local_worker_cmd`) if you need the Python `devsper.pool.worker_runner` for debugging. The monorepo builds a combined image via `runtime/Dockerfile.local-pool` (used as `pool-manager` in the root `docker-compose.yml`).
 
 ---
 
-## Examples
+## Quick start
 
-| Workflow | Command |
-|----------|---------|
-| Distributed (v1.10) | `uv run python examples/distributed/run_controller.py "Task" --parallel` |
-| Literature review | `devsper research papers/` or `uv run python examples/research/literature_review.py [dir]` |
-| Repository analysis | `devsper analyze .` or `uv run python examples/coding/analyze_repository.py [path]` |
-| Dataset analysis | `uv run python examples/data_science/dataset_analysis.py [path-to.csv]` |
-| Document intelligence | `uv run python examples/documents/analyze_documents.py [dir]` |
-| Parameter sweep | `uv run python examples/experiments/parameter_sweep.py --params '{"lr":[0.01,0.1]}'` |
-| LangChain agent (adapter) | `uv run python examples/langchain_agent.py [--live] [--prompt "..."]` |
-| LangGraph DAG (as Devsper tasks) | `uv run python examples/langgraph_swarm.py [--workers N]` |
+**1. Install:**
 
-Outputs under `examples/output/`. Run from project root when using script paths.
+```bash
+pip install devsper
+cargo install devsper-bin
+```
+
+**2. Set up credentials:**
+
+```bash
+# Store in OS keychain (macOS Keychain / Linux libsecret / Windows Credential Manager)
+devsper credentials set anthropic
+devsper credentials set openai
+
+# GitHub Models — device flow (no API key needed, uses your GitHub account)
+devsper auth github
+
+# Azure OpenAI
+devsper credentials set azure-openai    # prompts for api_key, endpoint, deployment
+
+# Or set env vars directly (env always wins over keyring)
+export ANTHROPIC_API_KEY=sk-...
+```
+
+**3. Write and run a workflow:**
+
+```bash
+cat > hello.devsper << 'EOF'
+name = "hello"
+model = "claude-sonnet-4-6"
+workers = 2
+
+[[tasks]]
+id = "summarize"
+prompt = "Explain swarm intelligence in one paragraph."
+EOF
+
+devsper run hello.devsper
+```
+
+---
+
+## Credentials
+
+API keys stay in your OS keychain — never in config files or shell history.
+
+```bash
+devsper credentials set <provider>      # interactive field prompts → keyring
+devsper credentials list                # table: provider | fields | source
+devsper credentials remove <provider>  # delete from keyring
+devsper auth github                     # GitHub device flow → token → keyring
+devsper auth status                     # what's authenticated and where
+```
+
+**Supported providers:**
+
+| Provider | Command | Key env vars |
+|---|---|---|
+| Anthropic | `credentials set anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI | `credentials set openai` | `OPENAI_API_KEY` |
+| GitHub Models | `auth github` | `GITHUB_TOKEN` |
+| ZAI (z.ai) | `credentials set zai` | `ZAI_API_KEY`, `ZAI_BASE_URL` |
+| Azure OpenAI | `credentials set azure-openai` | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT` |
+| Azure Foundry | `credentials set azure-foundry` | `AZURE_FOUNDRY_API_KEY`, `AZURE_FOUNDRY_ENDPOINT`, `AZURE_FOUNDRY_DEPLOYMENT` |
+| LiteLLM | `credentials set litellm` | `LITELLM_BASE_URL`, `LITELLM_API_KEY` |
+| Ollama | `credentials set ollama` | `OLLAMA_HOST` |
+
+Credentials set in environment variables always take priority over keyring.
+
+### GitHub device flow
+
+```bash
+export DEVSPER_GITHUB_CLIENT_ID=<your-github-oauth-app-client-id>
+devsper auth github
+# → Opens: https://github.com/login/device/code
+# → Enter code: XXXX-XXXX
+# → Token stored in keyring automatically
+```
+
+Register a GitHub OAuth App at [github.com/settings/developers](https://github.com/settings/developers) to get a `client_id`. No client secret needed for device flow.
+
+---
+
+## Workflow format
+
+```toml
+# hello.devsper
+name = "research"
+model = "claude-sonnet-4-6"    # default model for all tasks
+workers = 4
+
+[[tasks]]
+id = "outline"
+prompt = "Create a research outline for: quantum computing in drug discovery"
+
+[[tasks]]
+id = "section_1"
+prompt = "Write section 1: Background and motivation"
+depends_on = ["outline"]
+model = "gpt-4o"                # per-task model override
+
+[[tasks]]
+id = "section_2"
+prompt = "Write section 2: Current approaches"
+depends_on = ["outline"]
+
+[[tasks]]
+id = "conclusion"
+prompt = "Write a conclusion synthesizing the above sections"
+depends_on = ["section_1", "section_2"]
+```
+
+```bash
+devsper run research.devsper
+devsper run research.devsper --input "topic=quantum computing"
+devsper compile research.devsper          # → research.bin (bytecode)
+```
+
+**Model prefixes by provider:**
+
+| Prefix | Provider |
+|---|---|
+| `claude-*` | Anthropic |
+| `gpt-*`, `o1*`, `o3*` | OpenAI |
+| `github:<model>` | GitHub Models (e.g. `github:gpt-4o`) |
+| `azure:<model>` | Azure OpenAI |
+| `foundry:<model>` | Azure Foundry |
+| `litellm:<model>` | LiteLLM proxy |
+| `ollama:<model>` | Ollama |
+| `zai:*`, `glm-*` | ZAI |
+
+---
+
+## Eval
+
+Evaluate workflows against datasets with LLM-as-judge scoring:
+
+```bash
+pip install 'devsper[eval]'    # TruLens + OpenEvals
+
+# Dataset: JSONL, one case per line
+echo '{"input": "What is photosynthesis?", "expected": "plants convert light to energy"}' > cases.jsonl
+
+devsper eval run workflow.devsper --dataset cases.jsonl --metrics relevance,correctness
+devsper eval report --input eval_results.jsonl
+```
+
+Results written to `eval_results.jsonl`. TruLens dashboard automatically ingested when TruLens is installed.
+
+---
+
+## Observability
+
+All LLM calls emit [OpenTelemetry](https://opentelemetry.io/) spans with `gen_ai.*` semantic conventions:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+devsper run workflow.devsper
+# → spans exported: gen_ai.system, gen_ai.request.model, gen_ai.usage.input_tokens, etc.
+```
+
+Works with Jaeger, Grafana Tempo, Honeycomb, TruLens OTEL collector, or any OTLP-compatible backend. No-op if `OTEL_EXPORTER_OTLP_ENDPOINT` is not set.
+
+---
+
+## CLI reference
+
+| Command | Description |
+|---|---|
+| `devsper run <file.devsper>` | Execute a workflow |
+| `devsper compile <file.devsper>` | Compile to bytecode |
+| `devsper peer --listen <addr>` | Start a cluster peer node |
+| `devsper inspect <run-id>` | Inspect a running workflow |
+| `devsper tui [run-id]` | Terminal UI (requires `devsper[tui]`) |
+| `devsper credentials set <provider>` | Store credentials in keyring |
+| `devsper credentials list` | Show configured providers |
+| `devsper credentials remove <provider>` | Remove from keyring |
+| `devsper auth github` | GitHub device flow login |
+| `devsper auth status` | Show auth status for all providers |
+| `devsper eval run <wf> --dataset <f>` | Batch eval against dataset |
+| `devsper eval report` | Show eval results table |
+
+---
+
+## Optional extras
+
+```bash
+pip install 'devsper[tui]'     # Textual TUI
+pip install 'devsper[eval]'    # TruLens + OpenEvals batch evaluation
+```
+
+---
+
+## Distributed workers
+
+```bash
+# Start a cluster peer
+devsper peer --listen 0.0.0.0:7000
+
+# Join existing cluster
+devsper peer --listen 0.0.0.0:7001 --join 192.168.1.10:7000
+
+# Submit to cluster
+devsper run workflow.devsper --cluster 192.168.1.10:7000
+```
+
+---
+
+## How devsper compares
+
+| | devsper | swarms | crewai | autogen |
+|--|---------|--------|--------|---------|
+| Rust execution engine | ✅ | ❌ | ❌ | ❌ |
+| Distributed peer cluster | ✅ | ❌ | ❌ | ❌ |
+| OS keychain credentials | ✅ | ❌ | ❌ | ❌ |
+| GitHub Models device flow | ✅ | ❌ | ❌ | ❌ |
+| OpenTelemetry traces | ✅ Native gen_ai.* spans | ❌ | ❌ | ❌ |
+| LLM eval pipeline | ✅ TruLens + OpenEvals | ❌ | ❌ | ❌ |
+| DAG-based scheduling | ✅ | ❌ | ❌ | ❌ |
+| Compiled workflow format | ✅ .devsper bytecode | ❌ | ❌ | ❌ |
+| 8 LLM providers | ✅ | ⚠️ Partial | ⚠️ Partial | ⚠️ Partial |
+
+---
+
+## Building from source
+
+```bash
+git clone https://github.com/devsper-com/runtime
+cd runtime
+
+# Build Rust binary
+cargo build --release -p devsper-bin
+# Binary at: target/release/devsper
+
+# Install Python CLI (dev mode)
+cd python
+pip install -e .
+```
 
 ---
 
 ## Documentation
 
-Full docs (with versioning and dark mode): **[docs.devsper.com](https://docs.devsper.com)**. Source and deploy live in the **docs** repo.
-
-| Doc | Description |
-|-----|-------------|
-| [Introduction](https://docs.devsper.com/docs/introduction) | What devsper is, problem, core concepts |
-| [Architecture](https://docs.devsper.com/docs/architecture) | Planner, Scheduler, Executor, Agents, Tools, Memory, strategies |
-| [Configuration](https://docs.devsper.com/docs/configuration) | TOML schema, locations, env, **credentials** |
-| [Swarm runtime](https://docs.devsper.com/docs/swarm_runtime) | Task lifecycle, flow, map-reduce |
-| [Tools](https://docs.devsper.com/docs/tools) | Tool registration, runner, smart selection, plugins |
-| [Memory](https://docs.devsper.com/docs/memory_system) | Types, store, retrieval, knowledge graph |
-| [Providers](https://docs.devsper.com/docs/providers) | Provider routing, Azure, GitHub Models, auto routing |
-| [CLI](https://docs.devsper.com/docs/cli) | All commands, **credentials**, completion |
-| [TUI](https://docs.devsper.com/docs/tui) | Layout, panels, shortcuts |
-| [Examples](https://docs.devsper.com/docs/examples) | Workflows and commands |
-| [Development](https://docs.devsper.com/docs/development) | Structure, adding tools/plugins/workflows |
-| [Contributing](CONTRIBUTING.md) | Setup, testing, PR guidelines |
-| [FAQ](https://docs.devsper.com/docs/faq) | Common questions |
-
----
-
-## Attribution & Credits
-This runtime includes a local “Supermemory-style” subset (`memory.backend="supermemory"`) implemented in Rust (`runtime/supermemory-core`).
-
-What this subset does (local-only; no Supermemory hosted HTTP calls):
-- Hybrid ranking: lexical/token overlap + optional embedding cosine similarity
-- Relevance filtering: `min_similarity` + top-k truncation
-- Deduplication: near-identical memories collapsed deterministically
-- Recency tie-breaking: newer memories preferred when scores are close
-- MemoryType weighting: research/artifact/semantic/episodic are scored with different multipliers
-- Rust-driven `memory_context` formatting: user injections first, then ranked memories
-
-Portions of the approach are inspired by the Supermemory project’s retrieval concepts (semantic recall, metadata/tag filtering, and relevance thresholding), documented in this repo under `supermemory/skills/supermemory/references/`.
-
-## Contributing
-
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Full docs: **[docs.devsper.com](https://docs.devsper.com)**
 
 ---
 

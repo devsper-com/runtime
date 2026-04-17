@@ -67,4 +67,10 @@ pub mod topics {
     pub const CLARIFICATION_REQUEST_TOPIC: &str = "clarification.request";
     /// Response topic = clarification.response.{run_id}.{request_id}
     pub const CLARIFICATION_RESPONSE_TOPIC: &str = "clarification.response";
+    /// Graph node dispatch from PeerNode → Rust worker (new graph runtime).
+    /// Payload: { request_id, node_spec: NodeSpec dict, agent_state: AgentState dict }
+    pub const GRAPH_NODE_REQUEST: &str = "worker.node_request";
+    /// Result prefix; full topic = worker.node_result.<request_id>
+    /// Payload: { request_id, result: string, error?: string }
+    pub const GRAPH_NODE_RESULT_PREFIX: &str = "worker.node_result";
 }

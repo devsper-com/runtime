@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "devsper"
-version = "2.9.0"
+version = "3.0.0"
 description = "Devsper runtime CLI — self-evolving AI workflow engine"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
@@ -17,12 +17,18 @@ classifiers = [
 ]
 dependencies = [
     "click>=8.0",
+    "keyring>=24",
+    "rich>=13",
 ]
 
 [project.optional-dependencies]
 tui = [
     "textual>=0.80",
-    "rich>=13",
+]
+eval = [
+    "trulens>=1.0",
+    "openevals>=0.1",
+    "openai>=1.0",
 ]
 
 [project.scripts]
