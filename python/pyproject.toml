@@ -32,9 +32,6 @@ eval = [
     "openai>=1.0",
 ]
 
-[project.scripts]
-devsper = "devsper.cli:main"
-
 [tool.maturin]
 bindings = "bin"
 manifest-path = "../crates/devsper-bin/Cargo.toml"
