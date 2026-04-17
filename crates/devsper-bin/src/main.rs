@@ -1,3 +1,7 @@
+mod credentials;
+mod auth;
+mod eval;
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -65,6 +69,66 @@ enum Command {
     Inspect {
         /// Run ID or socket path
         run_id: String,
+    },
+
+    /// Manage provider credentials in the OS keychain
+    Credentials {
+        #[command(subcommand)]
+        action: CredentialsCmd,
+    },
+
+    /// Authentication helpers (GitHub device flow, status)
+    Auth {
+        #[command(subcommand)]
+        action: AuthCmd,
+    },
+
+    /// Evaluate a workflow against a dataset
+    Eval {
+        #[command(subcommand)]
+        action: EvalCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum CredentialsCmd {
+    /// Interactively set credentials for a provider
+    Set { provider: String },
+    /// List all providers and their credential status
+    List,
+    /// Remove all stored credentials for a provider
+    Remove { provider: String },
+}
+
+#[derive(Subcommand)]
+enum AuthCmd {
+    /// Authenticate with GitHub via device flow
+    Github,
+    /// Show authentication status for all providers
+    Status,
+}
+
+#[derive(Subcommand)]
+enum EvalCmd {
+    /// Run a workflow against a JSONL dataset
+    Run {
+        /// Path to the workflow file
+        workflow: PathBuf,
+        /// Path to JSONL dataset file
+        #[arg(long)]
+        dataset: PathBuf,
+        /// Output JSONL results file
+        #[arg(long, default_value = "eval_results.jsonl")]
+        output: PathBuf,
+    },
+    /// Print a summary report from eval results
+    Report {
+        /// Input JSONL results file
+        #[arg(long, default_value = "eval_results.jsonl")]
+        input: PathBuf,
+        /// Show only the last N results (0 = all)
+        #[arg(long, default_value_t = 0)]
+        last: usize,
     },
 }
 
@@ -146,6 +210,32 @@ async fn main() -> anyhow::Result<()> {
         } => compile_command(spec, embed, output).await,
         Command::Peer { listen, join } => peer_command(listen, join).await,
         Command::Inspect { run_id } => inspect_command(run_id).await,
+        Command::Credentials { action } => match action {
+            CredentialsCmd::Set { provider } => {
+                credentials::credentials_set(&provider);
+                Ok(())
+            }
+            CredentialsCmd::List => {
+                credentials::credentials_list();
+                Ok(())
+            }
+            CredentialsCmd::Remove { provider } => {
+                credentials::credentials_remove(&provider);
+                Ok(())
+            }
+        },
+        Command::Auth { action } => match action {
+            AuthCmd::Github => auth::auth_github().await,
+            AuthCmd::Status => auth::auth_status().await,
+        },
+        Command::Eval { action } => match action {
+            EvalCmd::Run { workflow, dataset, output } => {
+                eval::eval_run(workflow, dataset, output).await
+            }
+            EvalCmd::Report { input, last } => {
+                eval::eval_report(input, last)
+            }
+        },
     }
 }
 
@@ -155,6 +245,8 @@ async fn run_command(
     _cluster: Option<String>,
     _inspect_socket: Option<PathBuf>,
 ) -> anyhow::Result<()> {
+    credentials::inject_credentials();
+
     use devsper_compiler::WorkflowLoader;
     use devsper_core::{LlmMessage, LlmProvider, LlmRequest, LlmRole, NodeId, NodeSpec, RunId};
     use devsper_executor::{AgentFn, AgentOutput, Executor, ExecutorConfig};
@@ -331,6 +423,8 @@ async fn compile_command(
     embed: bool,
     output: Option<PathBuf>,
 ) -> anyhow::Result<()> {
+    credentials::inject_credentials();
+
     use devsper_compiler::{CompileOptions, Compiler};
 
     if embed {
@@ -345,6 +439,8 @@ async fn compile_command(
 }
 
 async fn peer_command(listen: String, join: Option<String>) -> anyhow::Result<()> {
+    credentials::inject_credentials();
+
     use devsper_cluster::{ClusterConfig, ClusterNode};
 
     let config = ClusterConfig {
@@ -368,6 +464,8 @@ async fn peer_command(listen: String, join: Option<String>) -> anyhow::Result<()
 }
 
 async fn inspect_command(run_id: String) -> anyhow::Result<()> {
+    credentials::inject_credentials();
+
     println!("Inspect run: {run_id}");
     println!(
         "(Unix socket inspection not yet wired — use --inspect-socket flag with devsper run)"

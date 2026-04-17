@@ -2,22 +2,73 @@
 
 Tests that cannot be automated — require real LLM API keys and human judgement.
 
+---
+
 ## Setup
 
+### Option A — keyring (recommended)
+
+The Python CLI stores credentials in the OS keychain and injects them as env vars before every Rust exec.
+
 ```bash
-# Build the CLI
+pip install 'devsper[tui]'   # or: pip install -e 'python/[tui]'
+
+# Interactive credential setup — prompts for each field
+devsper credentials set anthropic
+devsper credentials set openai
+devsper credentials set github
+devsper credentials set zai
+devsper credentials set azure-openai      # needs key + endpoint + deployment
+devsper credentials set azure-foundry     # Azure AI Foundry (Anthropic Claude)
+devsper credentials set litellm           # LiteLLM proxy (base_url + optional key)
+devsper credentials set ollama            # host URL only
+
+# Verify what's stored
+devsper credentials list
+
+# GitHub OAuth (device flow — no API key needed, tokens stored in keychain)
+devsper auth github
+devsper auth status
+```
+
+Once set, all `devsper run/compile/peer/inspect` calls automatically pick up credentials — no manual `export` needed.
+
+### Option B — env vars (shell / CI)
+
+```bash
+# Build the Rust binary
 cargo build -p devsper-bin --release
 alias devsper="./target/release/devsper"
 
-# Set at least one provider key
+# Set at least one provider
 export ANTHROPIC_API_KEY="sk-ant-..."
-# or
 export OPENAI_API_KEY="sk-..."
-# or
 export ZAI_API_KEY="..."
+export GITHUB_TOKEN="ghp_..."
+
+# Azure OpenAI
+export AZURE_OPENAI_API_KEY="..."
+export AZURE_OPENAI_ENDPOINT="https://your-resource.cognitiveservices.azure.com/openai/v1"
+export AZURE_OPENAI_DEPLOYMENT="gpt-4o"
+export AZURE_OPENAI_API_VERSION="2025-04-01-preview"   # optional
+
+# Azure AI Foundry (Anthropic Claude via Azure)
+export AZURE_FOUNDRY_API_KEY="..."
+export AZURE_FOUNDRY_ENDPOINT="https://your-resource.services.ai.azure.com/anthropic/v1/messages"
+export AZURE_FOUNDRY_DEPLOYMENT="claude-opus-4-6-2"
+
+# LiteLLM proxy
+export LITELLM_BASE_URL="http://localhost:4000"
+export LITELLM_API_KEY="..."   # optional
+
+# Ollama
+export OLLAMA_HOST="http://localhost:11434"   # default
+
+# OTEL (optional — enables distributed tracing)
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
 ```
 
-Without a key, the CLI runs with a mock provider (good for pipeline testing, not for quality testing).
+Without any key the CLI uses a mock provider (good for pipeline testing, not quality testing).
 
 ---
 
@@ -31,7 +82,7 @@ devsper compile examples/research.devsper
 devsper compile examples/code.devsper
 devsper compile examples/general.devsper
 
-# Run with mock provider (no API key)
+# Run with mock provider
 devsper run examples/general.devsper --input prompt="hello"
 ```
 
@@ -41,7 +92,7 @@ devsper run examples/general.devsper --input prompt="hello"
 - WARN line: `No LLM provider keys found — using mock provider`
 - No ERROR lines
 
-**Also run the unit tests:**
+**Unit tests:**
 
 ```bash
 cargo test --workspace
@@ -59,26 +110,26 @@ devsper run examples/research.devsper --input topic="transformer attention mecha
 ```
 
 **What to verify:**
-- Three tasks execute in correct order (search finishes before analyze, both before synthesize)
+- Three tasks execute in correct order (search before analyze, both before synthesize)
 - No task marked `Failed` in logs
 - Run completes with `run complete` log line
 
 **Quality check (human):**
 - Does `search` return a plausible list of papers/resources?
-- Does `analyze` identify real open problems in the field?
-- Does `synthesize` produce a coherent 400-600 word summary?
-- Does the summary reference findings from earlier tasks?
+- Does `analyze` identify real open problems?
+- Does `synthesize` produce a coherent 400-600 word summary referencing earlier tasks?
 
-**Stress variant** — longer topic:
+**Stress variant:**
 ```bash
-devsper run examples/research.devsper --input topic="interpretability of large language models via sparse autoencoders"
+devsper run examples/research.devsper \
+  --input topic="interpretability of large language models via sparse autoencoders"
 ```
 
 ---
 
 ## 3. Code application
 
-Tests the `plan → implement → review` DAG with real LLMs.
+Tests the `plan → implement → review` DAG.
 
 ```bash
 devsper run examples/code.devsper \
@@ -88,14 +139,13 @@ devsper run examples/code.devsper \
 **What to verify:**
 - Plan task uses `claude-opus-4-7` (set in workflow), implement/review use default model
 - All three tasks execute in order with no failures
-- Run completes cleanly
 
 **Quality check (human):**
-- Does `plan` break the task into ≥3 concrete steps?
+- Does `plan` produce ≥3 concrete steps?
 - Does `implement` produce compilable Rust code?
-- Does `review` catch any real issues (e.g. lock poisoning, missing edge cases)?
+- Does `review` catch real issues (lock poisoning, edge cases)?
 
-**Variant with language override:**
+**Language override variant:**
 ```bash
 devsper run examples/code.devsper \
   --input task="implement a rate limiter using the token bucket algorithm" \
@@ -106,36 +156,26 @@ devsper run examples/code.devsper \
 
 ## 4. General / other applications
 
-Single-agent open-ended tasks.
-
 ```bash
-# Document drafting
 devsper run examples/general.devsper \
   --input prompt="Write a 1-page product brief for a CLI tool that runs AI workflows locally"
 
-# Analysis
 devsper run examples/general.devsper \
-  --input prompt="Compare the tradeoffs of actor-model vs CSP concurrency patterns for distributed AI systems"
+  --input prompt="Compare actor-model vs CSP concurrency for distributed AI systems"
 
-# With context
 devsper run examples/general.devsper \
   --input prompt="Suggest three improvements" \
-  --input context="We have a Rust runtime that executes AI workflows as DAGs. Tasks run in parallel when their dependencies are met. "
+  --input context="Rust runtime executing AI workflows as DAGs with parallel task execution."
 ```
 
-**What to verify:**
-- Single task completes without error
-- Response is coherent and on-topic
+**Expected:** single task completes, response coherent and on-topic.
 
 ---
 
 ## 5. Compile → run from bytecode
 
-Verify the bytecode path works end-to-end:
-
 ```bash
 devsper compile examples/general.devsper --output /tmp/general.bin
-
 devsper run /tmp/general.bin --input prompt="What is the capital of France?"
 ```
 
@@ -150,6 +190,9 @@ devsper --help
 devsper run --help
 devsper compile --help
 devsper peer --help
+devsper credentials --help
+devsper auth --help
+devsper eval --help
 ```
 
 **Expected:** no panics, all subcommands documented.
@@ -158,11 +201,80 @@ devsper peer --help
 devsper -v run examples/general.devsper --input prompt="hello"
 ```
 
-**Expected:** debug-level logs appear (provider routing, graph mutations, etc.)
+**Expected:** debug-level logs (provider routing, graph mutations, etc.).
 
 ---
 
-## 7. Cluster peer (manual, two terminals)
+## 7. Credentials and auth
+
+```bash
+# Set and list
+devsper credentials set anthropic
+devsper credentials list
+# Expected: Anthropic row shows ✓ with masked key
+
+# Remove
+devsper credentials remove anthropic
+devsper credentials list
+# Expected: Anthropic row shows ✗
+
+# GitHub OAuth device flow
+devsper auth github
+# Expected: prints device code + URL, polls until authorized, stores token
+
+devsper auth status
+# Expected: rich table showing each provider, status (✓/✗), and storage location
+```
+
+---
+
+## 8. Eval
+
+Requires `pip install 'devsper[eval]'` for TruLens scoring. Basic run works without it.
+
+```bash
+# Create a minimal JSONL dataset
+echo '{"input": "what is 2+2?"}' > /tmp/eval_dataset.jsonl
+echo '{"input": "capital of France?"}' >> /tmp/eval_dataset.jsonl
+
+# Run eval
+devsper eval run examples/general.devsper \
+  --dataset /tmp/eval_dataset.jsonl \
+  --output /tmp/eval_results.jsonl
+
+# Expected: each case logged, results written to eval_results.jsonl
+
+# Report
+devsper eval report --input eval_results.jsonl
+# Expected: table with inputs, outputs, latency, success rate
+
+# With TruLens scoring (needs eval extra + OPENAI_API_KEY)
+devsper eval run examples/general.devsper \
+  --dataset /tmp/eval_dataset.jsonl \
+  --metrics "relevance,coherence" \
+  --score
+```
+
+---
+
+## 9. OTEL tracing
+
+```bash
+# Start a local OTLP collector (e.g. Jaeger all-in-one)
+docker run -p 4318:4318 -p 16686:16686 jaegertracing/all-in-one
+
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+devsper run examples/research.devsper --input topic="test"
+```
+
+**Expected:**
+- No OTEL-related errors in stderr
+- Spans visible in Jaeger UI at http://localhost:16686 under service `devsper`
+- `gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` attributes present on LLM spans
+
+---
+
+## 10. Cluster peer (manual, two terminals)
 
 ```bash
 # Terminal 1 — coordinator
@@ -173,40 +285,37 @@ devsper peer --listen 0.0.0.0:7001 --join 127.0.0.1:7000
 ```
 
 **Expected:**
-- Terminal 1: logs `Peer node started`, then `became coordinator`
-- Terminal 2: logs `Peer node started`
-- Both stay alive until Ctrl-C
-- No panics or ERROR logs
+- Terminal 1: `Peer node started`, then `became coordinator`
+- Terminal 2: `Peer node started`
+- Both stay alive until Ctrl-C, no panics or ERROR logs
 
 ---
 
-## 8. Error handling
+## 11. Error handling
 
 ```bash
-# Missing required input
+# Missing required input (template literal passes through unchanged)
 devsper run examples/research.devsper
-```
-**Expected:** workflow loads (topic input is required but not validated at runtime yet — task will execute with `{{topic}}` literal).
+# Expected: workflow loads, task executes with literal "{{topic}}" in prompt
 
-```bash
 # Non-existent file
 devsper run does_not_exist.devsper
-```
-**Expected:** error message about file not found, non-zero exit code.
+# Expected: error message about file not found, non-zero exit code
 
-```bash
 # Invalid workflow syntax
 echo 'invalid lua {{{{' > /tmp/bad.devsper
 devsper run /tmp/bad.devsper
+# Expected: `Parse error:` message, non-zero exit code
 ```
-**Expected:** `Parse error:` message, non-zero exit code.
 
 ---
 
 ## Known limitations (not tested)
 
 - `--inspect-socket` TUI inspection: not yet wired
-- `--cluster` remote submission: not yet wired  
+- `--cluster` remote submission: not yet wired
 - `--embed` standalone binary: stub (compiles to bytecode)
 - Input interpolation (`{{topic}}`) in prompts: compiler parses but runtime does not substitute yet
-- Ollama provider: tested structurally but requires local Ollama instance to verify end-to-end
+- Ollama provider: tested structurally, requires local Ollama instance for end-to-end
+- `devsper eval` scoring with TruLens/OpenEvals: requires `devsper[eval]` extra and an OpenAI key for the LLM judge
+- TUI (`devsper tui`): requires `devsper[tui]` extra

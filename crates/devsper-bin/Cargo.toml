@@ -35,3 +35,6 @@ opentelemetry_sdk = { version = "0.24", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.17", features = ["http-proto", "reqwest-client"] }
 opentelemetry-semantic-conventions = { version = "0.16" }
 tracing-opentelemetry = "0.25"
+keyring = "3"
+rpassword = "7"
+reqwest = { workspace = true }

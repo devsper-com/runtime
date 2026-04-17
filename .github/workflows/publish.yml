@@ -114,8 +114,7 @@ jobs:
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
-          working-directory: python
+          args: --release --out dist -m python/pyproject.toml
           manylinux: auto
 
       - uses: actions/upload-artifact@v4

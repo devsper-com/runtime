@@ -4,8 +4,8 @@ build-backend = "maturin"
 
 [project]
 name = "devsper"
-version = "3.0.2"
-description = "Devsper runtime CLI — self-evolving AI workflow engine"
+version = "3.1.0"
+description = "Devsper — self-evolving AI workflow engine"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
@@ -16,24 +16,9 @@ classifiers = [
     "Programming Language :: Rust",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = [
-    "click>=8.0",
-    "keyring>=24",
-    "rich>=13",
-]
-
-[project.optional-dependencies]
-tui = [
-    "textual>=0.80",
-]
-eval = [
-    "trulens>=1.0",
-    "openevals>=0.1",
-    "openai>=1.0",
-]
+dependencies = []
 
 [tool.maturin]
-bindings = "bin"
-manifest-path = "../crates/devsper-bin/Cargo.toml"
-python-packages = ["devsper"]
+bindings = "pyo3"
+manifest-path = "../crates/devsper-py/Cargo.toml"
 strip = true

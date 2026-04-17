@@ -11,6 +11,7 @@ members = [
     "crates/devsper-cluster",
     "crates/devsper-memory",
     "crates/devsper-bin",
+    "crates/devsper-py",
     "worker",
 ]
 resolver = "2"
