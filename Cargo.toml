@@ -40,7 +40,7 @@ async-trait  = "0.1"
 uuid         = { version = "1", features = ["v4"] }
 petgraph     = "0.6"
 mlua         = { version = "0.10", features = ["lua54", "async"] }
-reqwest      = { version = "0.12", features = ["json", "stream"] }
+reqwest      = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 redis        = { version = "0.27", features = ["tokio-comp"] }
 axum         = "0.7"
 clap         = { version = "4", features = ["derive"] }
