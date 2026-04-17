@@ -54,3 +54,6 @@ node_modules
 # Rust (workspace and worker crate)
 target/
 worker/target/.worktrees/
+
+# Local-only testing notes
+TESTING.md

@@ -492,7 +492,7 @@ checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
 
 [[package]]
 name = "devsper-bin"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -518,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-bus"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -533,7 +533,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-cluster"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -550,7 +550,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-compiler"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "devsper-core",
@@ -564,7 +564,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -576,7 +576,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-executor"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "devsper-core",
@@ -590,7 +590,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-graph"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "devsper-core",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-memory"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -620,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-plugins"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "devsper-core",
@@ -633,7 +633,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-providers"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -649,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-scheduler"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "devsper-core",
