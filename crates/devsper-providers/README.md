@@ -9,6 +9,7 @@ LLM provider adapters and model router for the devsper runtime.
 | Anthropic | `claude-*` | `ANTHROPIC_API_KEY` |
 | OpenAI | `gpt-*`, `o1*`, `o3*` | `OPENAI_API_KEY` |
 | Ollama | `ollama:*` | `OLLAMA_HOST` (default: `http://localhost:11434`) |
+| LM Studio | `lmstudio:*` | `LMSTUDIO_BASE_URL` (default: `http://localhost:1234`) |
 | ZAI | `zai:*`, `glm-*` | `ZAI_API_KEY` |
 | Mock | `mock*` | — |
 

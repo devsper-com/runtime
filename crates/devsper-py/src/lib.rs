@@ -6,8 +6,8 @@ use devsper_executor::{AgentFn, AgentOutput, Executor, ExecutorConfig};
 use devsper_graph::{GraphActor, GraphConfig};
 use devsper_providers::{
     anthropic::AnthropicProvider, ollama::OllamaProvider, openai::OpenAiProvider,
-    AzureFoundryProvider, AzureOpenAiProvider, GithubModelsProvider, LiteLlmProvider, MockProvider,
-    ModelRouter,
+    AzureFoundryProvider, AzureOpenAiProvider, GithubModelsProvider, LiteLlmProvider,
+    LmStudioProvider, MockProvider, ModelRouter,
 };
 use devsper_scheduler::Scheduler;
 use pyo3::exceptions::PyRuntimeError;
@@ -67,6 +67,17 @@ fn build_router() -> (Arc<ModelRouter>, bool) {
         let api_key = std::env::var("LITELLM_API_KEY").unwrap_or_default();
         router.add_provider(Arc::new(LiteLlmProvider::new(base_url, api_key)));
         has_real = true;
+    }
+    // LM Studio
+    {
+        let base_url = std::env::var("LMSTUDIO_BASE_URL")
+            .unwrap_or_else(|_| "http://localhost:1234".into());
+        let api_key = std::env::var("LMSTUDIO_API_KEY").unwrap_or_default();
+        let mut provider = LmStudioProvider::new().with_base_url(base_url);
+        if !api_key.is_empty() {
+            provider = provider.with_api_key(api_key);
+        }
+        router.add_provider(Arc::new(provider));
     }
     let ollama_host = std::env::var("OLLAMA_HOST")
         .unwrap_or_else(|_| "http://localhost:11434".into());

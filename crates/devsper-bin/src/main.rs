@@ -312,6 +312,7 @@ async fn run_command(
         AzureOpenAiProvider,
         GithubModelsProvider,
         LiteLlmProvider,
+        LmStudioProvider,
     };
     let mut router = ModelRouter::new();
     let mut has_real_provider = false;
@@ -360,12 +361,23 @@ async fn run_command(
         router.add_provider(Arc::new(LiteLlmProvider::new(base_url, api_key)));
         has_real_provider = true;
     }
+    // LM Studio
+    {
+        let base_url = std::env::var("LMSTUDIO_BASE_URL")
+            .unwrap_or_else(|_| "http://localhost:1234".into());
+        let api_key = std::env::var("LMSTUDIO_API_KEY").unwrap_or_default();
+        let mut provider = LmStudioProvider::new().with_base_url(base_url);
+        if !api_key.is_empty() {
+            provider = provider.with_api_key(api_key);
+        }
+        router.add_provider(Arc::new(provider));
+    }
     let ollama_host = std::env::var("OLLAMA_HOST")
         .unwrap_or_else(|_| "http://localhost:11434".into());
     router.add_provider(Arc::new(OllamaProvider::new().with_base_url(ollama_host)));
     router.add_provider(Arc::new(MockProvider::new("[Task completed by agent]")));
     if !has_real_provider {
-        tracing::warn!("No LLM provider keys found — using mock provider (set ANTHROPIC_API_KEY, OPENAI_API_KEY, ZAI_API_KEY, GITHUB_TOKEN, AZURE_*, or LITELLM_BASE_URL for real responses)");
+        tracing::warn!("No LLM provider keys found — using mock provider (set ANTHROPIC_API_KEY, OPENAI_API_KEY, ZAI_API_KEY, GITHUB_TOKEN, AZURE_*, LITELLM_BASE_URL, or LMSTUDIO_BASE_URL for real responses)");
     }
     let router = Arc::new(router);
     let use_mock = !has_real_provider;

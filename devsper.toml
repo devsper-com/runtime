@@ -27,6 +27,10 @@ num_ctx    = 8192
 enabled  = false    # set true + ZAI_API_KEY env var to activate
 base_url = ""       # empty → $ZAI_BASE_URL → https://api.z.ai/v1
 
+[providers.lmstudio]
+enabled  = true
+base_url = ""       # empty → $LMSTUDIO_BASE_URL → http://localhost:1234
+
 [memory]
 enabled = true
 

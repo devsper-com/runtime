@@ -82,6 +82,13 @@ static PROVIDERS: &[Provider] = &[
         name: "ollama",
         fields: &[field!("host", "OLLAMA_HOST", optional, "http://localhost:11434")],
     },
+    Provider {
+        name: "lmstudio",
+        fields: &[
+            field!("base_url", "LMSTUDIO_BASE_URL", optional, "http://localhost:1234"),
+            field!("api_key", "LMSTUDIO_API_KEY", secret, optional, ""),
+        ],
+    },
 ];
 
 fn find_provider(name: &str) -> Option<&'static Provider> {
