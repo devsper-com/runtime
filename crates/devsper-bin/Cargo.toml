@@ -11,7 +11,7 @@ version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = "devsper"
+name = "devsper-runtime"
 path = "src/main.rs"
 
 [dependencies]

@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.7"]
+build-backend = "maturin"
 
 [project]
 name = "devsper"
-version = "3.0.1"
+version = "3.0.2"
 description = "Devsper runtime CLI — self-evolving AI workflow engine"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,5 +35,8 @@ eval = [
 [project.scripts]
 devsper = "devsper.cli:main"
 
-[tool.hatch.build.targets.wheel]
-packages = ["devsper"]
+[tool.maturin]
+bindings = "bin"
+manifest-path = "../crates/devsper-bin/Cargo.toml"
+python-packages = ["devsper"]
+strip = true
