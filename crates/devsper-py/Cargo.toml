@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 devsper-core = { path = "../devsper-core", version = "0.2.0" }
+devsper-cluster = { path = "../devsper-cluster", version = "0.2.0" }
 devsper-compiler = { path = "../devsper-compiler", version = "0.2.0" }
 devsper-executor = { path = "../devsper-executor", version = "0.2.0" }
 devsper-graph = { path = "../devsper-graph", version = "0.2.0" }

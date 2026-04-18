@@ -437,6 +437,65 @@ fn run_specs_async<'py>(
     })
 }
 
+/// Compile a .devsper workflow to bytecode. Returns the output path.
+#[pyfunction]
+#[pyo3(signature = (spec_path, embed=false, output=None))]
+fn compile(
+    py: Python<'_>,
+    spec_path: String,
+    embed: bool,
+    output: Option<String>,
+) -> PyResult<String> {
+    use devsper_compiler::{CompileOptions, Compiler};
+    let spec = std::path::PathBuf::from(&spec_path);
+    let opts = CompileOptions {
+        embed,
+        output: output.map(std::path::PathBuf::from),
+    };
+    py.allow_threads(|| {
+        let compiler = Compiler::new(opts);
+        compiler
+            .compile_to_bytecode(&spec)
+            .map(|p| p.to_string_lossy().into_owned())
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    })
+}
+
+/// Start a peer cluster node. Blocks until Ctrl-C.
+#[pyfunction]
+#[pyo3(signature = (listen=None, join=None))]
+fn peer(py: Python<'_>, listen: Option<String>, join: Option<String>) -> PyResult<()> {
+    use devsper_cluster::{ClusterConfig, ClusterNode};
+    let listen = listen.unwrap_or_else(|| "0.0.0.0:7000".to_string());
+    py.allow_threads(|| {
+        tokio::runtime::Runtime::new()
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
+            .block_on(async {
+                let config = ClusterConfig {
+                    listen_address: listen.clone(),
+                    known_peers: join.into_iter().collect(),
+                    ..Default::default()
+                };
+                let node = ClusterNode::new(config);
+                eprintln!("Peer node listening on {listen}");
+                if node.config.known_peers.is_empty() {
+                    node.become_coordinator().await;
+                }
+                tokio::signal::ctrl_c().await.ok();
+                eprintln!("Peer node shutting down");
+                Ok(())
+            })
+    })
+}
+
+/// Inspect a running workflow (stub — Unix socket not yet wired).
+#[pyfunction]
+fn inspect(run_id: String) -> PyResult<()> {
+    println!("Inspect run: {run_id}");
+    println!("(Unix socket inspection not yet wired — use --inspect-socket flag with devsper run)");
+    Ok(())
+}
+
 // ── Module registration ───────────────────────────────────────────────────────
 
 #[pymodule]
@@ -450,5 +509,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run_workflow_async, m)?)?;
     m.add_function(wrap_pyfunction!(run_specs, m)?)?;
     m.add_function(wrap_pyfunction!(run_specs_async, m)?)?;
+    m.add_function(wrap_pyfunction!(compile, m)?)?;
+    m.add_function(wrap_pyfunction!(peer, m)?)?;
+    m.add_function(wrap_pyfunction!(inspect, m)?)?;
     Ok(())
 }
