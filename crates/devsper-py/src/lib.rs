@@ -485,6 +485,12 @@ fn peer(py: Python<'_>, listen: Option<String>, join: Option<String>) -> PyResul
     })
 }
 
+/// Return the GitHub OAuth client_id baked in at compile time via DEVSPER_GITHUB_CLIENT_ID.
+#[pyfunction]
+fn github_client_id() -> Option<&'static str> {
+    option_env!("DEVSPER_GITHUB_CLIENT_ID")
+}
+
 /// Inspect a running workflow (stub — Unix socket not yet wired).
 #[pyfunction]
 fn inspect(run_id: String) -> PyResult<()> {
@@ -509,5 +515,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compile, m)?)?;
     m.add_function(wrap_pyfunction!(peer, m)?)?;
     m.add_function(wrap_pyfunction!(inspect, m)?)?;
+    m.add_function(wrap_pyfunction!(github_client_id, m)?)?;
     Ok(())
 }

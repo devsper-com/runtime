@@ -115,6 +115,8 @@ jobs:
           args: --release --out dist
           working-directory: python
           manylinux: auto
+        env:
+          DEVSPER_GITHUB_CLIENT_ID: ${{ secrets.DEVSPER_GITHUB_CLIENT_ID }}
 
       - uses: actions/upload-artifact@v4
         with:

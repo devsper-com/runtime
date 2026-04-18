@@ -363,9 +363,13 @@ def credentials_remove(provider: str) -> None:
 def auth() -> None:
     """Authentication helpers."""
 
-_GH_CLIENT_ID_DEFAULT = "Ov23li4your_client_id"
 _GH_DEVICE_URL = "https://github.com/login/device/code"
 _GH_TOKEN_URL  = "https://github.com/login/oauth/access_token"
+
+def _resolve_gh_client_id() -> str:
+    """Return GitHub OAuth client_id: baked-in at compile time > env var."""
+    from devsper._core import github_client_id as _baked
+    return _baked() or os.environ.get("DEVSPER_GITHUB_CLIENT_ID", "")
 
 @auth.command("github")
 def auth_github() -> None:
@@ -374,13 +378,14 @@ def auth_github() -> None:
     Opens a browser URL and waits for you to enter a short code,
     then stores the resulting token in the OS keychain.
     """
-    client_id = os.environ.get("DEVSPER_GITHUB_CLIENT_ID", _GH_CLIENT_ID_DEFAULT)
-    if client_id == _GH_CLIENT_ID_DEFAULT:
+    client_id = _resolve_gh_client_id()
+    if not client_id:
         click.echo(
-            "Warning: using placeholder GitHub client_id. "
-            "Set DEVSPER_GITHUB_CLIENT_ID with your OAuth App client_id.",
+            "Error: GitHub OAuth client_id not set. "
+            "Set DEVSPER_GITHUB_CLIENT_ID env var or use an official release build.",
             err=True,
         )
+        return
 
     def _post(url: str, data: dict) -> dict:
         body = urllib.parse.urlencode(data).encode()
