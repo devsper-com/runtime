@@ -12,6 +12,7 @@ pub struct LmStudioProvider {
     client: Client,
     base_url: String,
     api_key: String,
+    fallback: bool,
 }
 
 impl LmStudioProvider {
@@ -20,6 +21,7 @@ impl LmStudioProvider {
             client: Client::new(),
             base_url: "http://localhost:1234".to_string(),
             api_key: String::new(),
+            fallback: false,
         }
     }
 
@@ -30,6 +32,12 @@ impl LmStudioProvider {
 
     pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
         self.api_key = key.into();
+        self
+    }
+
+    /// Accept any model not claimed by other providers.
+    pub fn as_fallback(mut self) -> Self {
+        self.fallback = true;
         self
     }
 }
@@ -182,6 +190,6 @@ impl LlmProvider for LmStudioProvider {
     }
 
     fn supports_model(&self, model: &str) -> bool {
-        model.starts_with("lmstudio:")
+        self.fallback || model.starts_with("lmstudio:")
     }
 }

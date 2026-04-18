@@ -9,6 +9,7 @@ use tracing::debug;
 pub struct OllamaProvider {
     client: Client,
     base_url: String,
+    fallback: bool,
 }
 
 impl OllamaProvider {
@@ -16,11 +17,18 @@ impl OllamaProvider {
         Self {
             client: Client::new(),
             base_url: "http://localhost:11434".to_string(),
+            fallback: false,
         }
     }
 
     pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = url.into();
+        self
+    }
+
+    /// Accept any model not claimed by other providers.
+    pub fn as_fallback(mut self) -> Self {
+        self.fallback = true;
         self
     }
 }
@@ -127,6 +135,6 @@ impl LlmProvider for OllamaProvider {
     }
 
     fn supports_model(&self, model: &str) -> bool {
-        model.starts_with("ollama:")
+        self.fallback || model.starts_with("ollama:")
     }
 }

@@ -361,8 +361,9 @@ async fn run_command(
         router.add_provider(Arc::new(LiteLlmProvider::new(base_url, api_key)));
         has_real_provider = true;
     }
-    // LM Studio — counts as real if URL is explicitly set
+    // LM Studio — fallback provider when URL explicitly set
     {
+        let lmstudio_explicit = std::env::var("LMSTUDIO_BASE_URL").is_ok();
         let base_url = std::env::var("LMSTUDIO_BASE_URL")
             .unwrap_or_else(|_| "http://localhost:1234".into());
         let api_key = std::env::var("LMSTUDIO_API_KEY").unwrap_or_default();
@@ -370,18 +371,19 @@ async fn run_command(
         if !api_key.is_empty() {
             provider = provider.with_api_key(api_key);
         }
-        router.add_provider(Arc::new(provider));
-        if std::env::var("LMSTUDIO_BASE_URL").is_ok() {
+        if lmstudio_explicit {
+            provider = provider.as_fallback();
             has_real_provider = true;
         }
+        router.add_provider(Arc::new(provider));
     }
-    // Ollama — counts as real if host is explicitly set
+    // Ollama — fallback provider when host explicitly set
+    let ollama_explicit = std::env::var("OLLAMA_HOST").is_ok();
     let ollama_host = std::env::var("OLLAMA_HOST")
         .unwrap_or_else(|_| "http://localhost:11434".into());
-    if std::env::var("OLLAMA_HOST").is_ok() {
-        has_real_provider = true;
-    }
-    router.add_provider(Arc::new(OllamaProvider::new().with_base_url(ollama_host)));
+    let ollama = OllamaProvider::new().with_base_url(ollama_host);
+    let ollama = if ollama_explicit { has_real_provider = true; ollama.as_fallback() } else { ollama };
+    router.add_provider(Arc::new(ollama));
     router.add_provider(Arc::new(MockProvider::new("[Task completed by agent]")));
     if !has_real_provider {
         tracing::warn!("No LLM provider keys found — using mock provider (set ANTHROPIC_API_KEY, OPENAI_API_KEY, ZAI_API_KEY, GITHUB_TOKEN, AZURE_*, LITELLM_BASE_URL, or LMSTUDIO_BASE_URL for real responses)");

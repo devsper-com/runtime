@@ -641,6 +641,7 @@ name = "devsper-py"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "devsper-cluster",
  "devsper-compiler",
  "devsper-core",
  "devsper-executor",

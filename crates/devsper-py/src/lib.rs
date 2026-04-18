@@ -68,27 +68,29 @@ fn build_router() -> (Arc<ModelRouter>, bool) {
         router.add_provider(Arc::new(LiteLlmProvider::new(base_url, api_key)));
         has_real = true;
     }
-    // LM Studio — counts as real if URL is explicitly set
+    // LM Studio — fallback provider when URL explicitly set
     {
+        let lmstudio_explicit = std::env::var("LMSTUDIO_BASE_URL").is_ok();
         let base_url = std::env::var("LMSTUDIO_BASE_URL")
             .unwrap_or_else(|_| "http://localhost:1234".into());
         let api_key = std::env::var("LMSTUDIO_API_KEY").unwrap_or_default();
-        let mut provider = LmStudioProvider::new().with_base_url(base_url.clone());
+        let mut provider = LmStudioProvider::new().with_base_url(base_url);
         if !api_key.is_empty() {
             provider = provider.with_api_key(api_key);
         }
-        router.add_provider(Arc::new(provider));
-        if std::env::var("LMSTUDIO_BASE_URL").is_ok() {
+        if lmstudio_explicit {
+            provider = provider.as_fallback();
             has_real = true;
         }
+        router.add_provider(Arc::new(provider));
     }
-    // Ollama — counts as real if host is explicitly set
+    // Ollama — fallback provider when host explicitly set
+    let ollama_explicit = std::env::var("OLLAMA_HOST").is_ok();
     let ollama_host = std::env::var("OLLAMA_HOST")
         .unwrap_or_else(|_| "http://localhost:11434".into());
-    if std::env::var("OLLAMA_HOST").is_ok() {
-        has_real = true;
-    }
-    router.add_provider(Arc::new(OllamaProvider::new().with_base_url(ollama_host)));
+    let ollama = OllamaProvider::new().with_base_url(ollama_host);
+    let ollama = if ollama_explicit { has_real = true; ollama.as_fallback() } else { ollama };
+    router.add_provider(Arc::new(ollama));
     router.add_provider(Arc::new(MockProvider::new("[Task completed by agent]")));
 
     (Arc::new(router), has_real)
@@ -126,8 +128,17 @@ fn build_agent_fn(router: Arc<ModelRouter>, use_mock: bool) -> AgentFn {
     })
 }
 
+/// Substitute {{key}} placeholders in a prompt with values from a map.
+fn substitute(prompt: &str, vars: &HashMap<String, String>) -> String {
+    let mut out = prompt.to_string();
+    for (k, v) in vars {
+        out = out.replace(&format!("{{{{{k}}}}}"), v);
+    }
+    out
+}
+
 /// Execute a WorkflowIr and return {node_id → output} results map.
-async fn execute_ir(ir: RustWorkflowIr) -> anyhow::Result<HashMap<String, String>> {
+async fn execute_ir(ir: RustWorkflowIr, inputs: HashMap<String, String>) -> anyhow::Result<HashMap<String, String>> {
     let run_id = RunId::new();
 
     let graph_config = GraphConfig {
@@ -154,7 +165,8 @@ async fn execute_ir(ir: RustWorkflowIr) -> anyhow::Result<HashMap<String, String
                 .iter()
                 .filter_map(|dep| task_id_map.get(dep).cloned())
                 .collect();
-            RustNodeSpec::new(t.prompt.clone())
+            let prompt = substitute(&t.prompt, &inputs);
+            RustNodeSpec::new(prompt)
                 .with_id(id)
                 .with_model(t.model.as_deref().unwrap_or(&ir.model))
                 .depends_on(deps)
@@ -352,7 +364,7 @@ fn run(
     workflow_path: String,
     inputs: Option<HashMap<String, String>>,
 ) -> PyResult<HashMap<String, String>> {
-    let _ = inputs; // inputs are parsed but not yet threaded through IR
+    let inputs = inputs.unwrap_or_default();
     let path = std::path::Path::new(&workflow_path);
     let ir = WorkflowLoader::load(path)
         .map_err(|e| PyRuntimeError::new_err(format!("Failed to load workflow: {e}")))?;
@@ -360,7 +372,7 @@ fn run(
     py.allow_threads(|| {
         tokio::runtime::Runtime::new()
             .map_err(|e| PyRuntimeError::new_err(format!("Tokio runtime error: {e}")))?
-            .block_on(execute_ir(ir))
+            .block_on(execute_ir(ir, inputs))
             .map_err(|e| PyRuntimeError::new_err(format!("Execution error: {e}")))
     })
 }
@@ -373,12 +385,12 @@ fn run_async<'py>(
     workflow_path: String,
     inputs: Option<HashMap<String, String>>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let _ = inputs;
+    let inputs = inputs.unwrap_or_default();
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
         let path = std::path::Path::new(&workflow_path);
         let ir = WorkflowLoader::load(path)
             .map_err(|e| PyRuntimeError::new_err(format!("Failed to load workflow: {e}")))?;
-        execute_ir(ir)
+        execute_ir(ir, inputs)
             .await
             .map_err(|e| PyRuntimeError::new_err(format!("Execution error: {e}")))
     })
@@ -402,7 +414,7 @@ fn run_workflow(py: Python<'_>, ir: &PyWorkflowIr) -> PyResult<HashMap<String, S
     py.allow_threads(|| {
         tokio::runtime::Runtime::new()
             .map_err(|e| PyRuntimeError::new_err(format!("Tokio runtime error: {e}")))?
-            .block_on(execute_ir(rust_ir))
+            .block_on(execute_ir(rust_ir, HashMap::new()))
             .map_err(|e| PyRuntimeError::new_err(format!("Execution error: {e}")))
     })
 }
@@ -412,7 +424,7 @@ fn run_workflow(py: Python<'_>, ir: &PyWorkflowIr) -> PyResult<HashMap<String, S
 fn run_workflow_async<'py>(py: Python<'py>, ir: &PyWorkflowIr) -> PyResult<Bound<'py, PyAny>> {
     let rust_ir = ir.to_rust()?;
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        execute_ir(rust_ir)
+        execute_ir(rust_ir, HashMap::new())
             .await
             .map_err(|e| PyRuntimeError::new_err(format!("Execution error: {e}")))
     })
