@@ -440,7 +440,7 @@ fn run_specs_async<'py>(
 // ── Module registration ───────────────────────────────────────────────────────
 
 #[pymodule]
-fn devsper(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyNodeSpec>()?;
     m.add_class::<PyWorkflowIr>()?;
     m.add_function(wrap_pyfunction!(run, m)?)?;

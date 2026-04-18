@@ -8,7 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [lib]
-name = "devsper"
+name = "_core"
 crate-type = ["cdylib"]
 
 [dependencies]
