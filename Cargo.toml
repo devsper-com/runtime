@@ -10,6 +10,7 @@ members = [
     "crates/devsper-compiler",
     "crates/devsper-cluster",
     "crates/devsper-memory",
+    "crates/devsper-observability",
     "crates/devsper-bin",
     "crates/devsper-py",
     "worker",
