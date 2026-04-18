@@ -21,9 +21,4 @@ tracing = { workspace = true }
 futures = { workspace = true }
 tokio-stream = { workspace = true }
 
-[dependencies.redis]
-workspace = true
-optional = true
-
-[features]
-redis = ["dep:redis"]
+redis = { workspace = true }
