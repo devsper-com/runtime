@@ -320,6 +320,41 @@ pub struct Token {
     pub is_final: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RunState {
+    Created,
+    Running,
+    WaitingHITL,
+    Completed,
+    Failed,
+}
+
+impl RunState {
+    pub fn transition(&self, to: &RunState) -> Result<RunState, String> {
+        use RunState::*;
+        match (self, to) {
+            (Created, Running) => Ok(to.clone()),
+            (Running, WaitingHITL) => Ok(to.clone()),
+            (Running, Completed) => Ok(to.clone()),
+            (Running, Failed) => Ok(to.clone()),
+            (WaitingHITL, Running) => Ok(to.clone()),
+            (WaitingHITL, Failed) => Ok(to.clone()),
+            _ => Err(format!("invalid transition {:?} → {:?}", self, to)),
+        }
+    }
+}
+
+impl Default for RunState {
+    fn default() -> Self { RunState::Created }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MemoryScope {
+    Run,
+    Context,
+    Workflow,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -389,6 +424,35 @@ mod tests {
         match m2 {
             GraphMutation::AddNode { spec } => assert_eq!(spec.prompt, "a task"),
             _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn run_state_valid_transitions() {
+        use RunState::*;
+        assert!(Created.transition(&Running).is_ok());
+        assert!(Running.transition(&Completed).is_ok());
+        assert!(Running.transition(&WaitingHITL).is_ok());
+        assert!(WaitingHITL.transition(&Running).is_ok());
+        assert!(WaitingHITL.transition(&Failed).is_ok());
+        assert!(Running.transition(&Failed).is_ok());
+    }
+
+    #[test]
+    fn run_state_invalid_transitions() {
+        use RunState::*;
+        assert!(Created.transition(&Completed).is_err());
+        assert!(Completed.transition(&Running).is_err());
+        assert!(Failed.transition(&Running).is_err());
+        assert!(Created.transition(&WaitingHITL).is_err());
+    }
+
+    #[test]
+    fn memory_scope_variants_serialize() {
+        for scope in [MemoryScope::Run, MemoryScope::Context, MemoryScope::Workflow] {
+            let json = serde_json::to_string(&scope).unwrap();
+            let back: MemoryScope = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, scope);
         }
     }
 }
