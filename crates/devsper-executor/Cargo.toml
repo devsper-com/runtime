@@ -19,3 +19,4 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true }
+async-trait = { workspace = true }
