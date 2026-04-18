@@ -113,7 +113,7 @@ fn build_agent_fn(router: Arc<ModelRouter>, use_mock: bool) -> AgentFn {
                     content: spec.prompt.clone(),
                 }],
                 tools: vec![],
-                max_tokens: Some(4096),
+                max_tokens: Some(512),
                 temperature: None,
                 system: None,
             };
@@ -137,88 +137,66 @@ fn substitute(prompt: &str, vars: &HashMap<String, String>) -> String {
     out
 }
 
-/// Execute a WorkflowIr and return {node_id → output} results map.
+/// Execute a WorkflowIr topologically, threading task outputs into downstream prompts.
+/// Each "level" (tasks whose deps are all satisfied) runs in parallel.
 async fn execute_ir(ir: RustWorkflowIr, inputs: HashMap<String, String>) -> anyhow::Result<HashMap<String, String>> {
-    let run_id = RunId::new();
-
-    let graph_config = GraphConfig {
-        run_id: run_id.clone(),
-        snapshot_interval: 1000,
-        max_depth: ir.evolution.max_depth,
-    };
-    let (mut actor, handle, _events) = GraphActor::new(graph_config);
-
-    // Map IR task ids → fresh NodeIds and build specs
-    let task_id_map: HashMap<String, NodeId> = ir
-        .tasks
-        .iter()
-        .map(|t| (t.id.clone(), NodeId::new()))
-        .collect();
-
-    let specs: Vec<RustNodeSpec> = ir
-        .tasks
-        .iter()
-        .map(|t| {
-            let id = task_id_map[&t.id].clone();
-            let deps: Vec<NodeId> = t
-                .depends_on
-                .iter()
-                .filter_map(|dep| task_id_map.get(dep).cloned())
-                .collect();
-            let prompt = substitute(&t.prompt, &inputs);
-            RustNodeSpec::new(prompt)
-                .with_id(id)
-                .with_model(t.model.as_deref().unwrap_or(&ir.model))
-                .depends_on(deps)
-        })
-        .collect();
-
-    // Capture node id → task ir id mapping for result collection
-    let node_to_task: HashMap<NodeId, String> = task_id_map
-        .iter()
-        .map(|(task_id, node_id)| (node_id.clone(), task_id.clone()))
-        .collect();
-
-    actor.add_initial_nodes(specs);
-    tokio::spawn(actor.run());
-
     let (router, has_real) = build_router();
     let agent_fn = build_agent_fn(router, !has_real);
 
-    let scheduler = Arc::new(Scheduler::new(handle.clone()));
-    let executor = Executor::new(
-        ExecutorConfig {
-            worker_count: ir.workers,
-            poll_interval_ms: 50,
-        },
-        scheduler,
-        handle.clone(),
-        agent_fn,
-    );
+    // vars accumulates both user inputs and task outputs for {{key}} substitution
+    let mut vars: HashMap<String, String> = inputs;
+    let mut all_results: HashMap<String, String> = HashMap::new();
+    let mut done: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut remaining = ir.tasks.clone();
+    let default_model = ir.model.clone();
 
-    executor.run().await?;
+    while !remaining.is_empty() {
+        let (ready, waiting): (Vec<_>, Vec<_>) = remaining
+            .into_iter()
+            .partition(|t| t.depends_on.iter().all(|dep| done.contains(dep)));
 
-    // Collect results from snapshot
-    let snap = handle.snapshot().await;
-    let mut results = HashMap::new();
-    if let Some(snap) = snap {
-        for (node_id, node) in &snap.nodes {
-            let key = node_to_task
-                .get(node_id)
-                .cloned()
-                .unwrap_or_else(|| node_id.0.clone());
-            let value = node
+        if ready.is_empty() {
+            return Err(anyhow::anyhow!("Cycle or unresolvable dependency in workflow"));
+        }
+
+        // Run this level in parallel
+        let mut join_set = tokio::task::JoinSet::new();
+        for task in &ready {
+            let prompt = substitute(&task.prompt, &vars);
+            let model = task.model.as_deref().unwrap_or(&default_model).to_string();
+            let task_id = task.id.clone();
+            let agent = agent_fn.clone();
+            join_set.spawn(async move {
+                let spec = RustNodeSpec::new(prompt).with_model(model);
+                let result = agent(spec).await;
+                (task_id, result)
+            });
+        }
+
+        while let Some(res) = join_set.join_next().await {
+            let (task_id, agent_result) = res.map_err(|e| anyhow::anyhow!("Task panicked: {e}"))?;
+            let content = agent_result
+                .map_err(|e| anyhow::anyhow!("Task {task_id} failed: {e}"))?
                 .result
-                .as_ref()
-                .and_then(|r| r.get("content"))
+                .get("content")
                 .and_then(|c| c.as_str())
                 .unwrap_or("")
                 .to_string();
-            results.insert(key, value);
+            // Truncate task output used as template var to avoid context overflow in downstream tasks
+            let var_val = if content.len() > 400 {
+                format!("{}…[truncated]", &content[..400])
+            } else {
+                content.clone()
+            };
+            vars.insert(task_id.clone(), var_val);
+            all_results.insert(task_id.clone(), content);
+            done.insert(task_id);
         }
+
+        remaining = waiting;
     }
 
-    Ok(results)
+    Ok(all_results)
 }
 
 /// Execute a list of NodeSpecs directly and return results.
