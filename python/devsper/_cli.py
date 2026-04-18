@@ -78,11 +78,22 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"], "max_content_width": 
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose logging.")
 @click.pass_context
 def cli(ctx: click.Context, verbose: bool) -> None:
-    """Devsper — self-evolving AI workflow engine.
+    """AI swarm runtime built in Rust.
 
     \b
-    Run AI workflows, manage provider credentials, and orchestrate
-    distributed agent clusters.
+    Give it a task — it breaks it into a graph of steps, runs them in
+    parallel across your LLM provider, and returns the result.
+
+    \b
+    Quick start:
+      devsper swarm "write a blog post about Rust"
+      devsper run workflow.devsper --input topic="climate change"
+
+    \b
+    Providers (set via env or keychain):
+      ANTHROPIC_API_KEY   OPENAI_API_KEY      GITHUB_TOKEN
+      LMSTUDIO_BASE_URL   OLLAMA_HOST         LITELLM_BASE_URL
+      ZAI_API_KEY         AZURE_OPENAI_*      AZURE_FOUNDRY_*
 
     \b
     Shell completions:
@@ -94,6 +105,97 @@ def cli(ctx: click.Context, verbose: bool) -> None:
     ctx.obj["verbose"] = verbose
 
 # ── run ──────────────────────────────────────────────────────────────────────
+
+@cli.command()
+@click.argument("task")
+@click.option("-o", "--output", default=None, type=click.Path(),
+              help="Output directory (default: temp dir).")
+@click.option("--model", default=None, metavar="MODEL",
+              help="LLM model (e.g. google/gemma-4-e4b, claude-sonnet-4-6).")
+@click.option("--workers", default=4, show_default=True, type=int,
+              help="Parallel worker count.")
+@click.option("--no-plan", is_flag=True, default=False,
+              help="Skip planning step, run as single task.")
+def swarm(task: str, output: Optional[str], model: Optional[str], workers: int, no_plan: bool) -> None:
+    """Run any task through the AI swarm.
+
+    \b
+    The swarm plans the task into parallel subtasks, executes them
+    concurrently, and writes all results to an output directory.
+
+    \b
+    Examples:
+      devsper swarm "write a research paper on quantum computing"
+      devsper swarm "build a todo app with Redis" --model google/gemma-4-e4b
+      devsper swarm "analyze this codebase" -o ./results --no-plan
+    """
+    import json as _json
+    import os
+    import re
+    import tempfile
+
+    from devsper._core import NodeSpec, run_specs
+
+    click.echo(f"Task: {task}")
+
+    if not no_plan:
+        click.echo("Planning subtasks...")
+        plan_prompt = (
+            "Break this task into 3-5 independent subtasks for parallel AI execution.\n"
+            f"Task: {task}\n\n"
+            "Return ONLY a valid JSON array, no explanation:\n"
+            '[{"id":"step1","name":"short name","prompt":"full prompt","depends_on":[]}]'
+        )
+        plan_spec = NodeSpec(plan_prompt, model=model)
+        plan_result = run_specs([plan_spec])
+        plan_text = next(iter(plan_result.values()), "")
+
+        match = re.search(r"\[.*?\]", plan_text, re.DOTALL)
+        steps: list[dict] = []
+        if match:
+            try:
+                steps = _json.loads(match.group())
+            except Exception:
+                pass
+
+        if steps:
+            click.echo(f"Plan: {len(steps)} steps")
+            id_to_spec: dict[str, NodeSpec] = {}
+            for step in steps:
+                deps = [id_to_spec[d] for d in step.get("depends_on", []) if d in id_to_spec]
+                spec = NodeSpec(step["prompt"], model=model, depends_on=deps or None)
+                id_to_spec[step["id"]] = spec
+            specs = list(id_to_spec.values())
+            names = [s.get("name", s["id"]) for s in steps]
+        else:
+            click.echo("Plan parse failed — running as single task.")
+            specs = [NodeSpec(task, model=model)]
+            names = ["result"]
+    else:
+        specs = [NodeSpec(task, model=model)]
+        names = ["result"]
+
+    click.echo(f"Executing {len(specs)} task(s) in parallel...")
+    results = run_specs(specs)
+
+    out_dir = output or tempfile.mkdtemp(prefix="devsper-swarm-")
+    os.makedirs(out_dir, exist_ok=True)
+
+    for (node_id, content), name in zip(results.items(), names):
+        safe_name = re.sub(r"[^\w\-]", "_", name)
+        with open(os.path.join(out_dir, f"{safe_name}.md"), "w") as f:
+            f.write(f"# {name}\n\n{content}\n")
+
+    combined = "\n\n---\n\n".join(
+        f"# {n}\n\n{c}" for n, c in zip(names, results.values())
+    )
+    combined_path = os.path.join(out_dir, "combined.md")
+    with open(combined_path, "w") as f:
+        f.write(f"# {task}\n\n{combined}\n")
+
+    click.echo(f"\nDone → {out_dir}/")
+    click.echo(f"combined: {combined_path}")
+
 
 @cli.command()
 @click.argument("workflow", type=click.Path(exists=True, dir_okay=False))

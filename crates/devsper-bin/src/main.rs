@@ -361,7 +361,7 @@ async fn run_command(
         router.add_provider(Arc::new(LiteLlmProvider::new(base_url, api_key)));
         has_real_provider = true;
     }
-    // LM Studio
+    // LM Studio — counts as real if URL is explicitly set
     {
         let base_url = std::env::var("LMSTUDIO_BASE_URL")
             .unwrap_or_else(|_| "http://localhost:1234".into());
@@ -371,9 +371,16 @@ async fn run_command(
             provider = provider.with_api_key(api_key);
         }
         router.add_provider(Arc::new(provider));
+        if std::env::var("LMSTUDIO_BASE_URL").is_ok() {
+            has_real_provider = true;
+        }
     }
+    // Ollama — counts as real if host is explicitly set
     let ollama_host = std::env::var("OLLAMA_HOST")
         .unwrap_or_else(|_| "http://localhost:11434".into());
+    if std::env::var("OLLAMA_HOST").is_ok() {
+        has_real_provider = true;
+    }
     router.add_provider(Arc::new(OllamaProvider::new().with_base_url(ollama_host)));
     router.add_provider(Arc::new(MockProvider::new("[Task completed by agent]")));
     if !has_real_provider {
