@@ -68,3 +68,20 @@ pub trait ToolExecutor: Send + Sync {
     /// List available tools
     fn list_tools(&self) -> Vec<ToolDef>;
 }
+
+use crate::events::EventEnvelope;
+use crate::types::RunId;
+use std::pin::Pin;
+use tokio_stream::Stream;
+
+/// Event bus for strongly-typed GraphEvent routing.
+/// Separate from `Bus` (which carries BusMessage for task dispatch).
+#[async_trait::async_trait]
+pub trait EventBus: Send + Sync {
+    /// Publish an event envelope. Non-blocking.
+    async fn publish(&self, envelope: EventEnvelope) -> Result<()>;
+
+    /// Subscribe to all events for a specific run.
+    /// Returns a stream yielding envelopes in emission order.
+    async fn subscribe(&self, run_id: &RunId) -> Result<Pin<Box<dyn Stream<Item = EventEnvelope> + Send>>>;
+}
