@@ -19,6 +19,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true }
+tokio-stream = { workspace = true }
 
 [dependencies.redis]
 workspace = true

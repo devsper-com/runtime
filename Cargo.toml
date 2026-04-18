@@ -46,5 +46,5 @@ redis        = { version = "0.27", features = ["tokio-comp"] }
 axum         = "0.7"
 clap         = { version = "4", features = ["derive"] }
 thiserror    = "1"
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
 futures      = "0.3"

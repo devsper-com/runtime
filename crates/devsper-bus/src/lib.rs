@@ -1,7 +1,9 @@
+pub mod event_bus;
 pub mod kafka;
 pub mod memory;
 pub mod redis;
 
+pub use event_bus::InMemoryEventBus;
 pub use memory::InMemoryBus;
 
 use devsper_core::Bus;
