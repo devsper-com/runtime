@@ -11,12 +11,17 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-devsper-core = { path = "../devsper-core", version = "0.2.0" }
-devsper-graph = { path = "../devsper-graph", version = "0.2.0" }
-devsper-scheduler = { path = "../devsper-scheduler", version = "0.2.0" }
+devsper-core = { path = "../devsper-core", version = "0.3.0" }
+devsper-graph = { path = "../devsper-graph", version = "0.3.0" }
+devsper-scheduler = { path = "../devsper-scheduler", version = "0.3.0" }
 tokio = { workspace = true, features = ["sync", "macros", "rt", "time"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true }
 async-trait = { workspace = true }
+tokio-stream = { workspace = true }
+
+[dev-dependencies]
+devsper-bus = { path = "../devsper-bus", version = "0.3.0" }
+tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread", "time"] }

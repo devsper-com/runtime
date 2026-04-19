@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-04-19
+
+### Added
+
+- **`devsper-core`**: `EventEnvelope` wrapper (event_id UUID, run_id, sequence u64) for all bus events
+- **`devsper-core`**: Expanded `GraphEvent` from 14 → 26 variants: `NodeOutput`, `AgentStarted/Completed`, `ToolCalled/Completed/Failed`, `MemoryRead/Written`, `HitlRequested/Approved/Rejected`, `RunStateChanged`; all variants carry `ts: u64`; exhaustive `ts()` method
+- **`devsper-core`**: `RunState` machine (`Created/Running/WaitingHITL/Completed/Failed`) with `transition()` guard
+- **`devsper-core`**: `MemoryScope` enum (`Run/Context/Workflow`)
+- **`devsper-core`**: `EventBus` async trait (`publish` + `subscribe`) in `traits.rs`
+- **`devsper-bus`**: `InMemoryEventBus` — broadcast channel per run_id, 4096 capacity, fan-out to multiple subscribers
+- **`devsper-bus`**: `RedisBus` — Redis pub/sub with PING validation, mpsc forwarder → ReceiverStream; integration test skips when `REDIS_URL` absent
+- **`devsper-graph`**: `GraphMutation::RemoveNode` + `GraphMutation::ModifyNode` variants fully wired in `GraphActor::apply_mutation`; index_map rebuild after petgraph swap-remove
+- **`devsper-graph`**: Deterministic replay — `replay(envelopes: &[EventEnvelope]) -> ReplayState` in `crates/devsper-graph/src/replay.rs`; sorts by sequence, reconstructs nodes/edges/run_state/HITL transitions
+- **`devsper-observability`**: New crate — `NodeTrace` + `RunTrace` structs (latency_ms, token counts, cost_usd); `TraceCollector` with `ingest(&EventEnvelope)` + `snapshot() -> RunTrace`; cost model $3/1M input, $15/1M output
+- **`devsper-memory`**: `ScopedMemoryStore` — namespaced key isolation (`run:{id}` / `ctx:{id}` / `wf:{id}`) over any `MemoryStore` impl
+- **`devsper-executor`**: `HardenedToolExecutor` — configurable timeout + retry loop (`ToolPolicy`); exhaustion returns `ToolResult { is_error: true }`
+- **`devsper-executor`**: `StreamingExecutor` — drives `StreamingAgentFn` (returns `Stream<Item = StreamChunk>`), publishes `NodeStarted` → `NodeOutput` chunks → `NodeCompleted/NodeFailed` through `EventBus`
+
+### Fixed
+
+- `TraceCollector::ingest` — `RunFailed` arm now computes `total_latency_ms`; `NodeFailed` arm now computes `node.latency_ms`
+
 ## [2.7.2] — 2026-04-07
 
 ### Changed

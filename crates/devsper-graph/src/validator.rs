@@ -27,6 +27,20 @@ impl MutationValidator {
             GraphMutation::InjectBefore { .. } => Ok(()),
             // SplitNode replaces an existing node with new ones — no new cycles possible
             GraphMutation::SplitNode { .. } => Ok(()),
+            GraphMutation::RemoveNode { id } => {
+                if !index_map.contains_key(id) {
+                    Err(format!("Node not found: {id}"))
+                } else {
+                    Ok(())
+                }
+            }
+            GraphMutation::ModifyNode { id, .. } => {
+                if !index_map.contains_key(id) {
+                    Err(format!("Node not found: {id}"))
+                } else {
+                    Ok(())
+                }
+            }
             // All other mutations don't add edges
             _ => Ok(()),
         }

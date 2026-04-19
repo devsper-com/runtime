@@ -478,7 +478,7 @@ checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
 
 [[package]]
 name = "devsper-bin"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -507,7 +507,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-bus"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -517,12 +517,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-stream",
  "tracing",
 ]
 
 [[package]]
 name = "devsper-cluster"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -539,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-compiler"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "devsper-core",
@@ -553,33 +554,37 @@ dependencies = [
 
 [[package]]
 name = "devsper-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio-stream",
  "uuid",
 ]
 
 [[package]]
 name = "devsper-executor"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "devsper-bus",
  "devsper-core",
  "devsper-graph",
  "devsper-scheduler",
  "futures",
  "serde_json",
  "tokio",
+ "tokio-stream",
  "tracing",
 ]
 
 [[package]]
 name = "devsper-graph"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "devsper-core",
@@ -594,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-memory"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -608,8 +613,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "devsper-observability"
+version = "0.3.0"
+dependencies = [
+ "async-trait",
+ "devsper-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
 name = "devsper-plugins"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "devsper-core",
@@ -622,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-providers"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -638,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-py"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "devsper-cluster",
@@ -656,7 +674,7 @@ dependencies = [
 
 [[package]]
 name = "devsper-scheduler"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "devsper-core",
@@ -2740,6 +2758,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

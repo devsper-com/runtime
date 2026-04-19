@@ -481,6 +481,33 @@ impl GraphActor {
                     }
                 }
             }
+
+            GraphMutation::RemoveNode { id } => {
+                if let Some(&idx) = self.index_map.get(&id) {
+                    self.graph.remove_node(idx);
+                    self.nodes.remove(&id);
+                    self.ready_set.remove(&id);
+                    // petgraph swap-removes; rebuild map so stale indices don't leak
+                    self.rebuild_index_map();
+                    self.emit(GraphEvent::NodeAbandoned { id, ts: now_ms() }).await;
+                }
+            }
+
+            GraphMutation::ModifyNode { id, prompt, model } => {
+                if let Some(node) = self.nodes.get_mut(&id) {
+                    node.spec.prompt = prompt;
+                    node.spec.model = model;
+                }
+            }
+        }
+    }
+
+    fn rebuild_index_map(&mut self) {
+        self.index_map.clear();
+        for idx in self.graph.node_indices() {
+            if let Some(id) = self.graph.node_weight(idx) {
+                self.index_map.insert(id.clone(), idx);
+            }
         }
     }
 

@@ -11,7 +11,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-devsper-core = { path = "../devsper-core", version = "0.2.0" }
+devsper-core = { path = "../devsper-core", version = "0.3.0" }
 petgraph = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros", "rt", "time"] }
 serde = { workspace = true }

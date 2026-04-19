@@ -161,6 +161,8 @@ pub enum GraphMutation {
     MarkSpeculative { nodes: Vec<NodeId> },
     ConfirmSpeculative { nodes: Vec<NodeId> },
     DiscardSpeculative { nodes: Vec<NodeId> },
+    RemoveNode { id: NodeId },
+    ModifyNode { id: NodeId, prompt: String, model: Option<String> },
 }
 
 /// A snapshot of the full graph state for checkpoint/recovery
@@ -412,6 +414,29 @@ mod tests {
         assert!(!make_node(NodeStatus::Running).is_terminal());
         assert!(!make_node(NodeStatus::Ready).is_terminal());
         assert!(!make_node(NodeStatus::Speculative).is_terminal());
+    }
+
+    #[test]
+    fn remove_node_mutation_serializes() {
+        let m = GraphMutation::RemoveNode { id: NodeId::new() };
+        let json = serde_json::to_string(&m).unwrap();
+        let m2: GraphMutation = serde_json::from_str(&json).unwrap();
+        assert!(matches!(m2, GraphMutation::RemoveNode { .. }));
+    }
+
+    #[test]
+    fn modify_node_mutation_serializes() {
+        let m = GraphMutation::ModifyNode {
+            id: NodeId::new(),
+            prompt: "updated prompt".to_string(),
+            model: Some("claude-opus-4-7".to_string()),
+        };
+        let json = serde_json::to_string(&m).unwrap();
+        let m2: GraphMutation = serde_json::from_str(&json).unwrap();
+        match m2 {
+            GraphMutation::ModifyNode { prompt, .. } => assert_eq!(prompt, "updated prompt"),
+            _ => panic!("wrong variant"),
+        }
     }
 
     #[test]

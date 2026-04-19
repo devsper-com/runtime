@@ -15,7 +15,7 @@ default = ["lua-vendored"]
 lua-vendored = ["mlua/vendored"]
 
 [dependencies]
-devsper-core = { path = "../devsper-core", version = "0.2.0" }
+devsper-core = { path = "../devsper-core", version = "0.3.0" }
 mlua = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros", "rt", "fs"] }
 anyhow = { workspace = true }

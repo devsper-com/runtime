@@ -31,6 +31,9 @@ impl TraceCollector {
             GraphEvent::RunFailed { ts, .. } => {
                 trace.state = RunState::Failed;
                 trace.completed_at = Some(*ts);
+                if let (Some(start), Some(end)) = (trace.started_at, trace.completed_at) {
+                    trace.total_latency_ms = Some(end.saturating_sub(start));
+                }
             }
             GraphEvent::RunStateChanged { to, .. } => {
                 trace.state = to.clone();
@@ -53,6 +56,9 @@ impl TraceCollector {
                 node.completed_at = Some(*ts);
                 node.status = NodeStatus::Failed;
                 node.error = Some(error.clone());
+                if let Some(start) = node.started_at {
+                    node.latency_ms = Some(ts.saturating_sub(start));
+                }
             }
             GraphEvent::AgentStarted { node_id, model, .. } => {
                 let node = trace.nodes.entry(node_id.clone()).or_insert_with(|| NodeTrace::new(node_id.clone()));
@@ -149,6 +155,46 @@ mod tests {
         let node = trace.nodes.get(&node_id).unwrap();
         assert_eq!(node.latency_ms, Some(300));
         assert_eq!(node.status, NodeStatus::Completed);
+    }
+
+    #[tokio::test]
+    async fn run_failed_computes_latency() {
+        let run_id = RunId::new();
+        let collector = TraceCollector::new(run_id.clone());
+        let start_ts = now_ms();
+
+        collector.ingest(&EventEnvelope::new(run_id.clone(), 1,
+            GraphEvent::RunStarted { run_id: run_id.clone(), ts: start_ts }
+        )).await;
+
+        collector.ingest(&EventEnvelope::new(run_id.clone(), 2,
+            GraphEvent::RunFailed { run_id: run_id.clone(), error: "boom".to_string(), ts: start_ts + 250 }
+        )).await;
+
+        let trace = collector.snapshot().await;
+        assert_eq!(trace.state, RunState::Failed);
+        assert_eq!(trace.total_latency_ms, Some(250));
+    }
+
+    #[tokio::test]
+    async fn node_failed_computes_latency() {
+        let run_id = RunId::new();
+        let node_id = NodeId::new();
+        let collector = TraceCollector::new(run_id.clone());
+        let ts = now_ms();
+
+        collector.ingest(&EventEnvelope::new(run_id.clone(), 1,
+            GraphEvent::NodeStarted { id: node_id.clone(), ts }
+        )).await;
+
+        collector.ingest(&EventEnvelope::new(run_id.clone(), 2,
+            GraphEvent::NodeFailed { id: node_id.clone(), error: "oops".to_string(), ts: ts + 400 }
+        )).await;
+
+        let trace = collector.snapshot().await;
+        let node = trace.nodes.get(&node_id).unwrap();
+        assert_eq!(node.latency_ms, Some(400));
+        assert_eq!(node.status, NodeStatus::Failed);
     }
 
     #[tokio::test]

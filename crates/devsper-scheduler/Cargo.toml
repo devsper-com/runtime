@@ -11,8 +11,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-devsper-core = { path = "../devsper-core", version = "0.2.0" }
-devsper-graph = { path = "../devsper-graph", version = "0.2.0" }
+devsper-core = { path = "../devsper-core", version = "0.3.0" }
+devsper-graph = { path = "../devsper-graph", version = "0.3.0" }
 tokio = { workspace = true, features = ["sync", "macros", "rt"] }
 anyhow = { workspace = true }
 tracing = { workspace = true }

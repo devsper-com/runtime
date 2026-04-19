@@ -15,8 +15,8 @@ default = ["lua-vendored"]
 lua-vendored = ["mlua/vendored", "devsper-plugins/lua-vendored"]
 
 [dependencies]
-devsper-core = { path = "../devsper-core", version = "0.2.0" }
-devsper-plugins = { path = "../devsper-plugins", version = "0.2.0" }
+devsper-core = { path = "../devsper-core", version = "0.3.0" }
+devsper-plugins = { path = "../devsper-plugins", version = "0.3.0" }
 mlua = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
