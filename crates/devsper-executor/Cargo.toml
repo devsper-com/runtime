@@ -21,6 +21,7 @@ tracing = { workspace = true }
 futures = { workspace = true }
 async-trait = { workspace = true }
 tokio-stream = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 devsper-bus = { path = "../devsper-bus", version = "0.3.0" }
