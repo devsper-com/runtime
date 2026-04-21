@@ -48,6 +48,9 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
       - name: Cache Cargo registry
         uses: actions/cache@v4
         with:
@@ -58,37 +61,58 @@ jobs:
           key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      # Checks crates.io — skips if version already published, fails loudly on real errors.
+      - name: Define publish helper
+        run: |
+          cat << 'EOF' > /usr/local/bin/publish-if-new
+          #!/usr/bin/env bash
+          set -euo pipefail
+          CRATE=$1
+          VERSION=$(cargo metadata --no-deps --manifest-path "crates/${CRATE}/Cargo.toml" --format-version 1 \
+            | jq -r '.packages[0].version')
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "User-Agent: devsper-publish-ci" \
+            "https://crates.io/api/v1/crates/${CRATE}/${VERSION}")
+          if [ "$HTTP" = "200" ]; then
+            echo "::notice::${CRATE} v${VERSION} already on crates.io — skipping"
+          else
+            echo "Publishing ${CRATE} v${VERSION}..."
+            cargo publish -p "${CRATE}" --no-verify
+          fi
+          EOF
+          chmod +x /usr/local/bin/publish-if-new
+
       # Publish in dependency order — each layer waits for previous to index.
       - name: Publish devsper-core
-        run: cargo publish -p devsper-core --no-verify || true
+        run: publish-if-new devsper-core
       - run: sleep 20
 
       - name: Publish devsper-graph
-        run: cargo publish -p devsper-graph --no-verify || true
+        run: publish-if-new devsper-graph
       - name: Publish devsper-bus
-        run: cargo publish -p devsper-bus --no-verify || true
+        run: publish-if-new devsper-bus
       - run: sleep 20
 
       - name: Publish devsper-scheduler
-        run: cargo publish -p devsper-scheduler --no-verify || true
+        run: publish-if-new devsper-scheduler
       - name: Publish devsper-executor
-        run: cargo publish -p devsper-executor --no-verify || true
+        run: publish-if-new devsper-executor
       - name: Publish devsper-plugins
-        run: cargo publish -p devsper-plugins --no-verify || true
+        run: publish-if-new devsper-plugins
       - name: Publish devsper-providers
-        run: cargo publish -p devsper-providers --no-verify || true
+        run: publish-if-new devsper-providers
       - name: Publish devsper-memory
-        run: cargo publish -p devsper-memory --no-verify || true
+        run: publish-if-new devsper-memory
       - run: sleep 20
 
       - name: Publish devsper-compiler
-        run: cargo publish -p devsper-compiler --no-verify || true
+        run: publish-if-new devsper-compiler
       - name: Publish devsper-cluster
-        run: cargo publish -p devsper-cluster --no-verify || true
+        run: publish-if-new devsper-cluster
       - run: sleep 20
 
       - name: Publish devsper-bin
-        run: cargo publish -p devsper-bin --no-verify || true
+        run: publish-if-new devsper-bin
 
   build-wheels:
     name: Build wheels (${{ matrix.target }})

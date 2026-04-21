@@ -43,6 +43,7 @@ uuid         = { version = "1", features = ["v4"] }
 petgraph     = "0.6"
 mlua         = { version = "0.10", features = ["lua54", "async"] }
 reqwest      = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+rdkafka      = { version = "0.36", features = ["cmake-build", "tokio"] }
 redis        = { version = "0.27", features = ["tokio-comp"] }
 axum         = "0.7"
 clap         = { version = "4", features = ["derive"] }
