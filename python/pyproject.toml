@@ -21,6 +21,9 @@ dependencies = [
     "keyring>=24.0",
 ]
 
+[project.optional-dependencies]
+vektori = ["vektori[postgres]>=0.1"]
+
 [project.scripts]
 devsper = "devsper._cli:main"
 
@@ -29,3 +32,8 @@ bindings = "pyo3"
 module-name = "devsper._core"
 manifest-path = "../crates/devsper-py/Cargo.toml"
 strip = true
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=1.3.0",
+]

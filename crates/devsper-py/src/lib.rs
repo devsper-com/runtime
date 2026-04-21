@@ -1,9 +1,12 @@
+mod memory_bridge;
+
 use devsper_compiler::{WorkflowIr as RustWorkflowIr, WorkflowLoader};
 use devsper_core::{
     LlmMessage, LlmProvider, LlmRequest, LlmRole, NodeId, NodeSpec as RustNodeSpec, RunId,
 };
 use devsper_executor::{AgentFn, AgentOutput, Executor, ExecutorConfig};
 use devsper_graph::{GraphActor, GraphConfig};
+use devsper_memory::{MemoryRouter, RetrievalStrategy};
 use devsper_providers::{
     anthropic::AnthropicProvider, ollama::OllamaProvider, openai::OpenAiProvider,
     AzureFoundryProvider, AzureOpenAiProvider, GithubModelsProvider, LiteLlmProvider,
@@ -31,8 +34,7 @@ fn build_router() -> (Arc<ModelRouter>, bool) {
         has_real = true;
     }
     if let Ok(key) = std::env::var("ZAI_API_KEY") {
-        let base = std::env::var("ZAI_BASE_URL")
-            .unwrap_or_else(|_| "https://api.z.ai/v1".into());
+        let base = std::env::var("ZAI_BASE_URL").unwrap_or_else(|_| "https://api.z.ai/v1".into());
         router.add_provider(Arc::new(OpenAiProvider::zai(key).with_base_url(base)));
         has_real = true;
     }
@@ -45,8 +47,8 @@ fn build_router() -> (Arc<ModelRouter>, bool) {
         std::env::var("AZURE_OPENAI_ENDPOINT"),
         std::env::var("AZURE_OPENAI_DEPLOYMENT"),
     ) {
-        let api_version = std::env::var("AZURE_OPENAI_API_VERSION")
-            .unwrap_or_else(|_| "2024-02-01".into());
+        let api_version =
+            std::env::var("AZURE_OPENAI_API_VERSION").unwrap_or_else(|_| "2024-02-01".into());
         router.add_provider(Arc::new(AzureOpenAiProvider::new(
             key,
             endpoint,
@@ -60,7 +62,9 @@ fn build_router() -> (Arc<ModelRouter>, bool) {
         std::env::var("AZURE_FOUNDRY_ENDPOINT"),
         std::env::var("AZURE_FOUNDRY_DEPLOYMENT"),
     ) {
-        router.add_provider(Arc::new(AzureFoundryProvider::new(key, endpoint, deployment)));
+        router.add_provider(Arc::new(AzureFoundryProvider::new(
+            key, endpoint, deployment,
+        )));
         has_real = true;
     }
     if let Ok(base_url) = std::env::var("LITELLM_BASE_URL") {
@@ -71,8 +75,8 @@ fn build_router() -> (Arc<ModelRouter>, bool) {
     // LM Studio — fallback provider when URL explicitly set
     {
         let lmstudio_explicit = std::env::var("LMSTUDIO_BASE_URL").is_ok();
-        let base_url = std::env::var("LMSTUDIO_BASE_URL")
-            .unwrap_or_else(|_| "http://localhost:1234".into());
+        let base_url =
+            std::env::var("LMSTUDIO_BASE_URL").unwrap_or_else(|_| "http://localhost:1234".into());
         let api_key = std::env::var("LMSTUDIO_API_KEY").unwrap_or_default();
         let mut provider = LmStudioProvider::new().with_base_url(base_url);
         if !api_key.is_empty() {
@@ -86,10 +90,15 @@ fn build_router() -> (Arc<ModelRouter>, bool) {
     }
     // Ollama — fallback provider when host explicitly set
     let ollama_explicit = std::env::var("OLLAMA_HOST").is_ok();
-    let ollama_host = std::env::var("OLLAMA_HOST")
-        .unwrap_or_else(|_| "http://localhost:11434".into());
+    let ollama_host =
+        std::env::var("OLLAMA_HOST").unwrap_or_else(|_| "http://localhost:11434".into());
     let ollama = OllamaProvider::new().with_base_url(ollama_host);
-    let ollama = if ollama_explicit { has_real = true; ollama.as_fallback() } else { ollama };
+    let ollama = if ollama_explicit {
+        has_real = true;
+        ollama.as_fallback()
+    } else {
+        ollama
+    };
     router.add_provider(Arc::new(ollama));
     router.add_provider(Arc::new(MockProvider::new("[Task completed by agent]")));
 
@@ -139,7 +148,10 @@ fn substitute(prompt: &str, vars: &HashMap<String, String>) -> String {
 
 /// Execute a WorkflowIr topologically, threading task outputs into downstream prompts.
 /// Each "level" (tasks whose deps are all satisfied) runs in parallel.
-async fn execute_ir(ir: RustWorkflowIr, inputs: HashMap<String, String>) -> anyhow::Result<HashMap<String, String>> {
+async fn execute_ir(
+    ir: RustWorkflowIr,
+    inputs: HashMap<String, String>,
+) -> anyhow::Result<HashMap<String, String>> {
     let (router, has_real) = build_router();
     let agent_fn = build_agent_fn(router, !has_real);
 
@@ -156,7 +168,9 @@ async fn execute_ir(ir: RustWorkflowIr, inputs: HashMap<String, String>) -> anyh
             .partition(|t| t.depends_on.iter().all(|dep| done.contains(dep)));
 
         if ready.is_empty() {
-            return Err(anyhow::anyhow!("Cycle or unresolvable dependency in workflow"));
+            return Err(anyhow::anyhow!(
+                "Cycle or unresolvable dependency in workflow"
+            ));
         }
 
         // Run this level in parallel
@@ -320,15 +334,19 @@ impl PyWorkflowIr {
     #[getter]
     fn tasks(&self) -> PyResult<Vec<HashMap<String, String>>> {
         let ir = self.to_rust()?;
-        Ok(ir.tasks.iter().map(|t| {
-            let mut m = HashMap::new();
-            m.insert("id".to_string(), t.id.clone());
-            m.insert("prompt".to_string(), t.prompt.clone());
-            if let Some(model) = &t.model {
-                m.insert("model".to_string(), model.clone());
-            }
-            m
-        }).collect())
+        Ok(ir
+            .tasks
+            .iter()
+            .map(|t| {
+                let mut m = HashMap::new();
+                m.insert("id".to_string(), t.id.clone());
+                m.insert("prompt".to_string(), t.prompt.clone());
+                if let Some(model) = &t.model {
+                    m.insert("model".to_string(), model.clone());
+                }
+                m
+            })
+            .collect())
     }
 }
 
@@ -387,22 +405,38 @@ fn load_workflow(path: String) -> PyResult<PyWorkflowIr> {
 
 /// Run a pre-loaded WorkflowIr. Blocking.
 #[pyfunction]
-fn run_workflow(py: Python<'_>, ir: &PyWorkflowIr) -> PyResult<HashMap<String, String>> {
+#[pyo3(signature = (ir, memory=None))]
+fn run_workflow(
+    py: Python<'_>,
+    ir: &PyWorkflowIr,
+    memory: Option<Py<PyAny>>,
+) -> PyResult<HashMap<String, String>> {
     let rust_ir = ir.to_rust()?;
+    let memory_router = build_memory_router(memory)?;
     py.allow_threads(|| {
         tokio::runtime::Runtime::new()
             .map_err(|e| PyRuntimeError::new_err(format!("Tokio runtime error: {e}")))?
-            .block_on(execute_ir(rust_ir, HashMap::new()))
+            .block_on(execute_ir_with_memory(
+                rust_ir,
+                HashMap::new(),
+                memory_router,
+            ))
             .map_err(|e| PyRuntimeError::new_err(format!("Execution error: {e}")))
     })
 }
 
 /// Async version of run_workflow().
 #[pyfunction]
-fn run_workflow_async<'py>(py: Python<'py>, ir: &PyWorkflowIr) -> PyResult<Bound<'py, PyAny>> {
+#[pyo3(signature = (ir, memory=None))]
+fn run_workflow_async<'py>(
+    py: Python<'py>,
+    ir: &PyWorkflowIr,
+    memory: Option<Py<PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
     let rust_ir = ir.to_rust()?;
+    let memory_router = build_memory_router(memory)?;
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        execute_ir(rust_ir, HashMap::new())
+        execute_ir_with_memory(rust_ir, HashMap::new(), memory_router)
             .await
             .map_err(|e| PyRuntimeError::new_err(format!("Execution error: {e}")))
     })
@@ -499,12 +533,50 @@ fn inspect(run_id: String) -> PyResult<()> {
     Ok(())
 }
 
+// ── Memory helpers ────────────────────────────────────────────────────────────
+
+/// Build a MemoryRouter from an optional Python memory object.
+/// If memory is None, returns a local MemoryRouter (HashMap-backed).
+/// If memory is provided, wraps it as an external MemoryStore.
+fn build_memory_router(memory: Option<Py<PyAny>>) -> PyResult<MemoryRouter> {
+    match memory {
+        Some(py_mem) => {
+            let store = memory_bridge::wrap_memory_store(py_mem)
+                .map_err(|e| PyRuntimeError::new_err(format!("Invalid memory bridge: {e}")))?;
+            Ok(MemoryRouter::with_external(
+                store,
+                RetrievalStrategy::Hybrid,
+            ))
+        }
+        None => Ok(MemoryRouter::local(RetrievalStrategy::Hybrid)),
+    }
+}
+
+/// Execute a WorkflowIr with memory support.
+/// Currently memory is accepted but not yet threaded into the execution engine
+/// (future work: inject into Executor for context retrieval between tasks).
+/// For now, this is a thin wrapper around execute_ir that validates memory setup.
+async fn execute_ir_with_memory(
+    ir: RustWorkflowIr,
+    inputs: HashMap<String, String>,
+    _memory: MemoryRouter,
+) -> anyhow::Result<HashMap<String, String>> {
+    // TODO: Thread _memory through Executor/Scheduler so tasks can
+    // store and retrieve context between steps. For now, the memory
+    // router is validated and ready but execution proceeds without it.
+    //
+    // The immediate value is that callers can verify their memory bridge
+    // works (it's constructed and validated in build_memory_router).
+    execute_ir(ir, inputs).await
+}
+
 // ── Module registration ───────────────────────────────────────────────────────
 
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyNodeSpec>()?;
     m.add_class::<PyWorkflowIr>()?;
+    m.add_class::<memory_bridge::PyExternalMemory>()?;
     m.add_function(wrap_pyfunction!(run, m)?)?;
     m.add_function(wrap_pyfunction!(run_async, m)?)?;
     m.add_function(wrap_pyfunction!(load_workflow, m)?)?;
