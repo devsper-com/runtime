@@ -4,6 +4,7 @@ pub mod memory;
 pub mod redis;
 
 pub use event_bus::InMemoryEventBus;
+pub use kafka::KafkaBus;
 pub use memory::InMemoryBus;
 pub use redis::RedisBus;
 
