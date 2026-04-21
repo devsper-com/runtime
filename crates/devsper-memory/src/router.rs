@@ -1,6 +1,6 @@
 use crate::{index::EmbeddingIndex, store::LocalMemoryStore};
-use devsper_core::{MemoryHit, MemoryStore};
 use anyhow::Result;
+use devsper_core::{MemoryHit, MemoryStore};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,13 +15,14 @@ pub enum RetrievalStrategy {
 
 /// Routes memory retrieval to appropriate strategy
 pub struct MemoryRouter {
-    store: Arc<LocalMemoryStore>,
+    store: Arc<dyn MemoryStore>,
     index: Arc<EmbeddingIndex>,
     strategy: RetrievalStrategy,
 }
 
 impl MemoryRouter {
-    pub fn new(strategy: RetrievalStrategy) -> Self {
+    /// Create a router backed by the local in-memory store.
+    pub fn local(strategy: RetrievalStrategy) -> Self {
         Self {
             store: Arc::new(LocalMemoryStore::new()),
             index: Arc::new(EmbeddingIndex::new()),
@@ -29,12 +30,38 @@ impl MemoryRouter {
         }
     }
 
-    pub fn store(&self) -> &Arc<LocalMemoryStore> {
+    /// Create a router backed by an external `MemoryStore` implementation.
+    pub fn with_external(store: Arc<dyn MemoryStore>, strategy: RetrievalStrategy) -> Self {
+        Self {
+            store,
+            index: Arc::new(EmbeddingIndex::new()),
+            strategy,
+        }
+    }
+
+    /// Deprecated: use `local()` instead. Kept for backward compatibility.
+    #[deprecated(note = "Use `local()` instead")]
+    pub fn new(strategy: RetrievalStrategy) -> Self {
+        Self::local(strategy)
+    }
+
+    /// Returns a reference to the underlying store as a dyn MemoryStore trait object.
+    pub fn store_ref(&self) -> &Arc<dyn MemoryStore> {
+        &self.store
+    }
+
+    #[deprecated(note = "Use store_ref() instead")]
+    pub fn store(&self) -> &Arc<dyn MemoryStore> {
         &self.store
     }
 
     /// Store and index a memory fact
-    pub async fn remember(&self, namespace: &str, key: &str, value: serde_json::Value) -> Result<()> {
+    pub async fn remember(
+        &self,
+        namespace: &str,
+        key: &str,
+        value: serde_json::Value,
+    ) -> Result<()> {
         let text = value.to_string();
         self.store.store(namespace, key, value).await?;
         self.index.index(format!("{namespace}/{key}"), &text).await;
@@ -42,11 +69,14 @@ impl MemoryRouter {
     }
 
     /// Retrieve relevant memories for a query
-    pub async fn recall(&self, namespace: &str, query: &str, top_k: usize) -> Result<Vec<MemoryHit>> {
+    pub async fn recall(
+        &self,
+        namespace: &str,
+        query: &str,
+        top_k: usize,
+    ) -> Result<Vec<MemoryHit>> {
         match &self.strategy {
-            RetrievalStrategy::Bm25 => {
-                self.store.search(namespace, query, top_k).await
-            }
+            RetrievalStrategy::Bm25 => self.store.search(namespace, query, top_k).await,
             RetrievalStrategy::Semantic => {
                 let results = self.index.search(query, top_k * 2).await;
                 let ns_prefix = format!("{namespace}/");
@@ -101,7 +131,7 @@ mod tests {
 
     #[tokio::test]
     async fn bm25_recall() {
-        let router = MemoryRouter::new(RetrievalStrategy::Bm25);
+        let router = MemoryRouter::local(RetrievalStrategy::Bm25);
         router
             .remember("ns", "k1", serde_json::json!("cats are fluffy"))
             .await
@@ -118,7 +148,7 @@ mod tests {
 
     #[tokio::test]
     async fn semantic_recall() {
-        let router = MemoryRouter::new(RetrievalStrategy::Semantic);
+        let router = MemoryRouter::local(RetrievalStrategy::Semantic);
         router
             .remember(
                 "ns",
@@ -128,11 +158,7 @@ mod tests {
             .await
             .unwrap();
         router
-            .remember(
-                "ns",
-                "k2",
-                serde_json::json!("database query optimization"),
-            )
+            .remember("ns", "k2", serde_json::json!("database query optimization"))
             .await
             .unwrap();
 
@@ -143,7 +169,7 @@ mod tests {
 
     #[tokio::test]
     async fn hybrid_recall() {
-        let router = MemoryRouter::new(RetrievalStrategy::Hybrid);
+        let router = MemoryRouter::local(RetrievalStrategy::Hybrid);
         router
             .remember("ns", "k1", serde_json::json!("rust programming language"))
             .await
@@ -155,5 +181,54 @@ mod tests {
 
         let hits = router.recall("ns", "rust language", 5).await.unwrap();
         assert!(!hits.is_empty());
+    }
+
+    #[tokio::test]
+    async fn with_external_delegates_to_store() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let count_clone = call_count.clone();
+
+        // A minimal mock MemoryStore
+        struct MockStore {
+            count: Arc<AtomicUsize>,
+        }
+
+        #[async_trait::async_trait]
+        impl MemoryStore for MockStore {
+            async fn store(&self, _ns: &str, _key: &str, _value: serde_json::Value) -> Result<()> {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+            async fn retrieve(&self, _ns: &str, _key: &str) -> Result<Option<serde_json::Value>> {
+                Ok(None)
+            }
+            async fn search(
+                &self,
+                _ns: &str,
+                _query: &str,
+                _top_k: usize,
+            ) -> Result<Vec<MemoryHit>> {
+                Ok(vec![])
+            }
+            async fn delete(&self, _ns: &str, _key: &str) -> Result<()> {
+                Ok(())
+            }
+        }
+
+        let mock = Arc::new(MockStore { count: count_clone });
+        let router =
+            MemoryRouter::with_external(mock as Arc<dyn MemoryStore>, RetrievalStrategy::Bm25);
+
+        router
+            .remember("ns", "k1", serde_json::json!("test value"))
+            .await
+            .unwrap();
+        assert_eq!(call_count.load(Ordering::SeqCst), 1);
+
+        // BM25 recall should delegate to the external store's search
+        let hits = router.recall("ns", "test", 5).await.unwrap();
+        assert!(hits.is_empty()); // mock returns empty
     }
 }
